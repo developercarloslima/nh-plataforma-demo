@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://nh-plataforma-demo.onrender.com/:path*"
+      "destination": "https://nh-plataforma-demo.onrender.com/api/:path*"
     }
   ]
 }
