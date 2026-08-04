@@ -1,0 +1,815 @@
+const SESSION_KEY = 'nh-cotacao-session-v6';
+const PORTAL_TOKEN_KEY = 'nhPortalToken';
+const CONSULTANT_KEY = 'nhSelectedConsultant';
+const portalToken = localStorage.getItem(PORTAL_TOKEN_KEY);
+const selectedConsultant = JSON.parse(localStorage.getItem(CONSULTANT_KEY) || 'null');
+if (!portalToken || !selectedConsultant?.id) window.location.replace('/colaborador/');
+
+const state = {
+  vehicleType: 'CAR',
+  plans: [],
+  selectedPlanCode: '',
+  selectedOptionalCodes: new Set(),
+  quote: null,
+  inspectionRequirements: [],
+  inspectionFiles: [],
+  inspectionIndex: 0,
+  previewUrls: []
+};
+
+const $ = (id) => document.getElementById(id);
+const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+
+function apiPath(path) { return path; }
+
+function parseMoney(value) {
+  const raw = String(value ?? '').trim().replace(/R\$|\s/g, '');
+  if (!raw) return NaN;
+  if (raw.includes(',')) return Number(raw.replace(/\./g, '').replace(',', '.'));
+  const dotCount = (raw.match(/\./g) || []).length;
+  if (dotCount === 1 && /^\d+\.\d{1,2}$/.test(raw)) return Number(raw);
+  return Number(raw.replace(/\./g, ''));
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function categoryCode() {
+  return state.vehicleType === 'CAR' ? $('carOrigin').value : state.vehicleType;
+}
+
+function effectiveRegion() {
+  return state.vehicleType.startsWith('MOTORCYCLE') ? $('region').value : 'NATIONAL';
+}
+
+function isZeroKm() {
+  return document.querySelector('input[name="zeroKm"]:checked')?.value === 'true';
+}
+
+function syncZeroKmOptions() {
+  document.querySelectorAll('.binary-option').forEach(option => {
+    const input = option.querySelector('input[name="zeroKm"]');
+    option.classList.toggle('selected', Boolean(input?.checked));
+  });
+}
+
+function selectedPlan() {
+  return state.plans.find(plan => plan.code === state.selectedPlanCode);
+}
+
+function selectedOptionalCoverages() {
+  const plan = selectedPlan();
+  if (!plan) return [];
+  return plan.coverages.filter(coverage =>
+    coverage.status === 'OPTIONAL' && state.selectedOptionalCodes.has(coverage.code)
+  );
+}
+
+function optionalMonthlyValue() {
+  return selectedOptionalCoverages().reduce(
+    (total, coverage) => total + Number(coverage.monthlyPrice || 0),
+    0
+  );
+}
+
+function setLoading(button, loading, loadingText, normalText) {
+  button.disabled = loading;
+  button.textContent = loading ? loadingText : normalText;
+}
+
+function showError(message) {
+  const box = $('error-box');
+  box.textContent = `⚠️ ${message}`;
+  box.hidden = false;
+}
+
+function clearError() {
+  $('error-box').hidden = true;
+  $('error-box').textContent = '';
+}
+
+async function api(path, options = {}) {
+  const headers = new Headers(options.headers || {});
+  headers.set('Authorization', `Bearer ${portalToken}`);
+  const response = await fetch(apiPath(path), { ...options, headers });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.message || 'Não foi possível concluir a solicitação.');
+  }
+  return response.json();
+}
+
+function formSnapshot() {
+  return {
+    customerName: $('customerName').value,
+    whatsapp: $('whatsapp').value,
+    plate: $('plate').value,
+    model: $('model').value,
+    manufactureYear: $('manufactureYear').value,
+    fipeValue: $('fipeValue').value,
+    zeroKm: isZeroKm(),
+    carOrigin: $('carOrigin').value,
+    region: $('region').value
+  };
+}
+
+function persistSession() {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify({
+      vehicleType: state.vehicleType,
+      form: formSnapshot(),
+      quoteId: state.quote?.id || null
+    }));
+  } catch (_) {
+    // O sistema continua funcional mesmo quando o navegador bloqueia o storage.
+  }
+}
+
+async function restoreSession() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+    if (!saved) return;
+
+    state.vehicleType = saved.vehicleType || 'CAR';
+    $('vehicle-options').querySelectorAll('.vehicle-option').forEach(item =>
+      item.classList.toggle('active', item.dataset.type === state.vehicleType)
+    );
+    updateConditionalFields();
+
+    const savedZeroKm = saved.form?.zeroKm === true || saved.form?.zeroKm === 'true';
+    const zeroKmInput = document.querySelector(`input[name="zeroKm"][value="${savedZeroKm}"]`);
+    if (zeroKmInput) zeroKmInput.checked = true;
+    syncZeroKmOptions();
+
+    Object.entries(saved.form || {}).forEach(([id, value]) => {
+      if (id !== 'consultantName' && id !== 'zeroKm' && $(id) && value != null) $(id).value = value;
+    });
+
+    if (saved.quoteId) {
+      const quote = await api(`/api/quotes/${saved.quoteId}`);
+      renderQuote(quote, false);
+    }
+  } catch (_) {
+    localStorage.removeItem(SESSION_KEY);
+  }
+}
+
+function resetResults() {
+  state.plans = [];
+  state.selectedPlanCode = '';
+  state.selectedOptionalCodes.clear();
+  state.quote = null;
+  $('plans-section').hidden = true;
+  $('proposal-section').hidden = true;
+  $('optional-section').hidden = true;
+  $('decision-result').innerHTML = '';
+  persistSession();
+}
+
+function updateConditionalFields() {
+  $('car-origin-field').hidden = state.vehicleType !== 'CAR';
+  $('region-field').hidden = !state.vehicleType.startsWith('MOTORCYCLE');
+}
+
+function normalizedCoverageStatus(coverage) {
+  return String(coverage?.status || '').trim().toUpperCase();
+}
+
+function isOptionalCoverage(coverage) {
+  return normalizedCoverageStatus(coverage) === 'OPTIONAL';
+}
+
+function coverageIcon(status) {
+  return status === 'INCLUDED' ? '✅' : '❌';
+}
+
+function renderPlans() {
+  const cards = $('plan-cards');
+  cards.style.setProperty('--plan-count', state.plans.length);
+  cards.innerHTML = state.plans.map(plan => `
+    <article class="plan-card ${plan.code === state.selectedPlanCode ? 'selected' : ''}" data-code="${plan.code}">
+      ${plan.name.toLowerCase().includes('completo') ? '<span class="recommended">MAIS COMPLETO</span>' : ''}
+      <div class="plan-card-head">
+        <h3>${escapeHtml(plan.name)}</h3><p>${escapeHtml(plan.subtitle || '')}</p><strong>${brl.format(plan.monthlyValue)}</strong><span>valor mensal${Number(plan.mandatoryMonthlyFee || 0) > 0 ? ' com rastreador obrigatório' : ''}</span>
+        ${Number(plan.oneTimeFee || 0) > 0 ? `<small class="mandatory-fee-note">Taxa única de instalação: ${brl.format(plan.oneTimeFee)}</small>` : ''}
+      </div>
+      <label class="choose-plan"><input type="radio" name="plan" value="${plan.code}" ${plan.code === state.selectedPlanCode ? 'checked' : ''}>Escolher este plano</label>
+    </article>
+  `).join('');
+
+  cards.querySelectorAll('input[name="plan"]').forEach(input => input.addEventListener('change', () => {
+    state.selectedPlanCode = input.value;
+    state.selectedOptionalCodes.clear();
+    renderPlans();
+    renderComparison();
+    renderOptionals();
+    updateSelectionSummary();
+  }));
+
+  renderOptionals();
+  updateSelectionSummary();
+}
+
+function renderComparison() {
+  const coverageMap = new Map();
+
+  state.plans.forEach(plan => {
+    (plan.coverages || [])
+      .filter(coverage => !isOptionalCoverage(coverage))
+      .forEach(coverage => coverageMap.set(coverage.code, coverage.name));
+  });
+
+  const rows = [...coverageMap.entries()];
+  const count = state.plans.length;
+
+  $('comparison-table').innerHTML = `
+    <div class="comparison-row comparison-header" style="--plan-count:${count}">
+      <div>Cobertura</div>${state.plans.map(plan => `<div>${escapeHtml(plan.name)}</div>`).join('')}
+    </div>
+    ${rows.map(([code, name]) => `
+      <div class="comparison-row" style="--plan-count:${count}">
+        <div class="coverage-name">${escapeHtml(name)}</div>
+        ${state.plans.map(plan => {
+          const coverage = (plan.coverages || []).find(item => item.code === code && !isOptionalCoverage(item));
+          const status = normalizedCoverageStatus(coverage) === 'INCLUDED' ? 'INCLUDED' : 'NOT_INCLUDED';
+          const detail = coverage?.detail || (status === 'INCLUDED' ? 'Incluído' : 'Não incluído');
+
+          return `<div class="coverage-state ${status.toLowerCase()}" title="${escapeHtml(detail)}"><span>${coverageIcon(status)}</span><small>${escapeHtml(detail)}</small></div>`;
+        }).join('')}
+      </div>
+    `).join('')}
+  `;
+}
+
+function renderOptionals() {
+  const section = $('optional-section');
+  const list = $('optional-list');
+  const plan = selectedPlan();
+  const optionals = plan?.coverages.filter(isOptionalCoverage) || [];
+
+  if (!plan || optionals.length === 0) {
+    section.hidden = true;
+    list.innerHTML = '';
+    return;
+  }
+
+  section.hidden = false;
+  list.innerHTML = optionals.map(coverage => {
+    const checked = state.selectedOptionalCodes.has(coverage.code);
+    const hasPrice = coverage.monthlyPrice != null;
+    return `
+      <label class="optional-card ${checked ? 'selected' : ''} ${!hasPrice ? 'unavailable' : ''}">
+        <input type="checkbox" value="${escapeHtml(coverage.code)}" ${checked ? 'checked' : ''} ${!hasPrice ? 'disabled' : ''}>
+        <span class="optional-check">${checked ? '✓' : '+'}</span>
+        <span class="optional-content"><strong>${escapeHtml(coverage.name)}</strong><small>${escapeHtml(coverage.detail || 'Cobertura adicional')}</small></span>
+        <span class="optional-price">${hasPrice ? `+ ${brl.format(coverage.monthlyPrice)}<small>/mês</small>` : 'Valor indisponível'}</span>
+      </label>
+    `;
+  }).join('');
+
+  list.querySelectorAll('input[type="checkbox"]').forEach(input => {
+    input.addEventListener('change', () => {
+      if (input.checked) {
+        if (input.value === 'FUNERAL') state.selectedOptionalCodes.delete('FUNERAL_FAMILY');
+        if (input.value === 'FUNERAL_FAMILY') state.selectedOptionalCodes.delete('FUNERAL');
+        state.selectedOptionalCodes.add(input.value);
+      } else {
+        state.selectedOptionalCodes.delete(input.value);
+      }
+      renderOptionals();
+      updateSelectionSummary();
+    });
+  });
+}
+
+function updateSelectionSummary() {
+  const plan = selectedPlan();
+  const optionalValue = optionalMonthlyValue();
+  const mandatoryValue = plan ? Number(plan.mandatoryMonthlyFee || 0) : 0;
+  const tableValue = plan ? Number(plan.tableMonthlyValue ?? plan.monthlyValue) : 0;
+  const oneTimeFee = plan ? Number(plan.oneTimeFee || 0) : 0;
+  const total = plan ? Number(plan.monthlyValue) + optionalValue : 0;
+  $('selected-plan-name').textContent = plan?.name || '—';
+  $('selected-plan-base-value').textContent = plan ? brl.format(tableValue) : '—';
+  $('selected-mandatory-row').hidden = !plan || mandatoryValue <= 0;
+  $('selected-mandatory-value').textContent = plan ? brl.format(mandatoryValue) : '—';
+  $('selected-one-time-row').hidden = !plan || oneTimeFee <= 0;
+  $('selected-one-time-value').textContent = plan ? brl.format(oneTimeFee) : '—';
+  $('selected-optionals-value').textContent = plan ? brl.format(optionalValue) : '—';
+  $('selected-plan-value').textContent = plan ? brl.format(total) : '—';
+  $('confirm-plan').disabled = !plan;
+}
+
+function formPayload() {
+  return {
+    consultantId: selectedConsultant.id,
+    customerName: $('customerName').value.trim(),
+    whatsapp: $('whatsapp').value,
+    plate: $('plate').value.trim().toUpperCase(),
+    model: $('model').value.trim(),
+    manufactureYear: Number($('manufactureYear').value),
+    zeroKm: isZeroKm(),
+    fipeValue: parseMoney($('fipeValue').value),
+    categoryCode: categoryCode(),
+    region: effectiveRegion(),
+    selectedPlanCode: state.selectedPlanCode,
+    selectedOptionalCodes: [...state.selectedOptionalCodes]
+  };
+}
+
+function quoteStatusLabel(status, expired = false) {
+  if (expired) return 'Expirada';
+  if (status === 'ACCEPTED') return 'Aceita';
+  if (status === 'DECLINED') return 'Não aceita';
+  return 'Aguardando resposta';
+}
+
+function renderQuote(quote, scroll = true) {
+  state.quote = quote;
+  const selectedOptionals = quote.selectedOptionals || [];
+  const baseValue = quote.baseMonthlyValue ?? quote.monthlyValue;
+  const mandatoryValue = Number(quote.mandatoryMonthlyFee || 0);
+  const oneTimeFee = Number(quote.oneTimeFee || 0);
+  const optionalValue = quote.optionalMonthlyValue ?? selectedOptionals.reduce(
+    (total, item) => total + Number(item.monthlyPrice || 0), 0
+  );
+
+  $('proposal-title').textContent = `Cotação ${quote.quoteNumber} gerada`;
+  $('proposal-description').innerHTML = `O plano escolhido foi <strong>${escapeHtml(quote.selectedPlanName)}</strong>, com mensalidade total de <strong>${brl.format(quote.monthlyValue)} por mês</strong>.`;
+  $('quote-details').innerHTML = `
+    <div><span>Cliente</span><strong>${escapeHtml(quote.customerName)}</strong></div>
+    <div><span>Veículo</span><strong>${escapeHtml(quote.model)} • ${escapeHtml(quote.plate)}</strong></div>
+    <div><span>FIPE</span><strong>${brl.format(quote.fipeValue)}</strong></div>
+    <div><span>Veículo 0 km</span><strong>${quote.zeroKm ? 'Sim' : 'Não'}</strong></div>
+    <div><span>Valor da tabela</span><strong>${brl.format(baseValue)}</strong></div>
+    ${mandatoryValue > 0 ? `<div><span>Acréscimo obrigatório</span><strong>${brl.format(mandatoryValue)}</strong></div>` : ''}
+    <div><span>Opcionais</span><strong>${brl.format(optionalValue)}</strong></div>
+    <div><span>Total mensal</span><strong>${brl.format(quote.monthlyValue)}</strong></div>
+    ${oneTimeFee > 0 ? `<div><span>Taxa única de instalação</span><strong>${brl.format(oneTimeFee)}</strong></div>` : ''}
+    <div><span>Validade</span><strong>${quote.validUntil ? new Date(quote.validUntil).toLocaleString('pt-BR') : '5 dias'}</strong></div>
+    <div><span>Status</span><strong>${quoteStatusLabel(quote.status, quote.expired)}</strong></div>`;
+
+  $('quote-optionals').innerHTML = selectedOptionals.length
+    ? `<h3>Opcionais contratados</h3><div class="quote-optional-list">${selectedOptionals.map(item => `
+        <div><span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.detail || '')}</small></span><b>+ ${brl.format(item.monthlyPrice)}/mês</b></div>
+      `).join('')}</div>`
+    : '<div class="no-optionals">Nenhum benefício opcional foi adicionado à proposta.</div>';
+
+  $('proposal-section').hidden = false;
+  $('accept-box').hidden = quote.status !== 'CREATED' || quote.expired;
+  renderDecisionArea(quote);
+  persistSession();
+  if (scroll) $('proposal-section').scrollIntoView({ behavior: 'smooth' });
+}
+
+function renderDecisionArea(quote) {
+  if (quote.status === 'ACCEPTED') {
+    renderInspectionStage(quote);
+  } else if (quote.status === 'DECLINED') {
+    $('decision-result').innerHTML = '<div class="declined-box">A proposta foi marcada como não aceita.</div>';
+  } else {
+    $('decision-result').innerHTML = '';
+  }
+}
+
+function renderInspectionStage(quote) {
+  const params = new URLSearchParams({
+    name: quote.customerName,
+    plate: quote.plate,
+    whatsapp: quote.whatsapp || '',
+    quoteId: quote.id
+  });
+  $('decision-result').innerHTML = `
+    <div class="inspection-box inspection-pending">
+      <div><span class="step-tag">ETAPA 4</span><h3>Proposta aceita — gerar Retrato NH</h3><p>Crie o link de vistoria e envie ao associado. As fotos e o vídeo serão armazenados no Drive.</p></div>
+      <div class="inspection-actions"><a class="primary-button" href="/colaborador/retrato.html?${params.toString()}">Abrir Retrato NH →</a></div>
+    </div>`;
+}
+
+function isMobileBrowser() {
+  return window.matchMedia('(max-width: 820px)').matches
+    || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+async function downloadPdf(button = $('pdf-download')) {
+  if (!state.quote) return;
+  persistSession();
+
+  // No celular, reservamos uma nova aba antes do fetch para impedir que o
+  // visualizador de PDF substitua a tela da cotação e apague o progresso.
+  const mobilePreview = isMobileBrowser() ? window.open('about:blank', '_blank') : null;
+  setLoading(button, true, 'Preparando PDF...', '⬇ Baixar PDF da cotação');
+  try {
+    const response = await fetch(apiPath(`/api/quotes/${state.quote.id}/pdf`));
+    if (!response.ok) throw new Error('Não foi possível gerar o PDF.');
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+
+    if (isMobileBrowser()) {
+      if (mobilePreview) {
+        mobilePreview.location.href = objectUrl;
+      } else {
+        const anchor = document.createElement('a');
+        anchor.href = objectUrl;
+        anchor.target = '_blank';
+        anchor.rel = 'noopener noreferrer';
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      }
+    } else {
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = `cotacao-${state.quote.quoteNumber}.pdf`;
+      anchor.style.display = 'none';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    }
+
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+  } catch (error) {
+    mobilePreview?.close();
+    showError(error.message);
+  } finally {
+    setLoading(button, false, 'Preparando PDF...', '⬇ Baixar PDF da cotação');
+  }
+}
+
+async function sharePdfWithClient() {
+  if (!state.quote) return;
+  const button = $('share-client-pdf');
+  setLoading(button, true, 'Preparando...', 'Enviar PDF ao cliente');
+  try {
+    const response = await fetch(apiPath(`/api/quotes/${state.quote.id}/pdf`));
+    if (!response.ok) throw new Error('Não foi possível preparar o PDF.');
+    const blob = await response.blob();
+    const file = new File([blob], `cotacao-${state.quote.quoteNumber}.pdf`, { type: 'application/pdf' });
+
+    if (navigator.share && navigator.canShare?.({ files: [file] })) {
+      await navigator.share({
+        title: `Cotação ${state.quote.quoteNumber}`,
+        text: `Cotação da Novo Horizonte para ${state.quote.customerName}`,
+        files: [file]
+      });
+    } else if (state.quote.clientWhatsappUrl) {
+      window.open(state.quote.clientWhatsappUrl, '_blank', 'noopener,noreferrer');
+    } else {
+      throw new Error('Informe o WhatsApp do cliente para enviar o PDF.');
+    }
+  } catch (error) {
+    if (error.name !== 'AbortError') showError(error.message);
+  } finally {
+    setLoading(button, false, 'Preparando...', 'Enviar PDF ao cliente');
+  }
+}
+
+function inspectionRequirementsForQuote(quote) {
+  if (String(quote.categoryCode).startsWith('MOTORCYCLE')) {
+    return [
+      ['Frente da motocicleta', 'Enquadre toda a parte dianteira, mantendo placa e acessórios visíveis quando aplicável.'],
+      ['Traseira da motocicleta', 'Fotografe toda a traseira, com placa legível e sem cortes.'],
+      ['Lateral esquerda', 'Enquadre a motocicleta inteira pela lateral esquerda.'],
+      ['Lateral direita', 'Enquadre a motocicleta inteira pela lateral direita.'],
+      ['Painel e quilometragem', 'Ligue o painel e garanta que a quilometragem esteja nítida.'],
+      ['Chassi / numeração', 'Aproxime apenas o necessário e mantenha toda a numeração legível.'],
+      ['Motor', 'Registre o conjunto do motor com boa iluminação e sem obstruções.'],
+      ['Pneus e rodas', 'Registre o estado geral dos pneus e rodas de forma nítida.']
+    ];
+  }
+  return [
+    ['Frente do veículo', 'Enquadre o veículo inteiro de frente, sem cortar para-choque, teto ou laterais.'],
+    ['Traseira do veículo', 'Enquadre toda a traseira e mantenha a placa perfeitamente legível.'],
+    ['Lateral esquerda', 'Fotografe o veículo inteiro pela lateral esquerda.'],
+    ['Lateral direita', 'Fotografe o veículo inteiro pela lateral direita.'],
+    ['Painel e quilometragem', 'Ligue o painel e mantenha a quilometragem nítida e centralizada.'],
+    ['Chassi / numeração', 'Registre a numeração do chassi sem reflexos e com todos os caracteres legíveis.'],
+    ['Para-brisa dianteiro', 'Fotografe o para-brisa inteiro para demonstrar o estado do vidro.'],
+    ['Interior do veículo', 'Registre bancos, painel e estado geral da cabine com boa iluminação.']
+  ].map(([label, instruction]) => ({ label, instruction }));
+}
+
+function normalizeRequirements(requirements) {
+  return requirements.map(item => Array.isArray(item)
+    ? { label: item[0], instruction: item[1] }
+    : item
+  );
+}
+
+function openInspectionModal() {
+  if (!state.quote) return;
+  clearPreviewUrls();
+  state.inspectionRequirements = normalizeRequirements(inspectionRequirementsForQuote(state.quote));
+  state.inspectionFiles = Array(state.inspectionRequirements.length).fill(null);
+  state.inspectionIndex = 0;
+  $('inspection-guidelines').hidden = false;
+  $('inspection-capture').hidden = true;
+  $('inspection-review').hidden = true;
+  $('capture-error').hidden = true;
+  $('upload-status').hidden = true;
+  $('inspection-modal').hidden = false;
+  document.body.classList.add('modal-open');
+}
+
+function closeInspectionModal() {
+  $('inspection-modal').hidden = true;
+  document.body.classList.remove('modal-open');
+  clearPreviewUrls();
+}
+
+function clearPreviewUrls() {
+  state.previewUrls.forEach(url => URL.revokeObjectURL(url));
+  state.previewUrls = [];
+}
+
+function startCapture() {
+  $('inspection-guidelines').hidden = true;
+  $('inspection-review').hidden = true;
+  $('inspection-capture').hidden = false;
+  state.inspectionIndex = 0;
+  renderCaptureStep();
+  setTimeout(openCamera, 160);
+}
+
+function renderCaptureStep() {
+  clearPreviewUrls();
+  const total = state.inspectionRequirements.length;
+  const requirement = state.inspectionRequirements[state.inspectionIndex];
+  const file = state.inspectionFiles[state.inspectionIndex];
+  $('capture-step').textContent = `Foto ${state.inspectionIndex + 1} de ${total}`;
+  $('capture-progress-bar').style.width = `${((state.inspectionIndex + (file ? 1 : 0)) / total) * 100}%`;
+  $('capture-title').textContent = requirement.label;
+  $('capture-instruction').textContent = requirement.instruction;
+  $('capture-back').textContent = state.inspectionIndex === 0 ? '← Diretrizes' : '← Foto anterior';
+  $('capture-next').textContent = state.inspectionIndex === total - 1 ? 'Revisar fotos →' : 'Próxima foto →';
+  $('capture-next').disabled = !file;
+  $('capture-photo').textContent = file ? 'Refazer foto' : 'Abrir câmera';
+  $('capture-error').hidden = true;
+
+  if (file) {
+    const url = URL.createObjectURL(file);
+    state.previewUrls.push(url);
+    $('capture-preview').innerHTML = `<img src="${url}" alt="${escapeHtml(requirement.label)}"><span class="preview-approved">Foto registrada ✓</span>`;
+  } else {
+    $('capture-preview').innerHTML = '<div class="camera-placeholder"><span>📷</span><p>A câmera será aberta para registrar esta foto.</p></div>';
+  }
+}
+
+function openCamera() {
+  $('camera-input').value = '';
+  $('camera-input').click();
+}
+
+async function loadPhotoSource(file) {
+  if ('createImageBitmap' in window) {
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    return { source: bitmap, width: bitmap.width, height: bitmap.height, close: () => bitmap.close?.() };
+  }
+  const url = URL.createObjectURL(file);
+  try {
+    const image = await new Promise((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error('Não foi possível abrir a imagem.'));
+      element.src = url;
+    });
+    return { source: image, width: image.naturalWidth, height: image.naturalHeight, close: () => URL.revokeObjectURL(url) };
+  } catch (error) {
+    URL.revokeObjectURL(url);
+    throw error;
+  }
+}
+
+async function compressPhoto(file) {
+  const photo = await loadPhotoSource(file);
+  try {
+    const maxDimension = 1920;
+    const scale = Math.min(1, maxDimension / Math.max(photo.width, photo.height));
+    const width = Math.max(1, Math.round(photo.width * scale));
+    const height = Math.max(1, Math.round(photo.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { alpha: false });
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, width, height);
+    context.drawImage(photo.source, 0, 0, width, height);
+    const blob = await new Promise((resolve, reject) =>
+      canvas.toBlob(result => result ? resolve(result) : reject(new Error('Não foi possível processar a foto.')), 'image/jpeg', 0.84)
+    );
+    return new File([blob], `vistoria-${state.inspectionIndex + 1}.jpg`, { type: 'image/jpeg' });
+  } finally {
+    photo.close();
+  }
+}
+
+function showCaptureError(message) {
+  $('capture-error').textContent = `⚠️ ${message}`;
+  $('capture-error').hidden = false;
+}
+
+function showReview() {
+  if (state.inspectionFiles.some(file => !file)) {
+    showCaptureError('Registre todas as fotos obrigatórias antes de continuar.');
+    return;
+  }
+  $('inspection-capture').hidden = true;
+  $('inspection-review').hidden = false;
+  clearPreviewUrls();
+  $('inspection-review-grid').innerHTML = state.inspectionFiles.map((file, index) => {
+    const url = URL.createObjectURL(file);
+    state.previewUrls.push(url);
+    return `<button class="review-photo" type="button" data-index="${index}"><img src="${url}" alt="${escapeHtml(state.inspectionRequirements[index].label)}"><span><b>${index + 1}. ${escapeHtml(state.inspectionRequirements[index].label)}</b><small>Clique para refazer</small></span></button>`;
+  }).join('');
+  $('inspection-review-grid').querySelectorAll('.review-photo').forEach(button => {
+    button.addEventListener('click', () => {
+      state.inspectionIndex = Number(button.dataset.index);
+      $('inspection-review').hidden = true;
+      $('inspection-capture').hidden = false;
+      renderCaptureStep();
+    });
+  });
+}
+
+async function uploadInspection() {
+  if (!state.quote || state.inspectionFiles.some(file => !file)) return;
+  const button = $('inspection-upload');
+  setLoading(button, true, 'Enviando fotos...', 'Enviar fotos e concluir vistoria');
+  $('upload-status').hidden = false;
+  $('upload-status').innerHTML = '<span class="upload-spinner"></span><div><b>Enviando e organizando a vistoria...</b><small>Não feche esta tela. O sistema está criando a pasta no Drive e atualizando o PDF.</small></div>';
+
+  try {
+    const formData = new FormData();
+    state.inspectionFiles.forEach((file, index) => {
+      formData.append('photos', file, `${String(index + 1).padStart(2, '0')}-${file.name}`);
+      formData.append('labels', state.inspectionRequirements[index].label);
+    });
+
+    const result = await api(`/api/quotes/${state.quote.id}/inspection`, {
+      method: 'POST',
+      body: formData
+    }, true);
+    state.quote = result.quote;
+    persistSession();
+    closeInspectionModal();
+    renderQuote(result.quote);
+  } catch (error) {
+    $('upload-status').innerHTML = `<div class="upload-failed"><b>Não foi possível concluir o envio.</b><small>${escapeHtml(error.message)}</small></div>`;
+  } finally {
+    setLoading(button, false, 'Enviando fotos...', 'Enviar fotos e concluir vistoria');
+  }
+}
+
+$('vehicle-options').querySelectorAll('.vehicle-option').forEach(button => {
+  button.addEventListener('click', () => {
+    state.vehicleType = button.dataset.type;
+    $('vehicle-options').querySelectorAll('.vehicle-option').forEach(item => item.classList.toggle('active', item === button));
+    updateConditionalFields();
+    resetResults();
+    clearError();
+  });
+});
+
+['consultantName','customerName','whatsapp','plate','model','manufactureYear','fipeValue','carOrigin','region'].forEach(id => {
+  $(id).addEventListener('input', () => { resetResults(); clearError(); persistSession(); });
+});
+
+document.querySelectorAll('input[name="zeroKm"]').forEach(input => {
+  input.addEventListener('change', () => {
+    syncZeroKmOptions();
+    resetResults();
+    clearError();
+    persistSession();
+  });
+});
+syncZeroKmOptions();
+
+$('plate').addEventListener('input', event => event.target.value = event.target.value.toUpperCase());
+$('manufactureYear').value = new Date().getFullYear();
+$('manufactureYear').max = new Date().getFullYear() + 1;
+
+$('quote-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  clearError();
+  const button = $('simulate-button');
+  setLoading(button, true, 'Calculando...', 'Calcular planos disponíveis →');
+  try {
+    const fipeValue = parseMoney($('fipeValue').value);
+    if (!fipeValue || fipeValue <= 0) throw new Error('Informe um valor FIPE válido.');
+    const result = await api('/api/quotes/options', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ categoryCode: categoryCode(), region: effectiveRegion(), fipeValue })
+    });
+    state.plans = result.plans;
+    state.selectedPlanCode = result.plans[0]?.code || '';
+    state.selectedOptionalCodes.clear();
+    renderPlans();
+    renderComparison();
+    $('plans-section').hidden = false;
+    $('plans-section').scrollIntoView({ behavior: 'smooth' });
+  } catch (error) { showError(error.message); }
+  finally { setLoading(button, false, 'Calculando...', 'Calcular planos disponíveis →'); }
+});
+
+$('confirm-plan').addEventListener('click', async () => {
+  clearError();
+  const button = $('confirm-plan');
+  setLoading(button, true, 'Salvando...', 'Confirmar plano e gerar cotação →');
+  try {
+    const quote = await api('/api/quotes', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formPayload())
+    });
+    renderQuote(quote);
+  } catch (error) { showError(error.message); }
+  finally { setLoading(button, false, 'Salvando...', 'Confirmar plano e gerar cotação →'); }
+});
+
+async function decide(decision) {
+  if (!state.quote) return;
+  clearError();
+  try {
+    const result = await api(`/api/quotes/${state.quote.id}/decision`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision })
+    });
+    renderQuote(result.quote);
+  } catch (error) { showError(error.message); }
+}
+
+$('accept-yes').addEventListener('click', () => decide('ACCEPTED'));
+$('accept-no').addEventListener('click', () => decide('DECLINED'));
+$('pdf-download').addEventListener('click', () => downloadPdf());
+
+$('new-quote').addEventListener('click', () => {
+  $('quote-form').reset();
+  $('manufactureYear').value = new Date().getFullYear();
+  const zeroKmNo = document.querySelector('input[name="zeroKm"][value="false"]');
+  if (zeroKmNo) zeroKmNo.checked = true;
+  syncZeroKmOptions();
+  state.vehicleType = 'CAR';
+  $('vehicle-options').querySelectorAll('.vehicle-option').forEach(item => item.classList.toggle('active', item.dataset.type === 'CAR'));
+  localStorage.removeItem(SESSION_KEY);
+  updateConditionalFields();
+  resetResults();
+  clearError();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+
+$('inspection-close').addEventListener('click', closeInspectionModal);
+$('inspection-modal').addEventListener('click', event => {
+  if (event.target === $('inspection-modal')) closeInspectionModal();
+});
+$('inspection-start').addEventListener('click', startCapture);
+$('capture-photo').addEventListener('click', openCamera);
+$('camera-input').addEventListener('change', async event => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  $('capture-photo').disabled = true;
+  $('capture-photo').textContent = 'Processando...';
+  try {
+    state.inspectionFiles[state.inspectionIndex] = await compressPhoto(file);
+    renderCaptureStep();
+  } catch (error) {
+    showCaptureError(error.message || 'Não foi possível processar a foto.');
+  } finally {
+    $('capture-photo').disabled = false;
+  }
+});
+$('capture-back').addEventListener('click', () => {
+  if (state.inspectionIndex === 0) {
+    $('inspection-capture').hidden = true;
+    $('inspection-guidelines').hidden = false;
+    return;
+  }
+  state.inspectionIndex -= 1;
+  renderCaptureStep();
+});
+$('capture-next').addEventListener('click', () => {
+  if (!state.inspectionFiles[state.inspectionIndex]) return;
+  if (state.inspectionIndex === state.inspectionRequirements.length - 1) {
+    showReview();
+  } else {
+    state.inspectionIndex += 1;
+    renderCaptureStep();
+  }
+});
+$('review-back').addEventListener('click', () => {
+  state.inspectionIndex = 0;
+  $('inspection-review').hidden = true;
+  $('inspection-capture').hidden = false;
+  renderCaptureStep();
+});
+$('inspection-upload').addEventListener('click', uploadInspection);
+
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && !$('inspection-modal').hidden) closeInspectionModal();
+});
+
+$('consultantName').value = selectedConsultant.name;
+updateConditionalFields();
+restoreSession().finally(() => { $('consultantName').value = selectedConsultant.name; });

@@ -1,0 +1,48 @@
+name: nh-plataforma-local
+services:
+  database:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: nh_plataforma
+      POSTGRES_USER: nh
+      POSTGRES_PASSWORD: nh123
+    volumes: [nh_local_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nh -d nh_plataforma"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: jdbc:postgresql://database:5432/nh_plataforma
+      DATABASE_USERNAME: nh
+      DATABASE_PASSWORD: nh123
+      PUBLIC_API_URL: http://localhost:3000
+      PUBLIC_WEB_URL: http://localhost:3000
+      ALLOWED_ORIGINS: http://localhost:3000
+      AUTH_TOKEN_SECRET: chave-local-de-desenvolvimento-com-mais-de-32-caracteres
+      CONSULTANT_USERNAME: consultor
+      CONSULTANT_PASSWORD: nh2027
+      ADMIN_USERNAME: admin@nh.local
+      ADMIN_PASSWORD: admin12345
+      GOOGLE_DRIVE_ENABLED: "false"
+    depends_on:
+      database:
+        condition: service_healthy
+  hinova-api:
+    build: ./hinova-api
+    environment:
+      PORT: 3001
+      HINOVA_API_TOKEN: ${HINOVA_API_TOKEN:-}
+      HINOVA_API_USER: ${HINOVA_API_USER:-}
+      HINOVA_API_PASSWORD: ${HINOVA_API_PASSWORD:-}
+
+  web:
+    build: ./web
+    environment:
+      SGA_URL: ${SGA_URL:-https://sga.hinova.com.br/sga/sgav4_novohorizonte/v5/login.php}
+    depends_on: [backend, hinova-api]
+    ports: ["3000:80"]
+volumes:
+  nh_local_data:

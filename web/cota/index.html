@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <meta name="theme-color" content="#080f63">
+  
+  <link rel="icon" href="./favicon-nh.png">
+  <link rel="stylesheet" href="./styles.css?v=20260803-3">
+  <title>NH Cotação Digital</title>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="./favicon-nh.png" alt="Novo Horizonte">
+      <div><strong>Novo Horizonte</strong><span>Cotação Digital</span></div>
+    </div>
+    <div class="secure-pill">🔒 Ambiente do consultor</div><a class="secure-pill" href="/colaborador/">← Voltar ao painel</a>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-copy">
+        <span class="eyebrow">PROTEÇÃO VEICULAR</span>
+        <h1>Cotação rápida, clara e pronta para fechar.</h1>
+        <p>Informe os dados do veículo, compare os planos lado a lado e gere a proposta em PDF.</p>
+        <div class="hero-steps">
+          <span><b>1</b> Dados</span><span><b>2</b> Plano</span><span><b>3</b> Proposta</span><span><b>4</b> Vistoria</span>
+        </div>
+      </div>
+      <img class="hero-logo" src="./simbolo-fundo-azul.png" alt="Novo Horizonte Proteção Veicular">
+    </section>
+
+    <section class="content-card">
+      <div class="section-heading">
+        <div><span class="step-tag">ETAPA 1</span><h2>Dados do cliente e do veículo</h2></div>
+        <span class="required-note">* campos obrigatórios</span>
+      </div>
+
+      <form id="quote-form" class="form-grid">
+        <label>Consultor responsável *<input id="consultantName" required readonly></label>
+        <label>Nome do cliente *<input id="customerName" required placeholder="Nome completo"></label>
+        <label>WhatsApp do cliente<input id="whatsapp" placeholder="(82) 99999-9999"></label>
+        <label>Placa *<input id="plate" required maxlength="10" placeholder="ABC1D23"></label>
+        <label class="span-2">Modelo do veículo *<input id="model" required placeholder="Ex.: Hyundai HB20 Comfort"></label>
+        <label>Ano de fabricação *<input id="manufactureYear" required type="number" min="1950"></label>
+        <label>Valor FIPE *<input id="fipeValue" required inputmode="decimal" placeholder="Ex.: 65.000,00"></label>
+
+        <fieldset class="zero-km-selector span-2">
+          <legend>O veículo é 0 km? *</legend>
+          <div class="binary-options" role="radiogroup" aria-label="Veículo zero quilômetro">
+            <label class="binary-option">
+              <input type="radio" name="zeroKm" value="true">
+              <span>Sim</span>
+            </label>
+            <label class="binary-option selected">
+              <input type="radio" name="zeroKm" value="false" checked>
+              <span>Não</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset class="vehicle-selector span-2">
+          <legend>Categoria do veículo *</legend>
+          <div id="vehicle-options" class="vehicle-options">
+            <button type="button" data-type="MOTORCYCLE_UP_TO_300" class="vehicle-option">Motocicletas até 300Cc</button>
+            <button type="button" data-type="MOTORCYCLE_OVER_300" class="vehicle-option">Motocicletas acima de 300Cc</button>
+            <button type="button" data-type="CAR" class="vehicle-option active">Carros</button>
+            <button type="button" data-type="UTILITY" class="vehicle-option">Utilitários</button>
+            <button type="button" data-type="TRUCK" class="vehicle-option">Caminhões</button>
+          </div>
+        </fieldset>
+
+        <label id="car-origin-field">Origem do carro *
+          <select id="carOrigin"><option value="CAR_NATIONAL">Nacional</option><option value="CAR_IMPORTED">Importado</option></select>
+        </label>
+        <label id="region-field" hidden>Região da tabela *
+          <select id="region"><option value="NORTHEAST">Demais cidades do Nordeste</option><option value="CAPITAL">Capital</option></select>
+        </label>
+
+        <div class="form-actions span-2"><button id="simulate-button" class="primary-button" type="submit">Calcular planos disponíveis →</button></div>
+      </form>
+      <div id="error-box" class="error-box" hidden></div>
+    </section>
+
+    <section id="plans-section" class="content-card comparison-section" hidden>
+      <div class="section-heading"><div><span class="step-tag">ETAPA 2</span><h2>Compare e escolha o melhor plano</h2><p>✅ incluído &nbsp; ❌ não incluído</p></div></div>
+      <div id="plan-cards" class="plan-cards"></div>
+      <div id="comparison-table" class="comparison-table"></div>
+
+      <div id="optional-section" class="optional-section" hidden>
+        <div class="optional-heading">
+          <div><span class="step-tag">ADICIONAIS</span><h3>Escolha os benefícios opcionais</h3></div>
+          <p>Nenhum opcional é incluído automaticamente. Marque somente o que o cliente deseja contratar.</p>
+        </div>
+        <div id="optional-list" class="optional-list"></div>
+      </div>
+
+      <div class="selection-summary">
+        <div><span>Plano escolhido</span><strong id="selected-plan-name">—</strong></div>
+        <div><span>Valor da tabela</span><strong id="selected-plan-base-value">—</strong></div>
+        <div id="selected-mandatory-row" hidden><span>Acréscimo obrigatório</span><strong id="selected-mandatory-value">—</strong></div>
+        <div><span>Opcionais selecionados</span><strong id="selected-optionals-value">—</strong></div>
+        <div id="selected-one-time-row" hidden><span>Taxa única</span><strong id="selected-one-time-value">—</strong></div>
+        <div class="selection-total"><span>Total mensal</span><strong id="selected-plan-value">—</strong></div>
+        <button id="confirm-plan" class="primary-button" type="button">Confirmar plano e gerar cotação →</button>
+      </div>
+    </section>
+
+    <section id="proposal-section" class="content-card proposal-card" hidden>
+      <div class="proposal-success">✓</div>
+      <span class="step-tag">ETAPA 3</span>
+      <h2 id="proposal-title"></h2>
+      <p id="proposal-description"></p>
+      <div id="quote-details" class="quote-details"></div>
+      <div id="quote-optionals" class="quote-optionals"></div>
+      <div class="proposal-actions">
+        <button id="pdf-download" class="secondary-button" type="button">⬇ Baixar PDF da cotação</button>
+        <div id="accept-box" class="accept-box"><span>O cliente aceita a proposta?</span><button id="accept-yes" class="yes-button">Sim</button><button id="accept-no" class="no-button">Não</button></div>
+      </div>
+      <div id="decision-result"></div>
+      <button id="new-quote" class="new-quote">+ Fazer nova cotação</button>
+    </section>
+  </main>
+
+
+  <div id="inspection-modal" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="inspection-modal-title">
+    <div class="inspection-modal">
+      <button id="inspection-close" class="modal-close" type="button" aria-label="Fechar">×</button>
+
+      <section id="inspection-guidelines" class="inspection-guidelines">
+        <span class="step-tag">VISTORIA DIGITAL</span>
+        <h2 id="inspection-modal-title">Antes de começar, siga estas diretrizes</h2>
+        <p>As imagens serão anexadas ao PDF e armazenadas na pasta do cliente no Google Drive.</p>
+        <div class="guideline-grid">
+          <article><b>☀️ Boa iluminação</b><span>Fotografe em local claro, sem sombras fortes ou reflexos.</span></article>
+          <article><b>🚘 Veículo completo</b><span>Não corte partes do veículo e mantenha a placa visível quando solicitado.</span></article>
+          <article><b>🔎 Foto nítida</b><span>Limpe a lente, confira o foco e não use filtros ou capturas de tela.</span></article>
+          <article><b>📱 Uma foto por etapa</b><span>Siga a sequência exibida e refaça qualquer imagem que estiver ilegível.</span></article>
+        </div>
+        <div class="modal-actions">
+          <button id="inspection-start" class="primary-button" type="button">Vamos começar →</button>
+        </div>
+      </section>
+
+      <section id="inspection-capture" class="inspection-capture" hidden>
+        <div class="capture-progress"><span id="capture-step">Foto 1 de 8</span><div><i id="capture-progress-bar"></i></div></div>
+        <span class="step-tag">FOTO OBRIGATÓRIA</span>
+        <h2 id="capture-title">Frente do veículo</h2>
+        <p id="capture-instruction"></p>
+
+        <div id="capture-preview" class="capture-preview">
+          <div class="camera-placeholder"><span>📷</span><p>A câmera será aberta para registrar esta foto.</p></div>
+        </div>
+
+        <input id="camera-input" class="camera-input" type="file" accept="image/jpeg,image/png,image/*" capture="environment">
+        <div class="capture-actions">
+          <button id="capture-back" class="copy-button" type="button">← Voltar</button>
+          <button id="capture-photo" class="secondary-button" type="button">Abrir câmera</button>
+          <button id="capture-next" class="primary-button" type="button" disabled>Próxima foto →</button>
+        </div>
+        <div id="capture-error" class="error-box" hidden></div>
+      </section>
+
+      <section id="inspection-review" class="inspection-review" hidden>
+        <span class="step-tag">REVISÃO FINAL</span>
+        <h2>Confira as fotos antes de enviar</h2>
+        <p>Depois do envio, a pasta do cliente será criada no Drive e o PDF profissional será atualizado com o relatório fotográfico.</p>
+        <div id="inspection-review-grid" class="inspection-review-grid"></div>
+        <div class="modal-actions review-actions">
+          <button id="review-back" class="copy-button" type="button">← Revisar novamente</button>
+          <button id="inspection-upload" class="primary-button" type="button">Enviar fotos e concluir vistoria</button>
+        </div>
+        <div id="upload-status" class="upload-status" hidden></div>
+      </section>
+    </div>
+  </div>
+
+  <footer><img src="./favicon-nh.png" alt="NH"><span>Novo Horizonte Proteção Veicular • Sistema interno de cotações</span></footer>
+  <script src="./app.js?v=20260803-3" defer></script>
+</body>
+</html>

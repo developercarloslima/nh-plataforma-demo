@@ -1,0 +1,6 @@
+.env
+backups/*.sql.gz
+.DS_Store
+.idea/
+.vscode/
+target/

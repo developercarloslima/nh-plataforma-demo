@@ -1,0 +1,58 @@
+spring:
+  application:
+    name: nh-cotacao-api
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/nh_cotacao}
+    username: ${DATABASE_USERNAME:nh}
+    password: ${DATABASE_PASSWORD:nh123}
+  servlet:
+    multipart:
+      max-file-size: 120MB
+      max-request-size: 400MB
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: false
+        default_batch_fetch_size: 50
+        jdbc:
+          time_zone: America/Maceio
+  flyway:
+    enabled: true
+    validate-on-migrate: true
+
+server:
+  port: ${PORT:8080}
+  forward-headers-strategy: framework
+  compression:
+    enabled: true
+    mime-types: application/json,application/pdf,text/html,text/css,application/javascript
+  error:
+    include-message: never
+    include-stacktrace: never
+
+app:
+  public-api-url: ${PUBLIC_API_URL:http://localhost:8080}
+  public-web-url: ${PUBLIC_WEB_URL:http://localhost:3000}
+  team-whatsapp-number: ${TEAM_WHATSAPP_NUMBER:}
+  auth:
+    token-secret: ${AUTH_TOKEN_SECRET:troque-esta-chave-local-com-pelo-menos-32-caracteres}
+    token-hours: ${AUTH_TOKEN_HOURS:12}
+    consultant-username: ${CONSULTANT_USERNAME:consultor}
+    consultant-password: ${CONSULTANT_PASSWORD:nh2027}
+    admin-username: ${ADMIN_USERNAME:admin@nh.local}
+    admin-password: ${ADMIN_PASSWORD:altere-agora}
+  allowed-origins: ${ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000}
+  google-drive:
+    enabled: ${GOOGLE_DRIVE_ENABLED:false}
+    credentials-base64: ${GOOGLE_DRIVE_CREDENTIALS_BASE64:}
+    credentials-json: ${GOOGLE_DRIVE_CREDENTIALS_JSON:}
+    credentials-path: ${GOOGLE_APPLICATION_CREDENTIALS:}
+    oauth-client-id: ${GOOGLE_DRIVE_OAUTH_CLIENT_ID:}
+    oauth-client-secret: ${GOOGLE_DRIVE_OAUTH_CLIENT_SECRET:}
+    oauth-refresh-token: ${GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN:}
+    root-folder-id: ${GOOGLE_DRIVE_ROOT_FOLDER_ID:}
+    public-links: ${GOOGLE_DRIVE_PUBLIC_LINKS:false}
+    team-emails: ${GOOGLE_DRIVE_TEAM_EMAILS:}
