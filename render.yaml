@@ -1,0 +1,114 @@
+databases:
+  - name: nh-plataforma-db-demo
+    plan: free
+    region: virginia
+    databaseName: nh_plataforma
+    user: nh_plataforma
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: nh-plataforma-api-demo
+    runtime: docker
+    plan: free
+    region: virginia
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: DATABASE_HOST
+        fromDatabase:
+          name: nh-plataforma-db-demo
+          property: host
+      - key: DATABASE_PORT
+        fromDatabase:
+          name: nh-plataforma-db-demo
+          property: port
+      - key: DATABASE_NAME
+        fromDatabase:
+          name: nh-plataforma-db-demo
+          property: database
+      - key: DATABASE_USERNAME
+        fromDatabase:
+          name: nh-plataforma-db-demo
+          property: user
+      - key: DATABASE_PASSWORD
+        fromDatabase:
+          name: nh-plataforma-db-demo
+          property: password
+      - key: PUBLIC_WEB_URL
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: AUTH_TOKEN_SECRET
+        generateValue: true
+      - key: AUTH_TOKEN_HOURS
+        value: "12"
+      - key: CONSULTANT_USERNAME
+        sync: false
+      - key: CONSULTANT_PASSWORD
+        sync: false
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: TEAM_WHATSAPP_NUMBER
+        sync: false
+      - key: TEAM_EMAIL
+        sync: false
+      - key: GOOGLE_DRIVE_ENABLED
+        value: "false"
+      - key: GOOGLE_DRIVE_ROOT_FOLDER_ID
+        sync: false
+      - key: GOOGLE_DRIVE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_DRIVE_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN
+        sync: false
+      - key: GOOGLE_DRIVE_CREDENTIALS_BASE64
+        sync: false
+      - key: GOOGLE_DRIVE_PUBLIC_LINKS
+        value: "false"
+      - key: GOOGLE_DRIVE_TEAM_EMAILS
+        sync: false
+
+  - type: web
+    name: nh-hinova-api-demo
+    runtime: docker
+    plan: free
+    region: virginia
+    rootDir: hinova-api
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: HINOVA_API_BASE_URL
+        value: https://api.hinova.com.br/api/sga/v2
+      - key: HINOVA_API_TOKEN
+        sync: false
+      - key: HINOVA_API_USER
+        sync: false
+      - key: HINOVA_API_PASSWORD
+        sync: false
+      - key: HINOVA_API_USER_TOKEN
+        sync: false
+      - key: HINOVA_ASSOCIADO_CPF_PATH
+        sync: false
+      - key: HINOVA_ASSOCIADO_DEFAULT_PASSWORD
+        sync: false
+      - key: BOLETO_MAX_DAYS_AFTER_DUE
+        value: "6"
+      - key: BOLETO_SEARCH_DAYS_PAST
+        value: "180"
+      - key: BOLETO_SEARCH_DAYS_FUTURE
+        value: "420"
+      - key: BOLETO_SEARCH_CHUNK_DAYS
+        value: "180"
+      - key: HINOVA_DEBUG_RESPONSE
+        value: "false"

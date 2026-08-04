@@ -1,7 +1,7 @@
 const TOKEN_KEY='nhPortalToken',ROLE_KEY='nhPortalRole',CONSULTANT_KEY='nhSelectedConsultant';
 const $=id=>document.getElementById(id);let consultants=[];
 function token(){return localStorage.getItem(TOKEN_KEY)}
-async function api(path,options={}){const h=new Headers(options.headers||{});if(token())h.set('Authorization',`Bearer ${token()}`);const r=await fetch(path,{...options,headers:h});if(!r.ok){const b=await r.json().catch(()=>null);if(r.status===401)logout();throw new Error(b?.message||'Não foi possível concluir a solicitação.')}return r.status===204?null:r.json()}
+async function api(path,options={}){const h=new Headers(options.headers||{});if(token())h.set('Authorization',`Bearer ${token()}`);const r=await fetch(window.NH_API?.backend(path)||path,{...options,headers:h});if(!r.ok){const b=await r.json().catch(()=>null);if(r.status===401)logout();throw new Error(b?.message||'Não foi possível concluir a solicitação.')}return r.status===204?null:r.json()}
 function message(text,type='error'){const el=$('portal-message');el.className=`message ${type}`;el.textContent=text}
 function clearMessage(){const el=$('portal-message');el.className='';el.textContent=''}
 function logout(){localStorage.removeItem(TOKEN_KEY);localStorage.removeItem(ROLE_KEY);localStorage.removeItem(CONSULTANT_KEY);location.reload()}

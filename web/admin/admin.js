@@ -62,7 +62,7 @@ function showAdmin() {
 async function api(path, options = {}) {
   const headers = new Headers(options.headers || {});
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  const response = await fetch(path, { ...options, headers });
+  const response = await fetch(window.NH_API?.backend(path) || path, { ...options, headers });
   if (response.status === 401 || response.status === 403) {
     showLogin('Sua sessão administrativa expirou. Entre novamente.');
     throw new Error('Sessão administrativa inválida.');
@@ -618,7 +618,7 @@ $('admin-login-form').addEventListener('submit', async event => {
   box.className = '';
   box.textContent = '';
   try {
-    const response = await fetch('/api/auth/login', {
+    const response = await fetch(window.NH_API?.backend('/api/auth/login') || '/api/auth/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: $('admin-username').value.trim(), password: $('admin-password').value })
     });

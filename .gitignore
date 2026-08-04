@@ -4,3 +4,6 @@ backups/*.sql.gz
 .idea/
 .vscode/
 target/
+web/dist/
+web/.vercel/
+web/node_modules/

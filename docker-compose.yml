@@ -1,4 +1,4 @@
-name: nh-plataforma-demo
+name: nh-plataforma-local
 services:
   database:
     image: postgres:16-alpine
@@ -67,6 +67,7 @@ services:
     environment:
       SGA_URL: ${SGA_URL:-https://sga.hinova.com.br/sga/sgav4_novohorizonte/v5/login.php}
       TEAM_WHATSAPP_NUMBER: ${TEAM_WHATSAPP_NUMBER:-}
+      BACKEND_API_URL: ${BACKEND_API_URL:-}
     depends_on:
       - backend
       - hinova-api

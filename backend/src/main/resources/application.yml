@@ -34,7 +34,7 @@ server:
     include-stacktrace: never
 
 app:
-  public-api-url: ${PUBLIC_API_URL:http://localhost:8080}
+  public-api-url: ${PUBLIC_API_URL:${RENDER_EXTERNAL_URL:http://localhost:8080}}
   public-web-url: ${PUBLIC_WEB_URL:http://localhost:3000}
   team-whatsapp-number: ${TEAM_WHATSAPP_NUMBER:}
   team-email: ${TEAM_EMAIL:}

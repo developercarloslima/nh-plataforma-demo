@@ -437,7 +437,7 @@ function createBoletoItem(boleto, index) {
   if (boleto.pdf && boleto.disponivel !== false) {
     const openLink = document.createElement('a');
     openLink.className = 'primary-button';
-    openLink.href = boleto.pdf;
+    openLink.href = `/api/baixar-boleto?url=${encodeURIComponent(boleto.pdf)}`;
     openLink.target = '_blank';
     openLink.rel = 'noopener';
     openLink.textContent = 'Baixar boleto';

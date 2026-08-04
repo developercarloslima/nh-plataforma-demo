@@ -52,7 +52,7 @@ async function load() {
   }
 
   try {
-    const response = await fetch(`/api/public/inspections/${encodeURIComponent(token)}`);
+    const response = await fetch(window.NH_API?.backend(`/api/public/inspections/${encodeURIComponent(token)}`) || `/api/public/inspections/${encodeURIComponent(token)}`);
     const body = await response.json().catch(() => null);
 
     if (!response.ok) {
@@ -464,7 +464,7 @@ $('upload-form').addEventListener('submit', async (event) => {
 
     form.append('video', videoFile);
 
-    const response = await fetch(`/api/public/inspections/${encodeURIComponent(token)}/upload`, {
+    const response = await fetch(window.NH_API?.backend(`/api/public/inspections/${encodeURIComponent(token)}/upload`) || `/api/public/inspections/${encodeURIComponent(token)}/upload`, {
       method: 'POST',
       body: form
     });

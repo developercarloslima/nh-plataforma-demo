@@ -22,7 +22,7 @@ const state = {
 const $ = (id) => document.getElementById(id);
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
-function apiPath(path) { return path; }
+function apiPath(path) { return window.NH_API?.backend(path) || path; }
 function quoteApiPath(suffix = '') {
   return `${isSelfService ? '/api/public/quotes' : '/api/quotes'}${suffix}`;
 }
