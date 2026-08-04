@@ -181,11 +181,15 @@ if (cotacaoPlate) {
 if (cotacaoForm && cotacaoFormMessage) {
   cotacaoForm.addEventListener('submit', (event) => {
     event.preventDefault();
-    sendStaticForm(
-      cotacaoForm,
-      cotacaoFormMessage,
-      'Cotação enviada com sucesso! Nossa equipe entrará em contato em breve.'
-    );
+    const data = new FormData(cotacaoForm);
+    const params = new URLSearchParams({
+      origem: 'site',
+      nome: String(data.get('Nome') || '').trim(),
+      whatsapp: String(data.get('Telefone') || '').replace(/\D/g, ''),
+      placa: String(data.get('Placa') || '').trim().toUpperCase()
+    });
+    setFormMessage(cotacaoFormMessage, 'Abrindo sua cotação...', 'loading');
+    window.location.href = `/cota/?${params.toString()}`;
   });
 }
 

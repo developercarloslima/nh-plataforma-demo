@@ -33,12 +33,16 @@ public class InspectionRequest {
     @Column(nullable = false, length = 10)
     private String plate;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "consultant_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "consultant_id")
     private Consultant consultant;
 
     @Column(name = "consultant_name", nullable = false, length = 140)
     private String consultantName;
+
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "quotation_id")
+    private Quotation quotation;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
@@ -52,6 +56,12 @@ public class InspectionRequest {
 
     @Column(name = "completed_at")
     private OffsetDateTime completedAt;
+
+    @Column(name = "admin_note", length = 1200)
+    private String adminNote;
+
+    @Column(name = "reviewed_at")
+    private OffsetDateTime reviewedAt;
 
     @Column(name = "drive_folder_id", length = 160)
     private String driveFolderId;
@@ -80,6 +90,51 @@ public class InspectionRequest {
             String plate,
             Consultant consultant
     ) {
+        if (consultant == null) throw new IllegalArgumentException("Informe o consultor responsável.");
+        return createBase(
+                publicToken,
+                type,
+                associateName,
+                cpf,
+                whatsapp,
+                plate,
+                consultant,
+                consultant.getName(),
+                null
+        );
+    }
+
+    public static InspectionRequest createForSelfServiceQuote(String publicToken, Quotation quotation) {
+        if (quotation == null || quotation.getOrigin() != QuoteOrigin.SELF_SERVICE) {
+            throw new IllegalArgumentException("A vistoria automática exige uma cotação feita pelo cliente.");
+        }
+        if (quotation.getCustomerCpf() == null || quotation.getCustomerCpf().isBlank()) {
+            throw new IllegalArgumentException("A cotação não possui CPF para gerar o link da vistoria.");
+        }
+        return createBase(
+                publicToken,
+                InspectionRequestType.NEW_INSPECTION,
+                quotation.getCustomerName(),
+                quotation.getCustomerCpf(),
+                quotation.getWhatsapp(),
+                quotation.getPlate(),
+                null,
+                Quotation.SELF_SERVICE_CONSULTANT_NAME,
+                quotation
+        );
+    }
+
+    private static InspectionRequest createBase(
+            String publicToken,
+            InspectionRequestType type,
+            String associateName,
+            String cpf,
+            String whatsapp,
+            String plate,
+            Consultant consultant,
+            String consultantName,
+            Quotation quotation
+    ) {
         InspectionRequest request = new InspectionRequest();
         request.id = UUID.randomUUID();
         request.publicToken = publicToken;
@@ -89,7 +144,8 @@ public class InspectionRequest {
         request.whatsapp = whatsapp == null ? null : whatsapp.replaceAll("\\D", "");
         request.plate = plate.replaceAll("[^A-Za-z0-9]", "").toUpperCase(Locale.ROOT);
         request.consultant = consultant;
-        request.consultantName = consultant.getName();
+        request.consultantName = consultantName;
+        request.quotation = quotation;
         request.status = InspectionRequestStatus.CREATED;
         request.createdAt = OffsetDateTime.now();
         request.expiresAt = request.createdAt.plusDays(7);
@@ -97,7 +153,8 @@ public class InspectionRequest {
     }
 
     public boolean isExpired() {
-        return status == InspectionRequestStatus.CREATED && OffsetDateTime.now().isAfter(expiresAt);
+        return (status == InspectionRequestStatus.CREATED || status == InspectionRequestStatus.UNDER_REVIEW)
+                && OffsetDateTime.now().isAfter(expiresAt);
     }
 
     public void registerFolder(String id, String url) {
@@ -114,6 +171,28 @@ public class InspectionRequest {
         this.completedAt = OffsetDateTime.now();
     }
 
+    public void adminReview(InspectionRequestStatus newStatus, String note) {
+        if (newStatus == null) throw new IllegalArgumentException("Informe o novo status do Retrato NH.");
+        this.status = newStatus;
+        this.adminNote = cleanNote(note);
+        this.reviewedAt = OffsetDateTime.now();
+        if (newStatus == InspectionRequestStatus.COMPLETED
+                || newStatus == InspectionRequestStatus.APPROVED
+                || newStatus == InspectionRequestStatus.REJECTED
+                || newStatus == InspectionRequestStatus.CANCELLED) {
+            if (this.completedAt == null && newStatus != InspectionRequestStatus.CANCELLED) {
+                this.completedAt = this.reviewedAt;
+            }
+        }
+    }
+
+    private String cleanNote(String note) {
+        if (note == null || note.isBlank()) return null;
+        String clean = note.trim();
+        if (clean.length() > 1200) throw new IllegalArgumentException("A observação deve possuir no máximo 1.200 caracteres.");
+        return clean;
+    }
+
     public UUID getId() { return id; }
     public String getPublicToken() { return publicToken; }
     public InspectionRequestType getRequestType() { return requestType; }
@@ -123,10 +202,13 @@ public class InspectionRequest {
     public String getPlate() { return plate; }
     public Consultant getConsultant() { return consultant; }
     public String getConsultantName() { return consultantName; }
+    public Quotation getQuotation() { return quotation; }
     public InspectionRequestStatus getStatus() { return status; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getExpiresAt() { return expiresAt; }
     public OffsetDateTime getCompletedAt() { return completedAt; }
+    public String getAdminNote() { return adminNote; }
+    public OffsetDateTime getReviewedAt() { return reviewedAt; }
     public String getDriveFolderId() { return driveFolderId; }
     public String getDriveFolderUrl() { return driveFolderUrl; }
     public String getReportFileId() { return reportFileId; }

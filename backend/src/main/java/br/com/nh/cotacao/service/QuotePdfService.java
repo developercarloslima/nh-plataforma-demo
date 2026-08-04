@@ -2,7 +2,6 @@ package br.com.nh.cotacao.service;
 
 import br.com.nh.cotacao.entity.CoverageStatus;
 import br.com.nh.cotacao.entity.InspectionPhoto;
-import br.com.nh.cotacao.entity.Plan;
 import br.com.nh.cotacao.entity.Quotation;
 import br.com.nh.cotacao.entity.QuotationOptionalCoverage;
 import com.lowagie.text.*;
@@ -62,7 +61,6 @@ public class QuotePdfService {
             }
         }
 
-        Plan plan = quoteService.findSelectedPlan(quotation);
         try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             Document document = new Document(PageSize.A4, 36, 36, 42, 48);
             PdfWriter writer = PdfWriter.getInstance(document, output);
@@ -75,7 +73,7 @@ public class QuotePdfService {
             addHeader(document, quotation);
             addCustomerAndVehicle(document, quotation);
             addPlan(document, quotation);
-            addCoverages(document, plan, quotation);
+            addCoverages(document, quotation);
             addFormalConditions(document, quotation);
             addInspectionPhotos(document, quotation);
 
@@ -234,7 +232,7 @@ public class QuotePdfService {
         document.add(values);
     }
 
-    private void addCoverages(Document document, Plan plan, Quotation quotation) throws DocumentException {
+    private void addCoverages(Document document, Quotation quotation) throws DocumentException {
         document.add(sectionTitle("COBERTURAS E BENEFÍCIOS"));
         PdfPTable table = new PdfPTable(new float[]{1.35f, 2.65f, 3.0f});
         table.setWidthPercentage(100);
@@ -251,20 +249,20 @@ public class QuotePdfService {
                 ));
 
         int visibleIndex = 0;
-        for (var item : plan.getCoverages()) {
-            boolean included = item.getStatus() == CoverageStatus.INCLUDED;
-            QuotationOptionalCoverage selectedOptional = selectedByCode.get(item.getCoverage().getCode());
-            if (!included && selectedOptional == null) {
-                continue;
-            }
+        for (var item : quotation.getCoverageSnapshots()) {
+            boolean included = item.getCoverageStatus() == CoverageStatus.INCLUDED;
+            QuotationOptionalCoverage selectedOptional = selectedByCode.get(item.getCoverageCode());
+            if (!included && selectedOptional == null) continue;
 
             Color rowColor = visibleIndex++ % 2 == 0 ? Color.WHITE : new Color(250, 251, 254);
             PdfPCell statusCell = statusCell(included ? "INCLUÍDO" : "CONTRATADO");
             statusCell.setBackgroundColor(included ? GREEN_LIGHT : YELLOW_LIGHT);
             table.addCell(statusCell);
-            table.addCell(bodyCell(item.getCoverage().getName(), rowColor));
+            table.addCell(bodyCell(item.getCoverageName(), rowColor));
 
-            String detail = item.getDetail() == null || item.getDetail().isBlank() ? "Conforme regulamento vigente" : item.getDetail();
+            String detail = item.getDetail() == null || item.getDetail().isBlank()
+                    ? "Conforme regulamento vigente"
+                    : item.getDetail();
             table.addCell(bodyCell(detail, rowColor));
         }
         document.add(table);
@@ -468,14 +466,17 @@ public class QuotePdfService {
     }
 
     private String statusLabel(Quotation quotation) {
-        if (quotation.getStatus() == br.com.nh.cotacao.entity.QuoteStatus.CREATED
+        if ((quotation.getStatus() == br.com.nh.cotacao.entity.QuoteStatus.CREATED
+                || quotation.getStatus() == br.com.nh.cotacao.entity.QuoteStatus.UNDER_REVIEW)
                 && java.time.OffsetDateTime.now().isAfter(quotation.getValidUntil())) {
             return "EXPIRADA";
         }
         return switch (quotation.getStatus()) {
             case CREATED -> "AGUARDANDO ACEITE";
+            case UNDER_REVIEW -> "EM ANÁLISE";
             case ACCEPTED -> quotation.getInspectionCompletedAt() == null ? "PROPOSTA ACEITA" : "VISTORIA CONCLUÍDA";
             case DECLINED -> "PROPOSTA NÃO ACEITA";
+            case CANCELLED -> "CANCELADA";
         };
     }
 

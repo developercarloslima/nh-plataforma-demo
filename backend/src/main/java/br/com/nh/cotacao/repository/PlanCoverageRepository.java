@@ -19,4 +19,8 @@ public interface PlanCoverageRepository extends JpaRepository<PlanCoverage, Long
     List<PlanCoverage> findAllForAdmin();
 
     boolean existsByPlan_IdAndCoverage_Id(Long planId, Long coverageId);
+    long countByCoverage_Id(Long coverageId);
+
+    @EntityGraph(attributePaths = {"coverage"})
+    List<PlanCoverage> findByPlan_Id(Long planId);
 }

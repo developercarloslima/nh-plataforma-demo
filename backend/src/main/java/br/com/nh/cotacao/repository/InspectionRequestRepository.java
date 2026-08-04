@@ -11,9 +11,19 @@ import java.util.UUID;
 public interface InspectionRequestRepository extends JpaRepository<InspectionRequest, UUID> {
     long countByConsultantId(UUID consultantId);
 
-    @EntityGraph(attributePaths = {"assets", "consultant"})
+    @EntityGraph(attributePaths = {"assets", "consultant", "quotation"})
     Optional<InspectionRequest> findByPublicToken(String publicToken);
 
-    @EntityGraph(attributePaths = {"assets", "consultant"})
+    @EntityGraph(attributePaths = {"assets", "consultant", "quotation"})
+    Optional<InspectionRequest> findByQuotation_Id(UUID quotationId);
+
+    @EntityGraph(attributePaths = {"assets", "consultant", "quotation"})
     List<InspectionRequest> findTop300ByOrderByCreatedAtDesc();
+
+    @EntityGraph(attributePaths = {"assets", "consultant", "quotation"})
+    List<InspectionRequest> findAllByOrderByCreatedAtDesc();
+
+    @Override
+    @EntityGraph(attributePaths = {"assets", "consultant", "quotation"})
+    Optional<InspectionRequest> findById(UUID id);
 }

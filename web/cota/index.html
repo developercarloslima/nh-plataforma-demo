@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#080f63">
   
   <link rel="icon" href="./favicon-nh.png">
-  <link rel="stylesheet" href="./styles.css?v=20260803-3">
+  <link rel="stylesheet" href="./styles.css?v=20260804-self-service">
   <title>NH Cotação Digital</title>
 </head>
 <body>
@@ -18,15 +18,15 @@
       <img src="./favicon-nh.png" alt="Novo Horizonte">
       <div><strong>Novo Horizonte</strong><span>Cotação Digital</span></div>
     </div>
-    <div class="secure-pill">🔒 Ambiente do consultor</div><a class="secure-pill" href="/colaborador/">← Voltar ao painel</a>
+    <div id="environment-pill" class="secure-pill">🔒 Ambiente do consultor</div><a id="back-link" class="secure-pill" href="/colaborador/">← Voltar ao painel</a>
   </header>
 
   <main>
     <section class="hero">
       <div class="hero-copy">
         <span class="eyebrow">PROTEÇÃO VEICULAR</span>
-        <h1>Cotação rápida, clara e pronta para fechar.</h1>
-        <p>Informe os dados do veículo, compare os planos lado a lado e gere a proposta em PDF.</p>
+        <h1 id="hero-title">Cotação rápida, clara e pronta para fechar.</h1>
+        <p id="hero-description">Informe os dados do veículo, compare os planos lado a lado e gere a proposta em PDF.</p>
         <div class="hero-steps">
           <span><b>1</b> Dados</span><span><b>2</b> Plano</span><span><b>3</b> Proposta</span><span><b>4</b> Vistoria</span>
         </div>
@@ -41,9 +41,10 @@
       </div>
 
       <form id="quote-form" class="form-grid">
-        <label>Consultor responsável *<input id="consultantName" required readonly></label>
+        <label id="consultant-field">Consultor responsável *<input id="consultantName" required readonly></label>
         <label>Nome do cliente *<input id="customerName" required placeholder="Nome completo"></label>
-        <label>WhatsApp do cliente<input id="whatsapp" placeholder="(82) 99999-9999"></label>
+        <label id="customer-cpf-field" hidden>CPF *<input id="customerCpf" inputmode="numeric" maxlength="14" placeholder="000.000.000-00"></label>
+        <label>WhatsApp do cliente <span id="whatsapp-required"></span><input id="whatsapp" placeholder="(82) 99999-9999"></label>
         <label>Placa *<input id="plate" required maxlength="10" placeholder="ABC1D23"></label>
         <label class="span-2">Modelo do veículo *<input id="model" required placeholder="Ex.: Hyundai HB20 Comfort"></label>
         <label>Ano de fabricação *<input id="manufactureYear" required type="number" min="1950"></label>
@@ -119,6 +120,7 @@
       <div id="quote-optionals" class="quote-optionals"></div>
       <div class="proposal-actions">
         <button id="pdf-download" class="secondary-button" type="button">⬇ Baixar PDF da cotação</button>
+        <button id="share-client-pdf" class="whatsapp-button" type="button">Enviar PDF ao WhatsApp do cliente</button>
         <div id="accept-box" class="accept-box"><span>O cliente aceita a proposta?</span><button id="accept-yes" class="yes-button">Sim</button><button id="accept-no" class="no-button">Não</button></div>
       </div>
       <div id="decision-result"></div>
@@ -179,7 +181,7 @@
     </div>
   </div>
 
-  <footer><img src="./favicon-nh.png" alt="NH"><span>Novo Horizonte Proteção Veicular • Sistema interno de cotações</span></footer>
-  <script src="./app.js?v=20260803-3" defer></script>
+  <footer><img src="./favicon-nh.png" alt="NH"><span id="footer-label">Novo Horizonte Proteção Veicular • Sistema interno de cotações</span></footer>
+  <script src="./app.js?v=20260804-self-service" defer></script>
 </body>
 </html>

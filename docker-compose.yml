@@ -1,4 +1,4 @@
-name: nh-plataforma-local
+name: nh-plataforma-demo
 services:
   database:
     image: postgres:16-alpine
@@ -24,6 +24,7 @@ services:
       PUBLIC_WEB_URL: http://localhost:3000
       ALLOWED_ORIGINS: http://localhost:3000
       TEAM_WHATSAPP_NUMBER: ${TEAM_WHATSAPP_NUMBER:-}
+      TEAM_EMAIL: ${TEAM_EMAIL:-}
 
       AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:-chave-local-de-desenvolvimento-com-mais-de-32-caracteres}
       AUTH_TOKEN_HOURS: ${AUTH_TOKEN_HOURS:-12}

@@ -7,17 +7,24 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
 @Entity
 @Table(name = "quotations")
 public class Quotation {
+    public static final String SELF_SERVICE_CONSULTANT_NAME = "Autoatendimento do cliente";
+
     @Id
     private UUID id;
 
     @Column(name = "quote_number", nullable = false, unique = true, length = 30)
     private String quoteNumber;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    private QuoteOrigin origin;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "consultant_id")
@@ -28,6 +35,9 @@ public class Quotation {
 
     @Column(name = "customer_name", nullable = false, length = 120)
     private String customerName;
+
+    @Column(name = "customer_cpf", length = 11)
+    private String customerCpf;
 
     @Column(length = 30)
     private String whatsapp;
@@ -79,6 +89,10 @@ public class Quotation {
     @OrderBy("id ASC")
     private List<QuotationOptionalCoverage> selectedOptionals = new ArrayList<>();
 
+    @OneToMany(mappedBy = "quotation", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("sortOrder ASC, id ASC")
+    private Set<QuotationCoverageSnapshot> coverageSnapshots = new LinkedHashSet<>();
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private QuoteStatus status;
@@ -91,6 +105,12 @@ public class Quotation {
 
     @Column(name = "decided_at")
     private OffsetDateTime decidedAt;
+
+    @Column(name = "admin_note", length = 1200)
+    private String adminNote;
+
+    @Column(name = "reviewed_at")
+    private OffsetDateTime reviewedAt;
 
     @Column(name = "drive_folder_id", length = 160)
     private String driveFolderId;
@@ -114,7 +134,7 @@ public class Quotation {
     protected Quotation() {
     }
 
-    public static Quotation create(
+    public static Quotation createForConsultant(
             String quoteNumber,
             Consultant consultant,
             String customerName,
@@ -133,15 +153,107 @@ public class Quotation {
             BigDecimal oneTimeFee,
             String mandatoryFeeDescription
     ) {
+        if (consultant == null) throw new IllegalArgumentException("Informe o consultor responsável.");
+        return createBase(
+                quoteNumber,
+                QuoteOrigin.CONSULTANT,
+                consultant,
+                consultant.getName(),
+                customerName,
+                null,
+                whatsapp,
+                plate,
+                model,
+                manufactureYear,
+                zeroKm,
+                fipeValue,
+                categoryCode,
+                region,
+                selectedPlanCode,
+                selectedPlanName,
+                baseMonthlyValue,
+                mandatoryMonthlyFee,
+                oneTimeFee,
+                mandatoryFeeDescription
+        );
+    }
+
+    public static Quotation createSelfService(
+            String quoteNumber,
+            String customerName,
+            String customerCpf,
+            String whatsapp,
+            String plate,
+            String model,
+            Integer manufactureYear,
+            boolean zeroKm,
+            BigDecimal fipeValue,
+            String categoryCode,
+            Region region,
+            String selectedPlanCode,
+            String selectedPlanName,
+            BigDecimal baseMonthlyValue,
+            BigDecimal mandatoryMonthlyFee,
+            BigDecimal oneTimeFee,
+            String mandatoryFeeDescription
+    ) {
+        return createBase(
+                quoteNumber,
+                QuoteOrigin.SELF_SERVICE,
+                null,
+                SELF_SERVICE_CONSULTANT_NAME,
+                customerName,
+                customerCpf,
+                whatsapp,
+                plate,
+                model,
+                manufactureYear,
+                zeroKm,
+                fipeValue,
+                categoryCode,
+                region,
+                selectedPlanCode,
+                selectedPlanName,
+                baseMonthlyValue,
+                mandatoryMonthlyFee,
+                oneTimeFee,
+                mandatoryFeeDescription
+        );
+    }
+
+    private static Quotation createBase(
+            String quoteNumber,
+            QuoteOrigin origin,
+            Consultant consultant,
+            String consultantName,
+            String customerName,
+            String customerCpf,
+            String whatsapp,
+            String plate,
+            String model,
+            Integer manufactureYear,
+            boolean zeroKm,
+            BigDecimal fipeValue,
+            String categoryCode,
+            Region region,
+            String selectedPlanCode,
+            String selectedPlanName,
+            BigDecimal baseMonthlyValue,
+            BigDecimal mandatoryMonthlyFee,
+            BigDecimal oneTimeFee,
+            String mandatoryFeeDescription
+    ) {
         Quotation q = new Quotation();
         q.id = UUID.randomUUID();
         q.quoteNumber = quoteNumber;
+        q.origin = origin;
         q.consultant = consultant;
-        q.consultantName = consultant.getName();
-        q.customerName = customerName;
+        q.consultantName = consultantName;
+        q.customerName = cleanName(customerName);
+        q.customerCpf = customerCpf == null ? null : customerCpf.replaceAll("\\D", "");
         q.whatsapp = whatsapp;
-        q.plate = plate.toUpperCase();
-        q.model = model;
+        q.plate = plate.replaceAll("[^A-Za-z0-9]", "").toUpperCase(Locale.ROOT);
+        q.model = model.trim();
         q.manufactureYear = manufactureYear;
         q.zeroKm = zeroKm;
         q.fipeValue = fipeValue;
@@ -158,6 +270,26 @@ public class Quotation {
         q.createdAt = OffsetDateTime.now();
         q.validUntil = q.createdAt.plusDays(5);
         return q;
+    }
+
+    private static String cleanName(String value) {
+        return value.trim().replaceAll("\\s+", " ");
+    }
+
+    public void addCoverageSnapshot(
+            String coverageCode,
+            String coverageName,
+            CoverageStatus coverageStatus,
+            String detail,
+            BigDecimal monthlyPrice,
+            Integer sortOrder
+    ) {
+        boolean duplicate = coverageSnapshots.stream()
+                .anyMatch(item -> item.getCoverageCode().equals(coverageCode));
+        if (duplicate) throw new IllegalArgumentException("A cobertura já foi registrada nesta cotação.");
+        coverageSnapshots.add(QuotationCoverageSnapshot.create(
+                this, coverageCode, coverageName, coverageStatus, detail, monthlyPrice, sortOrder
+        ));
     }
 
     public void addOptional(
@@ -229,11 +361,34 @@ public class Quotation {
         this.decidedAt = OffsetDateTime.now();
     }
 
+    public void adminReview(QuoteStatus newStatus, String note) {
+        if (newStatus == null) {
+            throw new IllegalArgumentException("Informe o novo status da cotação.");
+        }
+        this.status = newStatus;
+        this.adminNote = cleanNote(note);
+        this.reviewedAt = OffsetDateTime.now();
+        if (newStatus == QuoteStatus.ACCEPTED || newStatus == QuoteStatus.DECLINED || newStatus == QuoteStatus.CANCELLED) {
+            this.decidedAt = this.reviewedAt;
+        } else if (newStatus == QuoteStatus.CREATED || newStatus == QuoteStatus.UNDER_REVIEW) {
+            this.decidedAt = null;
+        }
+    }
+
+    private String cleanNote(String note) {
+        if (note == null || note.isBlank()) return null;
+        String clean = note.trim();
+        if (clean.length() > 1200) throw new IllegalArgumentException("A observação deve possuir no máximo 1.200 caracteres.");
+        return clean;
+    }
+
     public UUID getId() { return id; }
     public String getQuoteNumber() { return quoteNumber; }
+    public QuoteOrigin getOrigin() { return origin; }
     public Consultant getConsultant() { return consultant; }
     public String getConsultantName() { return consultantName; }
     public String getCustomerName() { return customerName; }
+    public String getCustomerCpf() { return customerCpf; }
     public String getWhatsapp() { return whatsapp; }
     public String getPlate() { return plate; }
     public String getModel() { return model; }
@@ -250,10 +405,13 @@ public class Quotation {
     public BigDecimal getOneTimeFee() { return oneTimeFee; }
     public String getMandatoryFeeDescription() { return mandatoryFeeDescription; }
     public List<QuotationOptionalCoverage> getSelectedOptionals() { return selectedOptionals; }
+    public Set<QuotationCoverageSnapshot> getCoverageSnapshots() { return coverageSnapshots; }
     public QuoteStatus getStatus() { return status; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getValidUntil() { return validUntil; }
     public OffsetDateTime getDecidedAt() { return decidedAt; }
+    public String getAdminNote() { return adminNote; }
+    public OffsetDateTime getReviewedAt() { return reviewedAt; }
     public String getDriveFolderId() { return driveFolderId; }
     public String getDriveFolderUrl() { return driveFolderUrl; }
     public String getDrivePdfFileId() { return drivePdfFileId; }

@@ -25,22 +25,22 @@ public class RetratoService {
     private final GoogleDriveStorageService driveStorage;
     private final RetratoPdfService pdfService;
     private final String publicWebUrl;
-    private final String teamWhatsappNumber;
+    private final CommunicationSettingsService communicationSettings;
 
     public RetratoService(
             InspectionRequestRepository repository,
             ConsultantService consultantService,
             GoogleDriveStorageService driveStorage,
             RetratoPdfService pdfService,
-            @Value("${app.public-web-url}") String publicWebUrl,
-            @Value("${app.team-whatsapp-number:}") String teamWhatsappNumber
+            CommunicationSettingsService communicationSettings,
+            @Value("${app.public-web-url:http://localhost:3000}") String publicWebUrl
     ) {
         this.repository = repository;
         this.consultantService = consultantService;
         this.driveStorage = driveStorage;
         this.pdfService = pdfService;
         this.publicWebUrl = stripTrailingSlash(publicWebUrl);
-        this.teamWhatsappNumber = teamWhatsappNumber == null ? "" : teamWhatsappNumber.replaceAll("\\D", "");
+        this.communicationSettings = communicationSettings;
     }
 
     @Transactional
@@ -58,6 +58,23 @@ public class RetratoService {
                 consultant
         );
         return toResponse(repository.save(request));
+    }
+
+    @Transactional
+    public InspectionResponse ensureForSelfServiceQuote(Quotation quotation) {
+        if (quotation == null || quotation.getOrigin() != QuoteOrigin.SELF_SERVICE) {
+            throw new IllegalArgumentException("A vistoria automática exige uma cotação feita pelo cliente.");
+        }
+        return repository.findByQuotation_Id(quotation.getId())
+                .map(this::toResponse)
+                .orElseGet(() -> toResponse(repository.save(
+                        InspectionRequest.createForSelfServiceQuote(randomToken(), quotation)
+                )));
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<InspectionResponse> findForQuotation(UUID quotationId) {
+        return repository.findByQuotation_Id(quotationId).map(this::toResponse);
     }
 
     @Transactional(readOnly = true)
@@ -78,8 +95,9 @@ public class RetratoService {
             MultipartFile video
     ) {
         InspectionRequest request = findByToken(token);
-        if (request.getStatus() == InspectionRequestStatus.COMPLETED) {
-            throw new IllegalArgumentException("Esta vistoria já foi concluída.");
+        if (request.getStatus() != InspectionRequestStatus.CREATED
+                && request.getStatus() != InspectionRequestStatus.UNDER_REVIEW) {
+            throw new IllegalArgumentException("Esta solicitação não está disponível para novos envios.");
         }
         if (request.isExpired()) {
             throw new IllegalArgumentException("Este link de vistoria expirou. Solicite um novo link ao consultor.");
@@ -150,13 +168,28 @@ public class RetratoService {
                     + "?text=" + URLEncoder.encode(message, StandardCharsets.UTF_8);
         }
         String teamWhatsappUrl = null;
-        if (!teamWhatsappNumber.isBlank() && request.getDriveFolderUrl() != null) {
-            String teamMessage = "Retrato NH concluído\n\nAssociado: " + request.getAssociateName()
-                    + "\nPlaca: " + request.getPlate()
-                    + "\nConsultor: " + request.getConsultantName()
-                    + "\nTipo: " + (request.getRequestType() == InspectionRequestType.NEW_INSPECTION ? "Nova vistoria" : "Atualização de boleto")
-                    + "\n\nPasta no Drive: " + request.getDriveFolderUrl()
-                    + (request.getReportUrl() == null ? "" : "\nRelatório: " + request.getReportUrl());
+        String teamWhatsappNumber = communicationSettings.teamWhatsapp();
+        if (teamWhatsappNumber != null && !teamWhatsappNumber.isBlank()) {
+            String requestTypeLabel = request.getRequestType() == InspectionRequestType.NEW_INSPECTION
+                    ? "Nova vistoria" : "Atualização de boleto";
+            String teamMessage;
+
+            if (request.getDriveFolderUrl() == null) {
+                teamMessage = "Nova solicitação do Retrato NH\n\nAssociado: " + request.getAssociateName()
+                        + "\nPlaca: " + request.getPlate()
+                        + "\nWhatsApp do associado: " + visiblePhone(request.getWhatsapp())
+                        + "\nConsultor: " + request.getConsultantName()
+                        + "\nTipo: " + requestTypeLabel
+                        + "\n\nLink para o associado: " + publicUrl;
+            } else {
+                teamMessage = "Retrato NH concluído\n\nAssociado: " + request.getAssociateName()
+                        + "\nPlaca: " + request.getPlate()
+                        + "\nConsultor: " + request.getConsultantName()
+                        + "\nTipo: " + requestTypeLabel
+                        + "\n\nPasta no Drive: " + request.getDriveFolderUrl()
+                        + (request.getReportUrl() == null ? "" : "\nRelatório: " + request.getReportUrl());
+            }
+
             teamWhatsappUrl = "https://wa.me/" + teamWhatsappNumber + "?text="
                     + URLEncoder.encode(teamMessage, StandardCharsets.UTF_8);
         }
@@ -167,7 +200,8 @@ public class RetratoService {
                 )).toList();
         return new InspectionResponse(
                 request.getId(), request.getPublicToken(), request.getRequestType(), request.getAssociateName(),
-                maskCpf(request.getCpf()), request.getWhatsapp(), request.getPlate(), request.getConsultant().getId(),
+                maskCpf(request.getCpf()), request.getWhatsapp(), request.getPlate(),
+                request.getConsultant() == null ? null : request.getConsultant().getId(),
                 request.getConsultantName(), request.getStatus(), request.getCreatedAt(), request.getExpiresAt(),
                 request.getCompletedAt(), publicUrl, whatsappUrl, teamWhatsappUrl, request.getDriveFolderUrl(), request.getReportUrl(), assets
         );
@@ -215,6 +249,10 @@ public class RetratoService {
     private String slug(String value) { return value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-").replaceAll("(^-|-$)", ""); }
     private String stripTrailingSlash(String value) { return value == null ? "" : value.replaceAll("/+$", ""); }
     private String maskCpf(String cpf) { return cpf.length() == 11 ? "***." + cpf.substring(3, 6) + "." + cpf.substring(6, 9) + "-**" : "***.***.***-**"; }
+    private String visiblePhone(String value) {
+        if (value == null || value.isBlank()) return "Não informado";
+        return value.replaceAll("\\D", "");
+    }
     private String normalizeBrazilPhone(String value) {
         String digits = value.replaceAll("\\D", "");
         if (digits.startsWith("55") && digits.length() >= 12) return digits.substring(2);

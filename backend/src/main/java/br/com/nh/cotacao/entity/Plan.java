@@ -64,6 +64,27 @@ public class Plan {
     protected Plan() {
     }
 
+
+    public static Plan create(
+            String code,
+            String name,
+            String subtitle,
+            VehicleCategory category,
+            Region region,
+            Integer displayOrder,
+            Boolean active
+    ) {
+        Plan plan = new Plan();
+        plan.code = requireText(code, "Código do plano");
+        plan.name = requireText(name, "Nome do plano");
+        plan.subtitle = cleanOptional(subtitle);
+        plan.category = category;
+        plan.region = region;
+        plan.displayOrder = displayOrder == null ? 100 : Math.max(0, displayOrder);
+        plan.active = active == null || active;
+        return plan;
+    }
+
     public Long getId() { return id; }
     public String getCode() { return code; }
     public String getName() { return name; }
@@ -81,17 +102,32 @@ public class Plan {
     public BigDecimal getTrackerMonthlyFee() { return trackerMonthlyFee; }
     public List<PlanCoverage> getCoverages() { return coverages; }
 
-    public void updateAdmin(String name, String subtitle, Boolean active) {
-        if (name != null) {
-            if (name.isBlank()) throw new IllegalArgumentException("O nome do plano não pode ficar vazio.");
-            this.name = name.trim();
+    public void updateAdmin(
+            String name,
+            String subtitle,
+            VehicleCategory category,
+            Region region,
+            Integer displayOrder,
+            Boolean active
+    ) {
+        if (name != null) this.name = requireText(name, "Nome do plano");
+        if (subtitle != null) this.subtitle = cleanOptional(subtitle);
+        if (category != null) this.category = category;
+        if (region != null) this.region = region;
+        if (displayOrder != null) {
+            if (displayOrder < 0) throw new IllegalArgumentException("A ordem do plano deve ser zero ou maior.");
+            this.displayOrder = displayOrder;
         }
-        if (subtitle != null) {
-            this.subtitle = subtitle.isBlank() ? null : subtitle.trim();
-        }
-        if (active != null) {
-            this.active = active;
-        }
+        if (active != null) this.active = active;
+    }
+
+    private static String requireText(String value, String field) {
+        if (value == null || value.isBlank()) throw new IllegalArgumentException(field + " é obrigatório.");
+        return value.trim();
+    }
+
+    private static String cleanOptional(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 }
 

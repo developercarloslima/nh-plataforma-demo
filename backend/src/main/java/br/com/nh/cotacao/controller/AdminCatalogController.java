@@ -15,42 +15,59 @@ import java.util.List;
 public class AdminCatalogController {
     private final AdminCatalogService service;
 
-    public AdminCatalogController(AdminCatalogService service) {
-        this.service = service;
-    }
+    public AdminCatalogController(AdminCatalogService service) { this.service = service; }
+
+    @GetMapping("/categories")
+    public List<CategoryResponse> categories() { return service.categories(); }
 
     @GetMapping("/prices")
-    public List<PriceRangeResponse> prices() {
-        return service.priceRanges();
-    }
+    public List<PriceRangeResponse> prices() { return service.priceRanges(); }
+
+    @PostMapping("/prices")
+    @ResponseStatus(HttpStatus.CREATED)
+    public PriceRangeResponse createPrice(
+            @Valid @RequestBody CreatePriceRangeRequest request,
+            Authentication auth
+    ) { return service.createPriceRange(request, username(auth)); }
 
     @PatchMapping("/prices/{id}")
     public PriceRangeResponse updatePrice(
             @PathVariable Long id,
-            @Valid @RequestBody UpdatePriceRequest request,
+            @Valid @RequestBody UpdatePriceRangeRequest request,
             Authentication auth
-    ) {
-        return service.updatePriceRange(id, request.monthlyPrice(), username(auth));
+    ) { return service.updatePriceRange(id, request, username(auth)); }
+
+    @DeleteMapping("/prices/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deletePrice(@PathVariable Long id, Authentication auth) {
+        service.deletePriceRange(id, username(auth));
     }
 
     @GetMapping("/plans")
-    public List<PlanAdminResponse> plans() {
-        return service.plans();
-    }
+    public List<PlanAdminResponse> plans() { return service.plans(); }
+
+    @PostMapping("/plans")
+    @ResponseStatus(HttpStatus.CREATED)
+    public PlanAdminResponse createPlan(
+            @Valid @RequestBody CreatePlanRequest request,
+            Authentication auth
+    ) { return service.createPlan(request, username(auth)); }
 
     @PatchMapping("/plans/{id}")
     public PlanAdminResponse updatePlan(
             @PathVariable Long id,
             @Valid @RequestBody UpdatePlanRequest request,
             Authentication auth
-    ) {
-        return service.updatePlan(id, request, username(auth));
+    ) { return service.updatePlan(id, request, username(auth)); }
+
+    @DeleteMapping("/plans/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deletePlan(@PathVariable Long id, Authentication auth) {
+        service.deletePlan(id, username(auth));
     }
 
     @GetMapping("/coverages")
-    public List<CoverageAdminResponse> coverages() {
-        return service.coverages();
-    }
+    public List<CoverageAdminResponse> coverages() { return service.coverages(); }
 
     @PostMapping("/plans/{planId}/coverages")
     @ResponseStatus(HttpStatus.CREATED)
@@ -58,18 +75,14 @@ public class AdminCatalogController {
             @PathVariable Long planId,
             @Valid @RequestBody CreateCoverageRequest request,
             Authentication auth
-    ) {
-        return service.createCoverage(planId, request, username(auth));
-    }
+    ) { return service.createCoverage(planId, request, username(auth)); }
 
     @PatchMapping("/coverages/{id}")
     public CoverageAdminResponse updateCoverage(
             @PathVariable Long id,
             @Valid @RequestBody UpdateCoverageRequest request,
             Authentication auth
-    ) {
-        return service.updateCoverage(id, request, username(auth));
-    }
+    ) { return service.updateCoverage(id, request, username(auth)); }
 
     @DeleteMapping("/coverages/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -78,23 +91,17 @@ public class AdminCatalogController {
     }
 
     @GetMapping("/optionals")
-    public List<OptionalPriceResponse> optionals() {
-        return service.optionals();
-    }
+    public List<OptionalPriceResponse> optionals() { return service.optionals(); }
 
     @PatchMapping("/optionals/{id}")
     public OptionalPriceResponse updateOptional(
             @PathVariable Long id,
             @Valid @RequestBody UpdatePriceRequest request,
             Authentication auth
-    ) {
-        return service.updateOptional(id, request.monthlyPrice(), username(auth));
-    }
+    ) { return service.updateOptional(id, request.monthlyPrice(), username(auth)); }
 
     @GetMapping("/audit")
-    public List<AuditResponse> audit() {
-        return service.audit();
-    }
+    public List<AuditResponse> audit() { return service.audit(); }
 
     private String username(Authentication auth) {
         return ((PortalPrincipal) auth.getPrincipal()).username();

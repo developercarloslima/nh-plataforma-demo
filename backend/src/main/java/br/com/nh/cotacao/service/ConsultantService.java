@@ -1,7 +1,9 @@
 package br.com.nh.cotacao.service;
 
 import br.com.nh.cotacao.dto.PortalDtos.ConsultantResponse;
+import br.com.nh.cotacao.entity.CatalogChangeAudit;
 import br.com.nh.cotacao.entity.Consultant;
+import br.com.nh.cotacao.repository.CatalogChangeAuditRepository;
 import br.com.nh.cotacao.repository.ConsultantRepository;
 import br.com.nh.cotacao.repository.InspectionRequestRepository;
 import br.com.nh.cotacao.repository.QuotationRepository;
@@ -16,15 +18,18 @@ public class ConsultantService {
     private final ConsultantRepository repository;
     private final QuotationRepository quotationRepository;
     private final InspectionRequestRepository inspectionRepository;
+    private final CatalogChangeAuditRepository auditRepository;
 
     public ConsultantService(
             ConsultantRepository repository,
             QuotationRepository quotationRepository,
-            InspectionRequestRepository inspectionRepository
+            InspectionRequestRepository inspectionRepository,
+            CatalogChangeAuditRepository auditRepository
     ) {
         this.repository = repository;
         this.quotationRepository = quotationRepository;
         this.inspectionRepository = inspectionRepository;
+        this.auditRepository = auditRepository;
     }
 
     @Transactional(readOnly = true)
@@ -39,6 +44,11 @@ public class ConsultantService {
 
     @Transactional
     public ConsultantResponse create(String name, String source) {
+        return create(name, source, source);
+    }
+
+    @Transactional
+    public ConsultantResponse create(String name, String source, String username) {
         String normalized = Consultant.normalize(name);
         Consultant consultant = repository.findByNormalizedName(normalized)
                 .map(existing -> {
@@ -46,25 +56,32 @@ public class ConsultantService {
                     return existing;
                 })
                 .orElseGet(() -> Consultant.create(name, source));
-        return toResponse(repository.save(consultant));
+        Consultant saved = repository.save(consultant);
+        auditRepository.save(CatalogChangeAudit.createText(
+                "CONSULTANT", null, saved.getId().toString(), "Consultor cadastrado/reativado — " + saved.getName(),
+                null, consultantSummary(saved), username
+        ));
+        return toResponse(saved);
     }
 
     @Transactional
-    public void delete(UUID id) {
+    public void delete(UUID id, String username) {
         Consultant consultant = findActiveOrInactive(id);
-        long quoteCount = quotationRepository.countByConsultantId(id);
-        long inspectionCount = inspectionRepository.countByConsultantId(id);
-        if (quoteCount > 0 || inspectionCount > 0) {
-            throw new IllegalArgumentException(
-                    "Este consultor possui atividades registradas. Desative-o para preservar o histórico."
-            );
-        }
+        String old = consultantSummary(consultant)
+                + "; cotações=" + quotationRepository.countByConsultantId(id)
+                + "; vistorias=" + inspectionRepository.countByConsultantId(id);
+        String name = consultant.getName();
         repository.delete(consultant);
+        auditRepository.save(CatalogChangeAudit.createText(
+                "CONSULTANT", null, id.toString(), "Consultor excluído — " + name,
+                old, "Cadastro removido; atividades mantidas com o nome original.", username
+        ));
     }
 
     @Transactional
-    public ConsultantResponse update(UUID id, String name, Boolean active) {
+    public ConsultantResponse update(UUID id, String name, Boolean active, String username) {
         Consultant consultant = findActiveOrInactive(id);
+        String old = consultantSummary(consultant);
         if (name != null && !name.isBlank() && !Consultant.normalize(name).equals(consultant.getNormalizedName())) {
             repository.findByNormalizedName(Consultant.normalize(name)).ifPresent(existing -> {
                 if (!existing.getId().equals(id)) throw new IllegalArgumentException("Já existe um consultor com esse nome.");
@@ -72,7 +89,12 @@ public class ConsultantService {
             consultant.rename(name);
         }
         if (active != null) consultant.setActive(active);
-        return toResponse(repository.save(consultant));
+        Consultant saved = repository.save(consultant);
+        auditRepository.save(CatalogChangeAudit.createText(
+                "CONSULTANT", null, id.toString(), "Consultor alterado — " + saved.getName(),
+                old, consultantSummary(saved), username
+        ));
+        return toResponse(saved);
     }
 
     @Transactional(readOnly = true)
@@ -88,13 +110,13 @@ public class ConsultantService {
 
     private ConsultantResponse toResponse(Consultant consultant) {
         return new ConsultantResponse(
-                consultant.getId(),
-                consultant.getName(),
-                consultant.isActive(),
-                consultant.getSource(),
-                consultant.getCreatedAt(),
-                quotationRepository.countByConsultantId(consultant.getId()),
+                consultant.getId(), consultant.getName(), consultant.isActive(), consultant.getSource(),
+                consultant.getCreatedAt(), quotationRepository.countByConsultantId(consultant.getId()),
                 inspectionRepository.countByConsultantId(consultant.getId())
         );
+    }
+
+    private String consultantSummary(Consultant consultant) {
+        return "nome=" + consultant.getName() + "; ativo=" + consultant.isActive() + "; origem=" + consultant.getSource();
     }
 }

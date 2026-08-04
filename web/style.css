@@ -6931,13 +6931,24 @@ footer {
 .hero-actions {
   display: flex;
   align-items: stretch;
-  flex-wrap: wrap;
-  gap: 12px;
+  gap: 14px;
+  margin-top: 0;
+}
+
+.hero-actions .primary-button,
+.regulation-button {
+  min-height: 58px;
+  margin: 0;
+}
+
+.hero-actions .primary-button {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: none;
+  white-space: nowrap;
 }
 
 .regulation-button {
-  min-height: 54px;
-  max-width: 310px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -6949,26 +6960,29 @@ footer {
   background: rgba(7, 12, 64, 0.58);
   box-shadow: 0 14px 28px rgba(0, 0, 0, 0.2);
   backdrop-filter: blur(5px);
-  font-size: 0.77rem;
-  font-weight: 900;
-  line-height: 1.14;
-  text-align: left;
-  text-transform: uppercase;
-  letter-spacing: -0.01em;
+  font-size: 0.8rem;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
   transition: 0.22s ease;
 }
 
 .regulation-button i {
   flex: 0 0 auto;
   color: var(--yellow);
-  font-size: 1.35rem;
+  font-size: 1.25rem;
+}
+
+.regulation-button span {
+  display: block;
 }
 
 .regulation-button:hover {
   transform: translateY(-2px);
   border-color: var(--yellow);
   background: rgba(7, 12, 64, 0.82);
-  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.28);
 }
 
 .regulation-button:focus-visible {
@@ -6976,6 +6990,27 @@ footer {
   outline-offset: 3px;
 }
 
+/* No desktop os dois botões permanecem obrigatoriamente lado a lado. */
+@media (min-width: 761px) {
+  .hero-copy {
+    width: min(860px, 100%);
+  }
+
+  .hero-actions {
+    display: grid;
+    grid-template-columns: max-content 360px;
+    align-items: stretch;
+    width: max-content;
+    max-width: 100%;
+  }
+
+  .regulation-button {
+    width: 360px;
+    max-width: 360px;
+  }
+}
+
+/* Em celulares os botões são empilhados para não criar rolagem horizontal. */
 @media (max-width: 760px) {
   .hero-actions {
     width: 100%;
@@ -6995,3 +7030,5 @@ footer {
   }
 }
 
+/* Cotação feita pelo próprio cliente */
+.cotacao-form__intro{margin:0 0 4px;padding:14px 16px;border-radius:14px;background:#f3f5ff;color:#26305f;line-height:1.55;border:1px solid #dfe4f4}

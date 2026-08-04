@@ -1,7 +1,7 @@
 package br.com.nh.cotacao.controller;
 
-import br.com.nh.cotacao.dto.AdminDtos.AdminQuoteResponse;
-import br.com.nh.cotacao.dto.AdminDtos.UpdateQuoteStatusRequest;
+import br.com.nh.cotacao.dto.AdminDtos.AdminInspectionResponse;
+import br.com.nh.cotacao.dto.AdminDtos.UpdateInspectionStatusRequest;
 import br.com.nh.cotacao.security.PortalPrincipal;
 import br.com.nh.cotacao.service.AdminActivityService;
 import jakarta.validation.Valid;
@@ -12,22 +12,22 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/admin/quotes")
-public class AdminQuoteController {
+@RequestMapping("/api/admin/inspections")
+public class AdminInspectionController {
     private final AdminActivityService service;
 
-    public AdminQuoteController(AdminActivityService service) { this.service = service; }
+    public AdminInspectionController(AdminActivityService service) { this.service = service; }
 
     @GetMapping
-    public List<AdminQuoteResponse> list() { return service.quotes(); }
+    public List<AdminInspectionResponse> list() { return service.inspections(); }
 
     @PatchMapping("/{id}/status")
-    public AdminQuoteResponse updateStatus(
+    public AdminInspectionResponse updateStatus(
             @PathVariable UUID id,
-            @Valid @RequestBody UpdateQuoteStatusRequest request,
+            @Valid @RequestBody UpdateInspectionStatusRequest request,
             Authentication auth
     ) {
-        return service.updateQuoteStatus(id, request, username(auth));
+        return service.updateInspectionStatus(id, request, username(auth));
     }
 
     private String username(Authentication auth) {

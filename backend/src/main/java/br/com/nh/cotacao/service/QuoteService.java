@@ -1,11 +1,8 @@
 package br.com.nh.cotacao.service;
 
+import br.com.nh.cotacao.dto.InspectionDtos.InspectionResponse;
 import br.com.nh.cotacao.dto.QuoteDtos.*;
-import br.com.nh.cotacao.entity.CoverageStatus;
-import br.com.nh.cotacao.entity.Plan;
-import br.com.nh.cotacao.entity.PlanCoverage;
-import br.com.nh.cotacao.entity.Quotation;
-import br.com.nh.cotacao.entity.QuoteStatus;
+import br.com.nh.cotacao.entity.*;
 import br.com.nh.cotacao.repository.PlanRepository;
 import br.com.nh.cotacao.repository.QuotationRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,6 +12,7 @@ import org.springframework.web.util.UriUtils;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.OffsetDateTime;
 import java.time.Year;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
@@ -29,23 +27,26 @@ public class QuoteService {
     private final QuotationRepository quotationRepository;
     private final PricingService pricingService;
     private final ConsultantService consultantService;
+    private final RetratoService retratoService;
     private final String publicApiUrl;
-    private final String teamWhatsappNumber;
+    private final CommunicationSettingsService communicationSettings;
 
     public QuoteService(
             PlanRepository planRepository,
             QuotationRepository quotationRepository,
             PricingService pricingService,
             ConsultantService consultantService,
-            @Value("${app.public-api-url:http://localhost:8080}") String publicApiUrl,
-            @Value("${app.team-whatsapp-number:}") String teamWhatsappNumber
+            RetratoService retratoService,
+            CommunicationSettingsService communicationSettings,
+            @Value("${app.public-api-url:http://localhost:8080}") String publicApiUrl
     ) {
         this.planRepository = planRepository;
         this.quotationRepository = quotationRepository;
         this.pricingService = pricingService;
         this.consultantService = consultantService;
+        this.retratoService = retratoService;
         this.publicApiUrl = stripTrailingSlash(publicApiUrl);
-        this.teamWhatsappNumber = normalizePhone(teamWhatsappNumber);
+        this.communicationSettings = communicationSettings;
     }
 
     @Transactional(readOnly = true)
@@ -67,42 +68,96 @@ public class QuoteService {
     @Transactional
     public QuoteResponse create(CreateQuoteRequest request) {
         validateYear(request.manufactureYear());
+        PlanSelection selection = resolvePlan(
+                request.selectedPlanCode(), request.categoryCode(), request.region(),
+                request.fipeValue(), request.selectedOptionalCodes()
+        );
+        Consultant consultant = consultantService.findActive(request.consultantId());
 
-        Plan selectedPlan = planRepository.findByCodeAndActiveTrue(request.selectedPlanCode())
-                .orElseThrow(() -> new IllegalArgumentException("Plano selecionado não encontrado."));
-
-        if (!selectedPlan.getCategory().getCode().equals(request.categoryCode())
-                || selectedPlan.getRegion() != request.region()) {
-            throw new IllegalArgumentException("O plano selecionado não pertence à categoria/região informada.");
-        }
-
-        PricingService.PricingResult pricing = pricingService.calculateBreakdown(selectedPlan, request.fipeValue())
-                .orElseThrow(() -> new IllegalArgumentException("O valor FIPE está fora da tabela do plano selecionado."));
-
-        List<PlanCoverage> selectedOptionals = resolveSelectedOptionals(selectedPlan, request.selectedOptionalCodes());
-
-        var consultant = consultantService.findActive(request.consultantId());
-
-        Quotation quotation = Quotation.create(
+        Quotation quotation = Quotation.createForConsultant(
                 buildQuoteNumber(),
                 consultant,
-                request.customerName().trim(),
+                request.customerName(),
                 normalizePhone(request.whatsapp()),
-                request.plate().trim(),
-                request.model().trim(),
+                request.plate(),
+                request.model(),
                 request.manufactureYear(),
                 request.zeroKm(),
                 request.fipeValue(),
                 request.categoryCode(),
                 request.region(),
-                selectedPlan.getCode(),
-                selectedPlan.getName(),
-                pricing.tableMonthlyValue(),
-                pricing.mandatoryMonthlyFee(),
-                pricing.oneTimeFee(),
-                pricing.mandatoryFeeDescription()
+                selection.plan().getCode(),
+                selection.plan().getName(),
+                selection.pricing().tableMonthlyValue(),
+                selection.pricing().mandatoryMonthlyFee(),
+                selection.pricing().oneTimeFee(),
+                selection.pricing().mandatoryFeeDescription()
+        );
+        applyCatalogSnapshot(quotation, selection.plan(), selection.optionals());
+        return toResponse(quotationRepository.save(quotation));
+    }
+
+    @Transactional
+    public QuoteResponse createPublic(CreatePublicQuoteRequest request) {
+        validateYear(request.manufactureYear());
+        String cpf = normalizeCpf(request.cpf());
+        if (!validCpf(cpf)) throw new IllegalArgumentException("Informe um CPF válido.");
+
+        String whatsapp = normalizePhone(request.whatsapp());
+        if (whatsapp == null || whatsapp.length() < 10 || whatsapp.length() > 13) {
+            throw new IllegalArgumentException("Informe um WhatsApp válido com DDD.");
+        }
+
+        PlanSelection selection = resolvePlan(
+                request.selectedPlanCode(), request.categoryCode(), request.region(),
+                request.fipeValue(), request.selectedOptionalCodes()
         );
 
+        Quotation quotation = Quotation.createSelfService(
+                buildQuoteNumber(),
+                request.customerName(),
+                cpf,
+                whatsapp,
+                request.plate(),
+                request.model(),
+                request.manufactureYear(),
+                request.zeroKm(),
+                request.fipeValue(),
+                request.categoryCode(),
+                request.region(),
+                selection.plan().getCode(),
+                selection.plan().getName(),
+                selection.pricing().tableMonthlyValue(),
+                selection.pricing().mandatoryMonthlyFee(),
+                selection.pricing().oneTimeFee(),
+                selection.pricing().mandatoryFeeDescription()
+        );
+        applyCatalogSnapshot(quotation, selection.plan(), selection.optionals());
+        return toResponse(quotationRepository.save(quotation));
+    }
+
+    private PlanSelection resolvePlan(
+            String selectedPlanCode,
+            String categoryCode,
+            Region region,
+            BigDecimal fipeValue,
+            List<String> selectedOptionalCodes
+    ) {
+        Plan selectedPlan = planRepository.findByCodeAndActiveTrue(selectedPlanCode)
+                .orElseThrow(() -> new IllegalArgumentException("Plano selecionado não encontrado."));
+
+        if (!selectedPlan.getCategory().getCode().equals(categoryCode) || selectedPlan.getRegion() != region) {
+            throw new IllegalArgumentException("O plano selecionado não pertence à categoria/região informada.");
+        }
+
+        PricingService.PricingResult pricing = pricingService.calculateBreakdown(selectedPlan, fipeValue)
+                .orElseThrow(() -> new IllegalArgumentException("O valor FIPE está fora da tabela do plano selecionado."));
+
+        List<PlanCoverage> optionals = resolveSelectedOptionals(selectedPlan, selectedOptionalCodes);
+        return new PlanSelection(selectedPlan, pricing, optionals);
+    }
+
+    private void applyCatalogSnapshot(Quotation quotation, Plan selectedPlan, List<PlanCoverage> selectedOptionals) {
         selectedOptionals.forEach(item -> quotation.addOptional(
                 item.getCoverage().getCode(),
                 item.getCoverage().getName(),
@@ -110,7 +165,16 @@ public class QuoteService {
                 item.getMonthlyPrice()
         ));
 
-        return toResponse(quotationRepository.save(quotation));
+        selectedPlan.getCoverages().stream()
+                .sorted(Comparator.comparing(PlanCoverage::getSortOrder).thenComparing(PlanCoverage::getId))
+                .forEach(item -> quotation.addCoverageSnapshot(
+                        item.getCoverage().getCode(),
+                        item.getCoverage().getName(),
+                        item.getStatus(),
+                        item.getDetail(),
+                        item.getMonthlyPrice(),
+                        item.getSortOrder()
+                ));
     }
 
     @Transactional(readOnly = true)
@@ -118,33 +182,66 @@ public class QuoteService {
         return toResponse(find(id));
     }
 
+    @Transactional(readOnly = true)
+    public QuoteResponse getPublic(UUID id) {
+        Quotation quotation = find(id);
+        requireSelfService(quotation);
+        return toResponse(quotation);
+    }
+
     @Transactional
     public DecisionResponse decide(UUID id, DecisionRequest request) {
+        Quotation quotation = find(id);
+        if (quotation.getOrigin() != QuoteOrigin.CONSULTANT) {
+            throw new IllegalArgumentException("Esta cotação foi criada pelo cliente e deve ser respondida pelo fluxo público.");
+        }
+        validateDecision(quotation, request);
+        quotation.decide(request.decision());
+        quotationRepository.save(quotation);
+        return new DecisionResponse(toResponse(quotation), null, null);
+    }
+
+    @Transactional
+    public DecisionResponse decidePublic(UUID id, DecisionRequest request) {
+        Quotation quotation = find(id);
+        requireSelfService(quotation);
+        validateDecision(quotation, request);
+        quotation.decide(request.decision());
+        quotationRepository.saveAndFlush(quotation);
+
+        String inspectionUrl = null;
+        String whatsappUrl = null;
+        if (request.decision() == QuoteStatus.ACCEPTED) {
+            InspectionResponse inspection = retratoService.ensureForSelfServiceQuote(quotation);
+            inspectionUrl = inspection.publicUrl();
+            whatsappUrl = buildSelfServiceWhatsappUrl(quotation, inspectionUrl);
+        }
+
+        return new DecisionResponse(toResponse(quotation), inspectionUrl, whatsappUrl);
+    }
+
+    private void validateDecision(Quotation quotation, DecisionRequest request) {
         if (request.decision() != QuoteStatus.ACCEPTED && request.decision() != QuoteStatus.DECLINED) {
             throw new IllegalArgumentException("Use ACCEPTED ou DECLINED para responder à proposta.");
         }
-
-        Quotation quotation = find(id);
-        if (quotation.getStatus() == QuoteStatus.CREATED
-                && java.time.OffsetDateTime.now().isAfter(quotation.getValidUntil())) {
+        if (quotation.getStatus() != QuoteStatus.CREATED && quotation.getStatus() != QuoteStatus.UNDER_REVIEW) {
+            throw new IllegalArgumentException("Esta proposta já possui uma decisão registrada.");
+        }
+        if (OffsetDateTime.now().isAfter(quotation.getValidUntil())) {
             throw new IllegalArgumentException("Esta cotação expirou. Gere uma nova proposta.");
         }
-        quotation.decide(request.decision());
-        quotationRepository.save(quotation);
+    }
 
-        return new DecisionResponse(toResponse(quotation), null, null);
+    private void requireSelfService(Quotation quotation) {
+        if (quotation.getOrigin() != QuoteOrigin.SELF_SERVICE) {
+            throw new IllegalArgumentException("Cotação pública não encontrada.");
+        }
     }
 
     @Transactional(readOnly = true)
     public Quotation find(UUID id) {
         return quotationRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Cotação não encontrada."));
-    }
-
-    @Transactional(readOnly = true)
-    public Plan findSelectedPlan(Quotation quotation) {
-        return planRepository.findByCodeAndActiveTrue(quotation.getSelectedPlanCode())
-                .orElseThrow(() -> new IllegalArgumentException("Plano da cotação não encontrado."));
     }
 
     public String publicPdfUrl(Quotation quotation) {
@@ -177,13 +274,25 @@ public class QuoteService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         String teamWhatsappUrl = buildTeamWhatsappUrl(quotation);
         String clientWhatsappUrl = buildClientWhatsappUrl(quotation);
+        String inspectionUrl = null;
+        String selfServiceWhatsappUrl = null;
+
+        if (quotation.getOrigin() == QuoteOrigin.SELF_SERVICE && quotation.getStatus() == QuoteStatus.ACCEPTED) {
+            var inspection = retratoService.findForQuotation(quotation.getId()).orElse(null);
+            if (inspection != null) {
+                inspectionUrl = inspection.publicUrl();
+                selfServiceWhatsappUrl = buildSelfServiceWhatsappUrl(quotation, inspectionUrl);
+            }
+        }
 
         return new QuoteResponse(
                 quotation.getId(),
                 quotation.getQuoteNumber(),
+                quotation.getOrigin(),
                 quotation.getConsultant() == null ? null : quotation.getConsultant().getId(),
                 quotation.getConsultantName(),
                 quotation.getCustomerName(),
+                maskCpf(quotation.getCustomerCpf()),
                 quotation.getWhatsapp(),
                 quotation.getPlate(),
                 quotation.getModel(),
@@ -204,14 +313,17 @@ public class QuoteService {
                 quotation.getStatus(),
                 quotation.getCreatedAt(),
                 quotation.getValidUntil(),
-                quotation.getStatus() == QuoteStatus.CREATED && java.time.OffsetDateTime.now().isAfter(quotation.getValidUntil()),
+                (quotation.getStatus() == QuoteStatus.CREATED || quotation.getStatus() == QuoteStatus.UNDER_REVIEW)
+                        && OffsetDateTime.now().isAfter(quotation.getValidUntil()),
                 quotation.getDecidedAt(),
                 quotation.getDriveFolderUrl(),
                 quotation.getDrivePdfUrl(),
                 quotation.getInspectionCompletedAt(),
                 inspectionPhotos,
                 teamWhatsappUrl,
-                clientWhatsappUrl
+                clientWhatsappUrl,
+                inspectionUrl,
+                selfServiceWhatsappUrl
         );
     }
 
@@ -287,48 +399,95 @@ public class QuoteService {
     }
 
     private String buildTeamWhatsappUrl(Quotation quotation) {
-        if (teamWhatsappNumber == null || teamWhatsappNumber.isBlank()
-                || quotation.getDriveFolderUrl() == null || quotation.getInspectionCompletedAt() == null) {
-            return null;
-        }
+        String teamWhatsappNumber = communicationSettings.teamWhatsapp();
+        if (teamWhatsappNumber == null || teamWhatsappNumber.isBlank()) return null;
         String pdfUrl = quotation.getDrivePdfUrl() == null || quotation.getDrivePdfUrl().isBlank()
                 ? publicPdfUrl(quotation)
                 : quotation.getDrivePdfUrl();
-        String message = "Vistoria concluída - " + quotation.getQuoteNumber()
+        String message = "Cotação " + quotation.getQuoteNumber()
                 + "\nCliente: " + quotation.getCustomerName()
+                + "\nOrigem: " + originLabel(quotation)
+                + "\nResponsável: " + quotation.getConsultantName()
                 + "\nPlaca: " + quotation.getPlate()
-                + "\nPasta da vistoria: " + quotation.getDriveFolderUrl()
-                + "\nPDF da cotação e vistoria: " + pdfUrl;
+                + "\nPlano: " + quotation.getSelectedPlanName()
+                + (quotation.getDriveFolderUrl() == null ? "" : "\nPasta da vistoria: " + quotation.getDriveFolderUrl())
+                + "\nPDF: " + pdfUrl;
         return whatsappUrl(teamWhatsappNumber, message);
     }
 
     private String buildClientWhatsappUrl(Quotation quotation) {
-        if (quotation.getWhatsapp() == null || quotation.getWhatsapp().isBlank()) {
-            return null;
-        }
+        if (quotation.getWhatsapp() == null || quotation.getWhatsapp().isBlank()) return null;
         String message = "Olá, " + quotation.getCustomerName()
                 + "! Segue o PDF da sua cotação " + quotation.getQuoteNumber()
                 + " da Novo Horizonte Proteção Veicular: " + publicPdfUrl(quotation);
         return whatsappUrl(quotation.getWhatsapp(), message);
     }
 
+    private String buildSelfServiceWhatsappUrl(Quotation quotation, String inspectionUrl) {
+        String teamWhatsappNumber = communicationSettings.teamWhatsapp();
+        if (teamWhatsappNumber == null || teamWhatsappNumber.isBlank()) return null;
+        String message = "Olá! Fiz uma cotação pelo site da Novo Horizonte e aceitei a proposta."
+                + "\n\nCotação: " + quotation.getQuoteNumber()
+                + "\nNome: " + quotation.getCustomerName()
+                + "\nPlaca: " + quotation.getPlate()
+                + "\nPlano: " + quotation.getSelectedPlanName()
+                + "\nValor mensal: R$ " + quotation.getMonthlyValue().toPlainString().replace('.', ',')
+                + "\n\nLink para enviar as fotos e o vídeo da vistoria digital: " + inspectionUrl;
+        return whatsappUrl(teamWhatsappNumber, message);
+    }
+
+    private String originLabel(Quotation quotation) {
+        return quotation.getOrigin() == QuoteOrigin.SELF_SERVICE ? "Cliente pelo site" : "Consultor";
+    }
+
     private String whatsappUrl(String phone, String message) {
-        String normalizedPhone = phone.startsWith("55") ? phone : "55" + phone;
+        String digits = phone.replaceAll("\\D", "");
+        String normalizedPhone = digits.startsWith("55") ? digits : "55" + digits;
         return "https://wa.me/" + normalizedPhone + "?text="
                 + UriUtils.encode(message, StandardCharsets.UTF_8);
     }
 
     private static String normalizePhone(String phone) {
-        if (phone == null || phone.isBlank()) {
-            return null;
-        }
+        if (phone == null || phone.isBlank()) return null;
         return phone.replaceAll("\\D", "");
     }
 
-    private static String stripTrailingSlash(String value) {
-        if (value == null || value.isBlank()) {
-            return "http://localhost:8080";
+    private static String normalizeCpf(String cpf) {
+        return cpf == null ? "" : cpf.replaceAll("\\D", "");
+    }
+
+    private static String maskCpf(String cpf) {
+        return cpf != null && cpf.length() == 11
+                ? "***." + cpf.substring(3, 6) + "." + cpf.substring(6, 9) + "-**"
+                : null;
+    }
+
+    private static boolean validCpf(String cpf) {
+        if (cpf == null || !cpf.matches("\\d{11}") || cpf.chars().distinct().count() == 1) return false;
+        try {
+            int sum = 0;
+            for (int i = 0; i < 9; i++) sum += Character.digit(cpf.charAt(i), 10) * (10 - i);
+            int first = 11 - (sum % 11);
+            if (first >= 10) first = 0;
+            sum = 0;
+            for (int i = 0; i < 10; i++) sum += Character.digit(cpf.charAt(i), 10) * (11 - i);
+            int second = 11 - (sum % 11);
+            if (second >= 10) second = 0;
+            return first == Character.digit(cpf.charAt(9), 10)
+                    && second == Character.digit(cpf.charAt(10), 10);
+        } catch (Exception ignored) {
+            return false;
         }
+    }
+
+    private static String stripTrailingSlash(String value) {
+        if (value == null || value.isBlank()) return "http://localhost:8080";
         return value.replaceAll("/+$", "");
     }
+
+    private record PlanSelection(
+            Plan plan,
+            PricingService.PricingResult pricing,
+            List<PlanCoverage> optionals
+    ) {}
 }

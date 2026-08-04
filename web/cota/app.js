@@ -1,9 +1,11 @@
-const SESSION_KEY = 'nh-cotacao-session-v6';
+const pageParams = new URLSearchParams(window.location.search);
+const isSelfService = pageParams.get('origem') === 'site' || pageParams.get('modo') === 'cliente';
+const SESSION_KEY = isSelfService ? 'nh-cotacao-cliente-session-v1' : 'nh-cotacao-session-v7';
 const PORTAL_TOKEN_KEY = 'nhPortalToken';
 const CONSULTANT_KEY = 'nhSelectedConsultant';
 const portalToken = localStorage.getItem(PORTAL_TOKEN_KEY);
 const selectedConsultant = JSON.parse(localStorage.getItem(CONSULTANT_KEY) || 'null');
-if (!portalToken || !selectedConsultant?.id) window.location.replace('/colaborador/');
+if (!isSelfService && (!portalToken || !selectedConsultant?.id)) window.location.replace('/colaborador/');
 
 const state = {
   vehicleType: 'CAR',
@@ -21,6 +23,9 @@ const $ = (id) => document.getElementById(id);
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
 function apiPath(path) { return path; }
+function quoteApiPath(suffix = '') {
+  return `${isSelfService ? '/api/public/quotes' : '/api/quotes'}${suffix}`;
+}
 
 function parseMoney(value) {
   const raw = String(value ?? '').trim().replace(/R\$|\s/g, '');
@@ -96,7 +101,7 @@ function clearError() {
 
 async function api(path, options = {}) {
   const headers = new Headers(options.headers || {});
-  headers.set('Authorization', `Bearer ${portalToken}`);
+  if (!isSelfService && portalToken) headers.set('Authorization', `Bearer ${portalToken}`);
   const response = await fetch(apiPath(path), { ...options, headers });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
@@ -109,6 +114,7 @@ function formSnapshot() {
   return {
     customerName: $('customerName').value,
     whatsapp: $('whatsapp').value,
+    customerCpf: $('customerCpf')?.value || '',
     plate: $('plate').value,
     model: $('model').value,
     manufactureYear: $('manufactureYear').value,
@@ -152,7 +158,7 @@ async function restoreSession() {
     });
 
     if (saved.quoteId) {
-      const quote = await api(`/api/quotes/${saved.quoteId}`);
+      const quote = await api(quoteApiPath(`/${saved.quoteId}`));
       renderQuote(quote, false);
     }
   } catch (_) {
@@ -307,8 +313,7 @@ function updateSelectionSummary() {
 }
 
 function formPayload() {
-  return {
-    consultantId: selectedConsultant.id,
+  const payload = {
     customerName: $('customerName').value.trim(),
     whatsapp: $('whatsapp').value,
     plate: $('plate').value.trim().toUpperCase(),
@@ -321,6 +326,9 @@ function formPayload() {
     selectedPlanCode: state.selectedPlanCode,
     selectedOptionalCodes: [...state.selectedOptionalCodes]
   };
+  if (isSelfService) payload.cpf = $('customerCpf').value;
+  else payload.consultantId = selectedConsultant.id;
+  return payload;
 }
 
 function quoteStatusLabel(status, expired = false) {
@@ -363,6 +371,14 @@ function renderQuote(quote, scroll = true) {
 
   $('proposal-section').hidden = false;
   $('accept-box').hidden = quote.status !== 'CREATED' || quote.expired;
+
+  const shareClientPdfButton = $('share-client-pdf');
+  shareClientPdfButton.hidden = isSelfService;
+  shareClientPdfButton.disabled = !quote.clientWhatsappUrl;
+  shareClientPdfButton.title = quote.clientWhatsappUrl
+    ? `Abrir o WhatsApp do cliente ${quote.whatsapp || ''} com o link do PDF`
+    : 'Informe o WhatsApp do cliente para habilitar o envio';
+
   renderDecisionArea(quote);
   persistSession();
   if (scroll) $('proposal-section').scrollIntoView({ behavior: 'smooth' });
@@ -379,6 +395,24 @@ function renderDecisionArea(quote) {
 }
 
 function renderInspectionStage(quote) {
+  if (isSelfService) {
+    const whatsappButton = quote.selfServiceWhatsappUrl
+      ? `<a class="whatsapp-button" href="${escapeHtml(quote.selfServiceWhatsappUrl)}" target="_blank" rel="noopener">Falar com um consultor pelo WhatsApp</a>`
+      : '';
+    const inspectionButton = quote.inspectionUrl
+      ? `<a class="primary-button direct-inspection-link" href="${escapeHtml(quote.inspectionUrl)}">Abrir vistoria digital</a>`
+      : '';
+    const guidance = quote.selfServiceWhatsappUrl
+      ? 'Clique em “Falar com um consultor”. A conversa será aberta no WhatsApp configurado pelo administrador e a mensagem já levará o link para você enviar as fotos e o vídeo da vistoria digital.'
+      : 'O WhatsApp da equipe ainda não foi configurado pelo administrador. Use o botão “Abrir vistoria digital” para enviar as fotos e o vídeo.';
+    $('decision-result').innerHTML = `
+      <div class="inspection-box inspection-pending">
+        <div><span class="step-tag">PRÓXIMA ETAPA</span><h3>Proposta aceita com sucesso</h3><p>${guidance}</p></div>
+        <div class="inspection-actions">${whatsappButton}${inspectionButton}</div>
+      </div>`;
+    return;
+  }
+
   const params = new URLSearchParams({
     name: quote.customerName,
     plate: quote.plate,
@@ -445,28 +479,25 @@ async function downloadPdf(button = $('pdf-download')) {
 async function sharePdfWithClient() {
   if (!state.quote) return;
   const button = $('share-client-pdf');
-  setLoading(button, true, 'Preparando...', 'Enviar PDF ao cliente');
-  try {
-    const response = await fetch(apiPath(`/api/quotes/${state.quote.id}/pdf`));
-    if (!response.ok) throw new Error('Não foi possível preparar o PDF.');
-    const blob = await response.blob();
-    const file = new File([blob], `cotacao-${state.quote.quoteNumber}.pdf`, { type: 'application/pdf' });
 
-    if (navigator.share && navigator.canShare?.({ files: [file] })) {
-      await navigator.share({
-        title: `Cotação ${state.quote.quoteNumber}`,
-        text: `Cotação da Novo Horizonte para ${state.quote.customerName}`,
-        files: [file]
-      });
-    } else if (state.quote.clientWhatsappUrl) {
-      window.open(state.quote.clientWhatsappUrl, '_blank', 'noopener,noreferrer');
-    } else {
-      throw new Error('Informe o WhatsApp do cliente para enviar o PDF.');
+  if (!state.quote.clientWhatsappUrl) {
+    showError('Informe o WhatsApp do cliente para enviar o PDF da cotação.');
+    return;
+  }
+
+  setLoading(button, true, 'Abrindo WhatsApp...', 'Enviar PDF ao WhatsApp do cliente');
+  try {
+    // O WhatsApp Web não permite anexar um arquivo automaticamente. Por isso,
+    // abrimos diretamente a conversa do número informado no cadastro com uma
+    // mensagem contendo o link seguro do PDF gerado pela plataforma.
+    const popup = window.open(state.quote.clientWhatsappUrl, '_blank', 'noopener,noreferrer');
+    if (!popup) {
+      throw new Error('O navegador bloqueou a abertura do WhatsApp. Permita pop-ups e tente novamente.');
     }
   } catch (error) {
-    if (error.name !== 'AbortError') showError(error.message);
+    showError(error.message);
   } finally {
-    setLoading(button, false, 'Preparando...', 'Enviar PDF ao cliente');
+    setLoading(button, false, 'Abrindo WhatsApp...', 'Enviar PDF ao WhatsApp do cliente');
   }
 }
 
@@ -676,7 +707,8 @@ $('vehicle-options').querySelectorAll('.vehicle-option').forEach(button => {
   });
 });
 
-['consultantName','customerName','whatsapp','plate','model','manufactureYear','fipeValue','carOrigin','region'].forEach(id => {
+['consultantName','customerName','customerCpf','whatsapp','plate','model','manufactureYear','fipeValue','carOrigin','region'].forEach(id => {
+  if (!$(id)) return;
   $(id).addEventListener('input', () => { resetResults(); clearError(); persistSession(); });
 });
 
@@ -702,7 +734,7 @@ $('quote-form').addEventListener('submit', async event => {
   try {
     const fipeValue = parseMoney($('fipeValue').value);
     if (!fipeValue || fipeValue <= 0) throw new Error('Informe um valor FIPE válido.');
-    const result = await api('/api/quotes/options', {
+    const result = await api(quoteApiPath('/options'), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ categoryCode: categoryCode(), region: effectiveRegion(), fipeValue })
     });
@@ -722,7 +754,7 @@ $('confirm-plan').addEventListener('click', async () => {
   const button = $('confirm-plan');
   setLoading(button, true, 'Salvando...', 'Confirmar plano e gerar cotação →');
   try {
-    const quote = await api('/api/quotes', {
+    const quote = await api(quoteApiPath(), {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formPayload())
     });
     renderQuote(quote);
@@ -734,9 +766,11 @@ async function decide(decision) {
   if (!state.quote) return;
   clearError();
   try {
-    const result = await api(`/api/quotes/${state.quote.id}/decision`, {
+    const result = await api(quoteApiPath(`/${state.quote.id}/decision`), {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision })
     });
+    result.quote.inspectionUrl ||= result.inspectionUrl;
+    result.quote.selfServiceWhatsappUrl ||= result.whatsappUrl;
     renderQuote(result.quote);
   } catch (error) { showError(error.message); }
 }
@@ -744,6 +778,7 @@ async function decide(decision) {
 $('accept-yes').addEventListener('click', () => decide('ACCEPTED'));
 $('accept-no').addEventListener('click', () => decide('DECLINED'));
 $('pdf-download').addEventListener('click', () => downloadPdf());
+$('share-client-pdf').addEventListener('click', sharePdfWithClient);
 
 $('new-quote').addEventListener('click', () => {
   $('quote-form').reset();
@@ -810,6 +845,51 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && !$('inspection-modal').hidden) closeInspectionModal();
 });
 
-$('consultantName').value = selectedConsultant.name;
+function formatCpf(value) {
+  const digits = String(value || '').replace(/\D/g, '').slice(0, 11);
+  return digits
+    .replace(/^(\d{3})(\d)/, '$1.$2')
+    .replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/\.(\d{3})(\d)/, '.$1-$2');
+}
+
+function formatWhatsapp(value) {
+  const digits = String(value || '').replace(/\D/g, '').replace(/^55(?=\d{10,11}$)/, '').slice(0, 11);
+  if (digits.length <= 2) return digits ? `(${digits}` : '';
+  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+}
+
+function configurePageMode() {
+  if (!isSelfService) {
+    $('consultantName').value = selectedConsultant.name;
+    return;
+  }
+
+  document.body.classList.add('self-service-mode');
+  $('consultant-field').hidden = true;
+  $('consultantName').required = false;
+  $('customer-cpf-field').hidden = false;
+  $('customerCpf').required = true;
+  $('whatsapp').required = true;
+  $('whatsapp-required').textContent = '*';
+  $('environment-pill').textContent = '🔒 Cotação segura pelo site';
+  $('back-link').href = '/';
+  $('back-link').textContent = '← Voltar ao site';
+  $('hero-title').textContent = 'Faça sua própria cotação em poucos minutos.';
+  $('hero-description').textContent = 'Informe os dados do veículo, compare os planos, gere o PDF e aceite a proposta diretamente pelo site.';
+  $('footer-label').textContent = 'Novo Horizonte Proteção Veicular • Cotação online para clientes';
+  $('customerName').value = pageParams.get('nome') || '';
+  $('whatsapp').value = formatWhatsapp(pageParams.get('whatsapp') || '');
+  $('plate').value = (pageParams.get('placa') || '').toUpperCase();
+}
+
+$('customerCpf')?.addEventListener('input', event => { event.target.value = formatCpf(event.target.value); });
+$('whatsapp').addEventListener('input', event => { event.target.value = formatWhatsapp(event.target.value); });
+
+configurePageMode();
 updateConditionalFields();
-restoreSession().finally(() => { $('consultantName').value = selectedConsultant.name; });
+restoreSession().finally(() => {
+  if (!isSelfService) $('consultantName').value = selectedConsultant.name;
+});

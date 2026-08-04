@@ -19,7 +19,7 @@
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
     />
-    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="style.css?v=20260804-2" />
   </head>
   <body>
     <header class="site-header" id="inicio">
@@ -119,7 +119,7 @@
                 aria-label="Baixar o novo regulamento da Novo Horizonte Proteção Veicular"
               >
                 <i class="fa-solid fa-file-pdf" aria-hidden="true"></i>
-                <span>Consulte o novo regulamento</span>
+                <span>Consulte o novo regulamento da Novo Horizonte Proteção Veicular</span>
               </a>
             </div>
           </div>
@@ -518,24 +518,11 @@
             </div>
           </div>
 
-          <form
-            class="cotacao-form"
-            id="cotacaoForm"
-            action="https://formsubmit.co/ajax/comercial@nhprotecao.com.br"
-            method="POST"
-          >
-            <input
-              type="hidden"
-              name="_subject"
-              value="Nova cotação pelo site NH Proteção Veicular"
-            />
-            <input type="hidden" name="_template" value="table" />
-            <input type="hidden" name="_captcha" value="false" />
-            <input
-              type="hidden"
-              name="Origem"
-              value="Popup de cotação do site NH Proteção Veicular"
-            />
+          <form class="cotacao-form" id="cotacaoForm">
+            <p class="cotacao-form__intro">
+              Faça sua própria cotação, compare os planos e gere sua proposta na hora.
+              Um consultor acompanhará tudo pelo painel administrativo.
+            </p>
 
             <label>
               Nome
@@ -575,11 +562,10 @@
               />
             </label>
 
-            <button class="cotacao-form__button" type="submit">Enviar</button>
+            <button class="cotacao-form__button" type="submit">Fazer minha cotação agora</button>
 
             <p class="cotacao-form__terms">
-              Ao preencher o formulário, concordo em receber comunicações e
-              estou de acordo com os termos de uso.
+              Ao continuar, você concorda em receber comunicações sobre sua cotação e com os termos de uso.
             </p>
 
             <p

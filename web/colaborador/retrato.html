@@ -1,6 +1,107 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#080f63"><title>Criar Retrato NH</title><link rel="icon" href="/assets/favicon-nh.png"><link rel="stylesheet" href="/shared/portal.css"></head><body>
-<header class="portal-header"><a class="portal-brand" href="/colaborador/"><img src="/assets/logo-nh-simbolo.png" alt="Novo Horizonte"><span><strong>Retrato NH</strong><small>Vistoria digital, fotos e vídeo</small></span></a><div class="header-actions"><a href="/colaborador/">← Painel</a></div></header>
-<main class="shell"><section class="hero-panel"><span class="eyebrow">RETRATO NH</span><h1>Gerar link de vistoria</h1><p>Cadastre os dados manualmente. O Retrato NH funciona de forma independente da Hinova e envia os arquivos diretamente para o Google Drive.</p></section>
-<section class="card" style="margin-top:22px"><div class="section-head" style="margin-top:0"><div><h2>Dados da solicitação</h2><p id="consultant-info"></p></div></div><form id="inspection-form" class="form-grid"><label class="span-2">Tipo de solicitação<select id="requestType" required><option value="NEW_INSPECTION">Nova vistoria — fotos completas e vídeo</option><option value="BILL_UPDATE">Atualização de boleto — somente vídeo</option></select></label><label class="span-2">Nome do associado<input id="associateName" required maxlength="140" placeholder="Nome completo"></label><label>CPF<input id="cpf" required inputmode="numeric" maxlength="14" placeholder="000.000.000-00"></label><label>Placa do veículo<input id="plate" required maxlength="10" placeholder="ABC1D23"></label><label class="span-2">WhatsApp do associado<input id="whatsapp" inputmode="tel" placeholder="(82) 99999-9999"></label><button class="primary span-2" type="submit">Gerar link do Retrato NH</button></form><div id="message"></div></section>
-<section id="result" class="card" hidden style="margin-top:22px"><div class="completion"><div class="check">✓</div><h2>Link criado com sucesso</h2><p id="result-summary"></p></div><label>Link para o associado<input id="public-link" readonly></label><div class="actions"><button id="copy-link" class="outline">Copiar link</button><a id="send-whatsapp" class="button secondary" target="_blank" rel="noreferrer">Enviar pelo WhatsApp</a><a id="open-link" class="button outline" target="_blank" rel="noreferrer">Abrir como associado</a><button id="new-request" class="primary">Criar outra solicitação</button></div></section></main>
-<script src="/colaborador/retrato-create.js"></script></body></html>
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#080f63" />
+    <title>Criar Retrato NH</title>
+    <link rel="icon" href="/assets/favicon-nh.png" />
+    <link rel="stylesheet" href="/shared/portal.css" />
+  </head>
+  <body>
+    <header class="portal-header">
+      <a class="portal-brand" href="/colaborador/"
+        ><img src="/assets/logo-nh-simbolo.png" alt="Novo Horizonte" /><span
+          ><strong>Retrato NH</strong
+          ><small>Vistoria digital, fotos e vídeo</small></span
+        ></a
+      >
+      <div class="header-actions"><a href="/colaborador/">← Painel</a></div>
+    </header>
+    <main class="shell">
+      <section class="hero-panel">
+        <span class="eyebrow">RETRATO NH</span>
+        <h1>Gerar link de vistoria</h1>
+        <p>
+          Cadastre os dados manualmente. O Retrato NH funciona de forma
+          independente da Hinova e envia os arquivos diretamente para o Google
+          Drive.
+        </p>
+      </section>
+      <section class="card" style="margin-top: 22px">
+        <div class="section-head" style="margin-top: 0">
+          <div>
+            <h2>Dados da solicitação</h2>
+            <p id="consultant-info"></p>
+          </div>
+        </div>
+        <form id="inspection-form" class="form-grid">
+          <label class="span-2"
+            >Tipo de solicitação<select id="requestType" required>
+              <option value="NEW_INSPECTION">
+                Nova vistoria — fotos completas e vídeo
+              </option>
+              <option value="BILL_UPDATE">
+                Atualização de boleto — somente vídeo
+              </option>
+            </select></label
+          ><label class="span-2"
+            >Nome do associado<input
+              id="associateName"
+              required
+              maxlength="140"
+              placeholder="Nome completo" /></label
+          ><label
+            >CPF<input
+              id="cpf"
+              required
+              inputmode="numeric"
+              maxlength="14"
+              placeholder="000.000.000-00" /></label
+          ><label
+            >Placa do veículo<input
+              id="plate"
+              required
+              maxlength="10"
+              placeholder="ABC1D23" /></label
+          ><label class="span-2"
+            >WhatsApp do associado<input
+              id="whatsapp"
+              inputmode="tel"
+              placeholder="(82) 99999-9999" /></label
+          ><button class="primary span-2" type="submit">
+            Gerar link do Retrato NH
+          </button>
+        </form>
+        <div id="message"></div>
+      </section>
+      <section id="result" class="card" hidden style="margin-top: 22px">
+        <div class="completion">
+          <div class="check">✓</div>
+          <h2>Link criado com sucesso</h2>
+          <p id="result-summary"></p>
+        </div>
+        <label>Link para o associado<input id="public-link" readonly /></label>
+        <div class="actions">
+          <button id="copy-link" class="outline">Copiar link</button
+          ><a
+            id="send-whatsapp"
+            class="button secondary"
+            target="_blank"
+            rel="noreferrer"
+            >Enviar ao WhatsApp da equipe</a
+          ><a
+            id="open-link"
+            class="button outline"
+            target="_blank"
+            rel="noreferrer"
+            >Fazer vistoria</a
+          ><button id="new-request" class="primary">
+            Criar outra solicitação
+          </button>
+        </div>
+      </section>
+    </main>
+    <script src="/colaborador/retrato-create.js"></script>
+  </body>
+</html>

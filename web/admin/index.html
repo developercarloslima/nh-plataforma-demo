@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#080f63">
   <title>Painel Administrativo NH</title>
   <link rel="icon" href="/assets/favicon-nh.png">
-  <link rel="stylesheet" href="/shared/portal.css">
+  <link rel="stylesheet" href="/shared/portal.css?v=20260804-admin-total">
 </head>
 <body>
 <header class="portal-header">
@@ -24,7 +24,7 @@
   <div class="card login-card">
     <span class="eyebrow" style="color:#080f63">ACESSO ADMINISTRATIVO</span>
     <h1>Entrar no painel</h1>
-    <p>Use o usuário e a senha definidos nas variáveis <strong>ADMIN_USERNAME</strong> e <strong>ADMIN_PASSWORD</strong>.</p>
+    <p>Entre com o usuário e a senha administrativo</p>
     <form id="admin-login-form" class="form-grid">
       <label class="span-2">Usuário administrativo
         <input id="admin-username" autocomplete="username" required>
@@ -34,15 +34,15 @@
       </label>
       <button class="primary span-2" type="submit">Entrar como administrador</button>
     </form>
-    <div id="admin-login-message"></div>
+    <div id="admin-login-message" aria-live="polite"></div>
   </div>
 </section>
 
 <main id="admin-view" class="shell" hidden>
   <section class="hero-panel">
-    <span class="eyebrow">ADMINISTRAÇÃO</span>
-    <h1>Gestão da operação comercial</h1>
-    <p>Gerencie consultores, atividades, planos, valores, coberturas e serviços opcionais.</p>
+    <span class="eyebrow">ADMINISTRAÇÃO COMPLETA</span>
+    <h1>Gestão da operação Novo Horizonte</h1>
+    <p>Controle consultores, cotações, Retrato NH, planos, valores, coberturas, opcionais, destinos de envio e auditoria.</p>
   </section>
   <div id="message" aria-live="polite"></div>
 
@@ -55,6 +55,7 @@
     <button type="button" data-tab="plans">Planos</button>
     <button type="button" data-tab="prices">Valores</button>
     <button type="button" data-tab="coverages">Coberturas e opcionais</button>
+    <button type="button" data-tab="settings">Envios</button>
     <button type="button" data-tab="audit">Auditoria</button>
   </div>
 
@@ -62,140 +63,238 @@
     <div class="kpi-grid">
       <div class="kpi"><span>Consultores ativos</span><strong id="kpi-consultants">—</strong></div>
       <div class="kpi"><span>Cotações</span><strong id="kpi-quotes">—</strong></div>
-      <div class="kpi"><span>Vistorias</span><strong id="kpi-inspections">—</strong></div>
+      <div class="kpi"><span>Retratos NH</span><strong id="kpi-inspections">—</strong></div>
       <div class="kpi"><span>Propostas aceitas</span><strong id="kpi-accepted">—</strong></div>
     </div>
-    <div class="card" style="margin-top:18px">
-      <h2 style="margin-top:0;color:#080f63">Acesso administrativo confirmado</h2>
-      <p class="muted">Todas as alterações feitas neste painel são aplicadas às novas cotações. Cotações antigas mantêm o valor e os opcionais registrados no momento da emissão.</p>
+    <div class="overview-grid">
+      <div class="card">
+        <h2>Resumo das cotações</h2>
+        <div id="quote-status-summary" class="status-summary"></div>
+      </div>
+      <div class="card">
+        <h2>Resumo do Retrato NH</h2>
+        <div id="inspection-status-summary" class="status-summary"></div>
+      </div>
+      <div class="card">
+        <h2>Destinos de envio</h2>
+        <p><strong>E-mail:</strong> <span id="overview-team-email">Não configurado</span></p>
+        <p><strong>WhatsApp:</strong> <span id="overview-team-whatsapp">Não configurado</span></p>
+        <button class="outline" type="button" data-open-settings>Alterar destinos</button>
+      </div>
     </div>
   </section>
 
   <section id="tab-activities" hidden>
     <div class="section-head">
-      <div><h2>Atividades dos consultores</h2><p>Cotações e solicitações do Retrato NH em uma única linha do tempo.</p></div>
+      <div><h2>Atividades dos consultores</h2><p>Histórico unificado de cotações e solicitações do Retrato NH, inclusive de consultores já excluídos.</p></div>
       <input id="activity-filter" placeholder="Filtrar por consultor, cliente ou placa" style="max-width:360px">
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Data</th><th>Consultor</th><th>Atividade</th><th>Cliente/associado</th><th>Placa</th><th>Status</th><th>Abrir</th></tr></thead>
+      <thead><tr><th>Data</th><th>Consultor</th><th>Atividade</th><th>Cliente/associado</th><th>Placa</th><th>Status</th><th>Ação</th></tr></thead>
       <tbody id="activities-body"></tbody>
     </table></div>
   </section>
 
   <section id="tab-consultants" hidden>
     <div class="section-head">
-      <div><h2>Consultores e voluntários</h2><p>Cadastre, renomeie, desative ou exclua nomes sem histórico.</p></div>
+      <div><h2>Consultores e voluntários</h2><p>Cadastre, edite, ative, desative ou exclua. O histórico permanece salvo pelo nome registrado na atividade.</p></div>
+      <button id="new-consultant-button" class="primary" type="button">+ Novo consultor</button>
     </div>
-    <div class="card compact-card">
-      <div class="form-grid">
-        <label class="span-2">Novo consultor ou voluntário
-          <input id="new-admin-consultant" placeholder="Nome completo">
-        </label>
-        <button id="add-admin-consultant" class="primary" type="button">Cadastrar</button>
-      </div>
-    </div>
-    <div class="table-wrap" style="margin-top:16px"><table>
-      <thead><tr><th>Nome</th><th>Origem</th><th>Cotações</th><th>Vistorias</th><th>Status</th><th>Ações</th></tr></thead>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Nome</th><th>Origem</th><th>Cotações</th><th>Retratos NH</th><th>Status</th><th>Ações</th></tr></thead>
       <tbody id="consultants-body"></tbody>
     </table></div>
   </section>
 
   <section id="tab-quotes" hidden>
     <div class="section-head">
-      <div><h2>Cotações</h2><p>Últimas 300 cotações, com validade e status.</p></div>
-      <input id="quote-filter" placeholder="Filtrar por consultor, cliente ou placa" style="max-width:340px">
+      <div><h2>Cotações</h2><p>Analise os dados, altere o status e registre observações administrativas.</p></div>
+      <input id="quote-filter" placeholder="Filtrar por origem, consultor, cliente, placa ou número" style="max-width:360px">
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Número</th><th>Consultor</th><th>Cliente</th><th>Placa</th><th>0 km</th><th>Plano</th><th>Total</th><th>Validade</th><th>Status</th><th>PDF</th></tr></thead>
+      <thead><tr><th>Número</th><th>Origem / responsável</th><th>Cliente</th><th>Placa</th><th>Plano</th><th>Total</th><th>Validade</th><th>Status</th><th>Ações</th></tr></thead>
       <tbody id="quotes-body"></tbody>
     </table></div>
   </section>
 
   <section id="tab-inspections" hidden>
     <div class="section-head">
-      <div><h2>Retrato NH</h2><p>Novas vistorias e atualizações de boleto.</p></div>
-      <input id="inspection-filter" placeholder="Filtrar por consultor, associado ou placa" style="max-width:340px">
+      <div><h2>Retrato NH</h2><p>Analise novas vistorias e atualizações de boleto, alterando o status e as observações.</p></div>
+      <input id="inspection-filter" placeholder="Filtrar por consultor, associado ou placa" style="max-width:360px">
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Associado</th><th>Consultor</th><th>Placa</th><th>Tipo</th><th>Status</th><th>Criada</th><th>Arquivos</th></tr></thead>
+      <thead><tr><th>Associado</th><th>Consultor</th><th>Placa</th><th>Tipo</th><th>Arquivos</th><th>Status</th><th>Criada</th><th>Ações</th></tr></thead>
       <tbody id="inspections-body"></tbody>
     </table></div>
   </section>
 
   <section id="tab-plans" hidden>
     <div class="section-head">
-      <div><h2>Planos e pacotes</h2><p>Altere nome, subtítulo e disponibilidade de cada pacote.</p></div>
+      <div><h2>Planos e pacotes</h2><p>Crie, edite ou exclua completamente os planos disponíveis para novas cotações.</p></div>
+      <button id="new-plan-button" class="primary" type="button">+ Novo plano</button>
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Plano</th><th>Categoria</th><th>Região</th><th>Subtítulo</th><th>Status</th><th>Ação</th></tr></thead>
+      <thead><tr><th>Plano</th><th>Categoria</th><th>Região</th><th>Subtítulo</th><th>Ordem</th><th>Status</th><th>Ações</th></tr></thead>
       <tbody id="plans-body"></tbody>
     </table></div>
   </section>
 
   <section id="tab-prices" hidden>
     <div class="section-head">
-      <div><h2>Valores dos pacotes</h2><p>Altere a mensalidade de cada faixa FIPE.</p></div>
-      <input id="price-filter" placeholder="Filtrar por plano, categoria ou região" style="max-width:360px">
+      <div><h2>Valores dos pacotes</h2><p>Crie, altere e exclua faixas FIPE e mensalidades.</p></div>
+      <button id="new-price-button" class="primary" type="button">+ Nova faixa de valor</button>
     </div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Plano</th><th>Categoria</th><th>Região</th><th>Faixa FIPE</th><th>Mensalidade</th></tr></thead>
+    <div class="filter-grid">
+      <label>Pesquisar<input id="price-filter" placeholder="Plano, categoria ou região"></label>
+      <label>Plano<select id="price-plan-filter"><option value="">Todos os planos</option></select></label>
+    </div>
+    <div class="table-wrap" style="margin-top:16px"><table>
+      <thead><tr><th>Plano</th><th>Categoria</th><th>Região</th><th>Faixa FIPE</th><th>Mensalidade</th><th>Ações</th></tr></thead>
       <tbody id="prices-body"></tbody>
     </table></div>
   </section>
 
   <section id="tab-coverages" hidden>
     <div class="section-head">
-      <div><h2>Coberturas e serviços opcionais</h2><p>Defina o que está incluído, não incluído ou disponível como adicional.</p></div>
-      <button id="show-add-coverage" class="primary" type="button">+ Adicionar cobertura</button>
+      <div><h2>Coberturas e serviços opcionais</h2><p>Crie, edite e exclua coberturas, definindo se são incluídas, não incluídas ou opcionais.</p></div>
+      <button id="new-coverage-button" class="primary" type="button">+ Nova cobertura</button>
     </div>
-
-    <div id="coverage-create-card" class="card" hidden>
-      <h3 style="margin-top:0;color:#080f63">Nova cobertura ou serviço opcional</h3>
-      <div class="form-grid">
-        <label>Plano<select id="coverage-create-plan"></select></label>
-        <label>Classificação<select id="coverage-create-status"><option value="INCLUDED">Incluído</option><option value="NOT_INCLUDED">Não incluído</option><option value="OPTIONAL">Serviço opcional</option></select></label>
-        <label class="span-2">Nome<input id="coverage-create-name" maxlength="180"></label>
-        <label class="span-2">Condições ou limites<textarea id="coverage-create-detail" maxlength="240" rows="3"></textarea></label>
-        <label>Mensalidade do opcional<input id="coverage-create-price" inputmode="decimal" placeholder="0,00"></label>
-        <label>Ordem de exibição<input id="coverage-create-order" type="number" min="0" value="100"></label>
-      </div>
-      <div class="actions"><button id="create-coverage" class="primary" type="button">Salvar cobertura</button><button id="cancel-create-coverage" class="outline" type="button">Cancelar</button></div>
-    </div>
-
-    <div class="filter-grid" style="margin-top:16px">
+    <div class="filter-grid">
       <label>Plano<select id="coverage-plan-filter"><option value="">Todos os planos</option></select></label>
       <label>Classificação<select id="coverage-status-filter"><option value="">Todas</option><option value="INCLUDED">Incluído</option><option value="NOT_INCLUDED">Não incluído</option><option value="OPTIONAL">Serviço opcional</option></select></label>
       <label>Pesquisar<input id="coverage-text-filter" placeholder="Nome ou detalhe"></label>
     </div>
-
     <div class="table-wrap" style="margin-top:16px"><table>
       <thead><tr><th>Plano</th><th>Cobertura/serviço</th><th>Classificação</th><th>Detalhe</th><th>Mensalidade</th><th>Ordem</th><th>Ações</th></tr></thead>
       <tbody id="coverages-body"></tbody>
     </table></div>
+  </section>
 
-    <div id="coverage-editor" class="card" hidden style="margin-top:18px">
-      <div class="section-head" style="margin-top:0"><div><h2>Editar cobertura</h2><p id="coverage-editor-plan"></p></div><button id="close-coverage-editor" class="outline" type="button">Fechar</button></div>
-      <input id="coverage-editor-id" type="hidden">
-      <div class="form-grid">
-        <label class="span-2">Nome<input id="coverage-editor-name" maxlength="180"></label>
-        <label>Classificação<select id="coverage-editor-status"><option value="INCLUDED">Incluído</option><option value="NOT_INCLUDED">Não incluído</option><option value="OPTIONAL">Serviço opcional</option></select></label>
-        <label>Mensalidade do opcional<input id="coverage-editor-price" inputmode="decimal"></label>
-        <label class="span-2">Condições ou limites<textarea id="coverage-editor-detail" maxlength="240" rows="3"></textarea></label>
-        <label>Ordem de exibição<input id="coverage-editor-order" type="number" min="0"></label>
-      </div>
-      <p class="helper">Ao selecionar “Incluído” ou “Não incluído”, o valor mensal do opcional é removido. Alterar o nome modifica essa cobertura nos planos que utilizam o mesmo cadastro.</p>
-      <div class="actions"><button id="save-coverage" class="primary" type="button">Salvar alterações</button></div>
+  <section id="tab-settings" hidden>
+    <div class="section-head"><div><h2>Destinos de envio</h2><p>Defina o e-mail e o WhatsApp usados para compartilhar as cotações e os registros do Retrato NH com a equipe.</p></div></div>
+    <div class="card settings-card">
+      <div class="settings-row"><span>E-mail da equipe</span><strong id="settings-team-email">Não configurado</strong></div>
+      <div class="settings-row"><span>WhatsApp da equipe</span><strong id="settings-team-whatsapp">Não configurado</strong></div>
+      <div class="settings-row"><span>Última alteração</span><strong id="settings-updated-at">—</strong></div>
+      <button class="primary" type="button" data-open-settings>Alterar destinos de envio</button>
     </div>
   </section>
 
   <section id="tab-audit" hidden>
-    <div class="section-head"><div><h2>Histórico de alterações</h2><p>Registro das últimas mudanças feitas no catálogo.</p></div></div>
+    <div class="section-head">
+      <div><h2>Auditoria completa</h2><p>Histórico completo das ações administrativas, incluindo catálogo, consultores, análises e configurações.</p></div>
+      <input id="audit-filter" placeholder="Filtrar por tipo, item ou administrador" style="max-width:360px">
+    </div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Data</th><th>Item</th><th>Antes</th><th>Depois</th><th>Alterado por</th></tr></thead>
+      <thead><tr><th>Data</th><th>Tipo</th><th>Ação</th><th>Identificador</th><th>Antes</th><th>Depois</th><th>Administrador</th></tr></thead>
       <tbody id="audit-body"></tbody>
     </table></div>
   </section>
 </main>
-<script src="/admin/admin.js"></script>
+
+<dialog id="confirm-dialog" class="admin-dialog">
+  <form method="dialog" class="dialog-card">
+    <div class="dialog-head"><div><span class="eyebrow" style="color:#080f63">CONFIRMAÇÃO</span><h2 id="confirm-title">Confirmar ação</h2></div><button class="dialog-close" value="cancel" aria-label="Fechar">×</button></div>
+    <p id="confirm-text" class="muted"></p>
+    <div class="actions dialog-actions"><button class="outline" value="cancel">Cancelar</button><button id="confirm-action" class="danger" value="default">Confirmar</button></div>
+  </form>
+</dialog>
+
+<dialog id="consultant-dialog" class="admin-dialog">
+  <form id="consultant-form" class="dialog-card">
+    <div class="dialog-head"><div><span class="eyebrow" style="color:#080f63">CONSULTOR</span><h2 id="consultant-dialog-title">Cadastrar consultor</h2></div><button class="dialog-close" type="button" data-close-dialog="consultant-dialog">×</button></div>
+    <input id="consultant-id" type="hidden">
+    <label>Nome completo<input id="consultant-name" maxlength="140" required></label>
+    <div id="consultant-active-wrap" class="form-check form-switch" hidden><input id="consultant-active" class="form-check-input" type="checkbox"><label class="form-check-label" for="consultant-active">Consultor ativo</label></div>
+    <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="consultant-dialog">Cancelar</button><button class="primary" type="submit">Salvar</button></div>
+  </form>
+</dialog>
+
+<dialog id="plan-dialog" class="admin-dialog">
+  <form id="plan-form" class="dialog-card">
+    <div class="dialog-head"><div><span class="eyebrow" style="color:#080f63">PLANO OU PACOTE</span><h2 id="plan-dialog-title">Novo plano</h2></div><button class="dialog-close" type="button" data-close-dialog="plan-dialog">×</button></div>
+    <input id="plan-id" type="hidden">
+    <div class="form-grid">
+      <label class="span-2">Nome<input id="plan-name" maxlength="120" required></label>
+      <label>Categoria<select id="plan-category" required></select></label>
+      <label>Região<select id="plan-region" required><option value="NATIONAL">Nacional</option><option value="NORTHEAST">Nordeste</option><option value="CAPITAL">Capital</option></select></label>
+      <label class="span-2">Subtítulo<input id="plan-subtitle" maxlength="180"></label>
+      <label>Ordem de exibição<input id="plan-order" type="number" min="0" value="100" required></label>
+      <label>Status<select id="plan-active"><option value="true">Ativo</option><option value="false">Inativo</option></select></label>
+    </div>
+    <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="plan-dialog">Cancelar</button><button class="primary" type="submit">Salvar plano</button></div>
+  </form>
+</dialog>
+
+<dialog id="price-dialog" class="admin-dialog">
+  <form id="price-form" class="dialog-card">
+    <div class="dialog-head"><div><span class="eyebrow" style="color:#080f63">FAIXA FIPE</span><h2 id="price-dialog-title">Nova faixa de valor</h2></div><button class="dialog-close" type="button" data-close-dialog="price-dialog">×</button></div>
+    <input id="price-id" type="hidden">
+    <div class="form-grid">
+      <label class="span-2">Plano<select id="price-plan" required></select></label>
+      <label>Valor FIPE mínimo<input id="price-min" inputmode="decimal" required></label>
+      <label>Valor FIPE máximo<input id="price-max" inputmode="decimal" required></label>
+      <label class="span-2">Mensalidade<input id="price-monthly" inputmode="decimal" required></label>
+    </div>
+    <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="price-dialog">Cancelar</button><button class="primary" type="submit">Salvar faixa</button></div>
+  </form>
+</dialog>
+
+<dialog id="coverage-dialog" class="admin-dialog">
+  <form id="coverage-form" class="dialog-card">
+    <div class="dialog-head"><div><span class="eyebrow" style="color:#080f63">COBERTURA OU OPCIONAL</span><h2 id="coverage-dialog-title">Nova cobertura</h2></div><button class="dialog-close" type="button" data-close-dialog="coverage-dialog">×</button></div>
+    <input id="coverage-id" type="hidden">
+    <div class="form-grid">
+      <label class="span-2">Plano<select id="coverage-plan" required></select></label>
+      <label class="span-2">Nome<input id="coverage-name" maxlength="180" required></label>
+      <label>Classificação<select id="coverage-status" required><option value="INCLUDED">Incluído</option><option value="NOT_INCLUDED">Não incluído</option><option value="OPTIONAL">Serviço opcional</option></select></label>
+      <label>Ordem de exibição<input id="coverage-order" type="number" min="0" value="100" required></label>
+      <label class="span-2">Condições ou limites<textarea id="coverage-detail" maxlength="240" rows="4"></textarea></label>
+      <label class="span-2">Mensalidade do opcional<input id="coverage-price" inputmode="decimal" placeholder="0,00"></label>
+    </div>
+    <p class="helper">O valor mensal é obrigatório somente quando a classificação for “Serviço opcional”.</p>
+    <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="coverage-dialog">Cancelar</button><button class="primary" type="submit">Salvar cobertura</button></div>
+  </form>
+</dialog>
+
+<dialog id="quote-dialog" class="admin-dialog wide-dialog">
+  <form id="quote-analysis-form" class="dialog-card">
+    <div class="dialog-head"><div><span class="eyebrow" style="color:#080f63">ANÁLISE DE COTAÇÃO</span><h2 id="quote-dialog-title">Cotação</h2></div><button class="dialog-close" type="button" data-close-dialog="quote-dialog">×</button></div>
+    <input id="quote-analysis-id" type="hidden">
+    <div id="quote-detail-grid" class="detail-grid"></div>
+    <div class="form-grid" style="margin-top:18px">
+      <label>Status<select id="quote-analysis-status"><option value="CREATED">Pendente</option><option value="UNDER_REVIEW">Em análise</option><option value="ACCEPTED">Aceita</option><option value="DECLINED">Recusada</option><option value="CANCELLED">Cancelada</option></select></label>
+      <label class="span-2">Observação administrativa<textarea id="quote-analysis-note" maxlength="1200" rows="4" placeholder="Registre a análise, pendências ou decisão."></textarea></label>
+    </div>
+    <div id="quote-links" class="actions"></div>
+    <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="quote-dialog">Fechar</button><button class="primary" type="submit">Salvar análise</button></div>
+  </form>
+</dialog>
+
+<dialog id="inspection-dialog" class="admin-dialog wide-dialog">
+  <form id="inspection-analysis-form" class="dialog-card">
+    <div class="dialog-head"><div><span class="eyebrow" style="color:#080f63">ANÁLISE DO RETRATO NH</span><h2 id="inspection-dialog-title">Retrato NH</h2></div><button class="dialog-close" type="button" data-close-dialog="inspection-dialog">×</button></div>
+    <input id="inspection-analysis-id" type="hidden">
+    <div id="inspection-detail-grid" class="detail-grid"></div>
+    <div class="form-grid" style="margin-top:18px">
+      <label>Status<select id="inspection-analysis-status"><option value="CREATED">Pendente</option><option value="UNDER_REVIEW">Em análise</option><option value="COMPLETED">Material enviado</option><option value="APPROVED">Aprovada</option><option value="REJECTED">Reprovada</option><option value="CANCELLED">Cancelada</option><option value="EXPIRED">Expirada</option></select></label>
+      <label class="span-2">Observação administrativa<textarea id="inspection-analysis-note" maxlength="1200" rows="4" placeholder="Registre a análise, pendências ou decisão."></textarea></label>
+    </div>
+    <div id="inspection-links" class="actions"></div>
+    <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="inspection-dialog">Fechar</button><button class="primary" type="submit">Salvar análise</button></div>
+  </form>
+</dialog>
+
+<dialog id="settings-dialog" class="admin-dialog">
+  <form id="settings-form" class="dialog-card">
+    <div class="dialog-head"><div><span class="eyebrow" style="color:#080f63">DESTINOS DE ENVIO</span><h2>Alterar comunicação da equipe</h2></div><button class="dialog-close" type="button" data-close-dialog="settings-dialog">×</button></div>
+    <label>E-mail que receberá as cotações<input id="settings-email-input" type="email" maxlength="180" placeholder="comercial@empresa.com.br"></label>
+    <label style="margin-top:14px">WhatsApp da equipe<input id="settings-whatsapp-input" inputmode="numeric" maxlength="15" placeholder="5582999999999"></label>
+    <p class="helper">Informe o WhatsApp somente com números, incluindo DDI e DDD.</p>
+    <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="settings-dialog">Cancelar</button><button class="primary" type="submit">Salvar destinos</button></div>
+  </form>
+</dialog>
+
+<script src="/admin/admin.js?v=20260804-self-service"></script>
 </body>
 </html>

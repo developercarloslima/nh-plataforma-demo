@@ -86,7 +86,7 @@ class QuotationTest {
     @Test
     void shouldStoreZeroKilometerInformation() {
         Consultant consultant = Consultant.create("Consultor", "TEST");
-        Quotation quotation = Quotation.create(
+        Quotation quotation = Quotation.createForConsultant(
                 "NH-2026-TESTE0KM",
                 consultant,
                 "Cliente",
@@ -111,7 +111,7 @@ class QuotationTest {
 
     private Quotation quotationWithBaseValue(String baseValue) {
         Consultant consultant = Consultant.create("Consultor", "TEST");
-        return Quotation.create(
+        return Quotation.createForConsultant(
                 "NH-2026-TESTE001",
                 consultant,
                 "Cliente",

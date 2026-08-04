@@ -50,6 +50,11 @@ public class PlanCoverage {
         return item;
     }
 
+    public void replaceCoverage(Coverage coverage) {
+        if (coverage == null) throw new IllegalArgumentException("Cobertura inválida.");
+        this.coverage = coverage;
+    }
+
     public void update(CoverageStatus status, String detail, BigDecimal monthlyPrice, Integer sortOrder) {
         if (status == null) {
             throw new IllegalArgumentException("Defina se a cobertura está incluída, não incluída ou é opcional.");

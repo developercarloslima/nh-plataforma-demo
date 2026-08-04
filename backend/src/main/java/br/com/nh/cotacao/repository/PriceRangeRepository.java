@@ -16,6 +16,14 @@ public interface PriceRangeRepository extends JpaRepository<PriceRange, Long> {
             BigDecimal fipeForMax
     );
 
+    boolean existsByPlan_IdAndMinValueLessThanEqualAndMaxValueGreaterThanEqual(
+            Long planId,
+            BigDecimal maxValue,
+            BigDecimal minValue
+    );
+
+    List<PriceRange> findByPlan_Id(Long planId);
+
     @EntityGraph(attributePaths = {"plan", "plan.category"})
     @Query("select p from PriceRange p order by p.plan.name asc, p.minValue asc")
     List<PriceRange> findAllForAdmin();

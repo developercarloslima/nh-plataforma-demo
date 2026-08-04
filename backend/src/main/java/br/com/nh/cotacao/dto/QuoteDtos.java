@@ -1,6 +1,7 @@
 package br.com.nh.cotacao.dto;
 
 import br.com.nh.cotacao.entity.CoverageStatus;
+import br.com.nh.cotacao.entity.QuoteOrigin;
 import br.com.nh.cotacao.entity.QuoteStatus;
 import br.com.nh.cotacao.entity.Region;
 import jakarta.validation.constraints.*;
@@ -70,6 +71,25 @@ public final class QuoteDtos {
         }
     }
 
+    public record CreatePublicQuoteRequest(
+            @NotBlank @Size(max = 120) String customerName,
+            @NotBlank @Size(max = 30) String whatsapp,
+            @NotBlank @Pattern(regexp = "^[0-9.\\-]{11,14}$", message = "CPF inválido") String cpf,
+            @NotBlank @Pattern(regexp = "^[A-Za-z0-9-]{7,10}$", message = "Placa inválida") String plate,
+            @NotBlank @Size(max = 120) String model,
+            @NotNull @Min(1950) @Max(2100) Integer manufactureYear,
+            @NotNull Boolean zeroKm,
+            @NotNull @DecimalMin("0.01") BigDecimal fipeValue,
+            @NotBlank String categoryCode,
+            @NotNull Region region,
+            @NotBlank String selectedPlanCode,
+            @Size(max = 20) List<@NotBlank String> selectedOptionalCodes
+    ) {
+        public CreatePublicQuoteRequest {
+            selectedOptionalCodes = selectedOptionalCodes == null ? List.of() : List.copyOf(selectedOptionalCodes);
+        }
+    }
+
     public record SelectedOptionalResponse(
             String code,
             String name,
@@ -90,9 +110,11 @@ public final class QuoteDtos {
     public record QuoteResponse(
             UUID id,
             String quoteNumber,
+            QuoteOrigin origin,
             UUID consultantId,
             String consultantName,
             String customerName,
+            String maskedCpf,
             String whatsapp,
             String plate,
             String model,
@@ -120,7 +142,9 @@ public final class QuoteDtos {
             OffsetDateTime inspectionCompletedAt,
             List<InspectionPhotoResponse> inspectionPhotos,
             String teamWhatsappUrl,
-            String clientWhatsappUrl
+            String clientWhatsappUrl,
+            String inspectionUrl,
+            String selfServiceWhatsappUrl
     ) {
     }
 

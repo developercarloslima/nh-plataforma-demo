@@ -27,13 +27,28 @@ public class PriceRange {
     protected PriceRange() {
     }
 
+    public static PriceRange create(Plan plan, BigDecimal minValue, BigDecimal maxValue, BigDecimal monthlyPrice) {
+        PriceRange range = new PriceRange();
+        range.plan = plan;
+        range.update(minValue, maxValue, monthlyPrice);
+        return range;
+    }
+
     public Long getId() { return id; }
     public Plan getPlan() { return plan; }
     public BigDecimal getMinValue() { return minValue; }
     public BigDecimal getMaxValue() { return maxValue; }
     public BigDecimal getMonthlyPrice() { return monthlyPrice; }
     public void updateMonthlyPrice(BigDecimal monthlyPrice) {
+        update(this.minValue, this.maxValue, monthlyPrice);
+    }
+
+    public void update(BigDecimal minValue, BigDecimal maxValue, BigDecimal monthlyPrice) {
+        if (minValue == null || minValue.signum() < 0) throw new IllegalArgumentException("Valor FIPE mínimo inválido.");
+        if (maxValue == null || maxValue.compareTo(minValue) < 0) throw new IllegalArgumentException("Valor FIPE máximo inválido.");
         if (monthlyPrice == null || monthlyPrice.signum() < 0) throw new IllegalArgumentException("Valor mensal inválido.");
+        this.minValue = minValue;
+        this.maxValue = maxValue;
         this.monthlyPrice = monthlyPrice;
     }
 }

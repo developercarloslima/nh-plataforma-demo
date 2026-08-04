@@ -17,6 +17,8 @@ public interface PlanRepository extends JpaRepository<Plan, Long> {
     @EntityGraph(attributePaths = {"category", "coverages", "coverages.coverage"})
     Optional<Plan> findByCodeAndActiveTrue(String code);
 
+    boolean existsByCode(String code);
+
     @EntityGraph(attributePaths = {"category"})
     @Query("select p from Plan p order by p.category.name asc, p.region asc, p.displayOrder asc")
     List<Plan> findAllForAdmin();

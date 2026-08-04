@@ -37,6 +37,7 @@ app:
   public-api-url: ${PUBLIC_API_URL:http://localhost:8080}
   public-web-url: ${PUBLIC_WEB_URL:http://localhost:3000}
   team-whatsapp-number: ${TEAM_WHATSAPP_NUMBER:}
+  team-email: ${TEAM_EMAIL:}
   auth:
     token-secret: ${AUTH_TOKEN_SECRET:troque-esta-chave-local-com-pelo-menos-32-caracteres}
     token-hours: ${AUTH_TOKEN_HOURS:12}

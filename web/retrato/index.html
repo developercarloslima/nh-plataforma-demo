@@ -1,7 +1,126 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#080f63"><title>Retrato NH | Vistoria Digital</title><link rel="icon" href="/assets/favicon-nh.png"><link rel="stylesheet" href="/shared/portal.css"></head><body>
-<header class="portal-header"><a class="portal-brand" href="/"><img src="/assets/logo-nh-simbolo.png" alt="Novo Horizonte"><span><strong>Retrato NH</strong><small>Vistoria digital</small></span></a></header>
-<main class="shell" style="max-width:900px"><section class="hero-panel"><span class="eyebrow">VISTORIA DIGITAL</span><h1 id="title">Carregando solicitação...</h1><p id="subtitle">Aguarde enquanto validamos o link.</p></section><div id="message"></div>
-<section id="guideline-card" class="card" hidden style="margin-top:22px"><div class="steps"><span class="step active">1. Diretrizes</span><span class="step">2. Arquivos</span><span class="step">3. Envio</span></div><div class="guidelines"><h3>Antes de começar</h3><ul><li>Posicione o veículo em local aberto, seguro e bem iluminado.</li><li>Limpe a lente da câmera e mantenha as imagens nítidas.</li><li>Não use fotos antigas, capturas de tela ou arquivos editados.</li><li>Mostre o veículo por completo, sem cortar as extremidades.</li><li>No vídeo, caminhe devagar ao redor do veículo e mostre placa, painel e estado geral.</li></ul></div><div class="actions"><button id="start" class="primary">Vamos começar →</button></div></section>
-<section id="upload-card" class="card" hidden style="margin-top:22px"><div class="steps"><span class="step">1. Diretrizes</span><span class="step active">2. Arquivos</span><span class="step">3. Envio</span></div><h2 id="upload-heading">Envie os arquivos</h2><p id="upload-note" style="color:#687087"></p><form id="upload-form"><div id="photos" class="upload-grid"></div><div class="upload-item" style="margin-top:14px"><strong>Vídeo da vistoria *</strong><small>Grave um vídeo contínuo, com boa iluminação, mostrando o veículo conforme as diretrizes.</small><input id="video" name="video" type="file" accept="video/mp4,video/quicktime,video/webm,video/3gpp" capture="environment" required></div><div class="actions"><button class="secondary" type="submit">Enviar vistoria com segurança</button></div></form></section>
-<section id="complete" class="card" hidden style="margin-top:22px"><div class="steps"><span class="step">1. Diretrizes</span><span class="step">2. Arquivos</span><span class="step active">3. Concluído</span></div><div class="completion"><div class="check">✓</div><h2>Retrato NH enviado com sucesso</h2><p>Os arquivos e o relatório foram armazenados para análise da equipe Novo Horizonte.</p><div class="actions" style="justify-content:center"><a id="report-link" class="button outline" target="_blank" rel="noreferrer">Abrir relatório</a></div></div></section></main>
-<script src="/retrato/retrato.js"></script></body></html>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#080f63">
+  <title>Retrato NH | Vistoria Digital</title>
+  <link rel="icon" href="/assets/favicon-nh.png">
+  <link rel="stylesheet" href="/shared/portal.css">
+</head>
+<body>
+<header class="portal-header">
+  <a class="portal-brand" href="/">
+    <img src="/assets/logo-nh-simbolo.png" alt="Novo Horizonte">
+    <span><strong>Retrato NH</strong><small>Vistoria digital</small></span>
+  </a>
+</header>
+
+<main class="shell" style="max-width:900px">
+  <section class="hero-panel">
+    <span class="eyebrow">VISTORIA DIGITAL</span>
+    <h1 id="title">Carregando solicitação...</h1>
+    <p id="subtitle">Aguarde enquanto validamos o link.</p>
+  </section>
+
+  <div id="message" aria-live="polite"></div>
+
+  <section id="guideline-card" class="card" hidden style="margin-top:22px">
+    <div class="steps">
+      <span class="step active">1. Diretrizes</span>
+      <span class="step">2. Câmera</span>
+      <span class="step">3. Envio</span>
+    </div>
+    <div class="guidelines">
+      <h3>Antes de começar</h3>
+      <ul>
+        <li>Posicione o veículo em local aberto, seguro e bem iluminado.</li>
+        <li>Limpe a lente da câmera e mantenha as imagens nítidas.</li>
+        <li>As fotos e o vídeo serão registrados diretamente pela câmera; não será possível selecionar arquivos da galeria.</li>
+        <li>Mostre o veículo por completo, sem cortar as extremidades.</li>
+        <li>No vídeo, caminhe devagar ao redor do veículo e mostre placa, painel e estado geral.</li>
+        <li>Quando solicitado, permita que o navegador use a câmera e o microfone.</li>
+      </ul>
+    </div>
+    <div class="actions">
+      <button id="start" class="primary" type="button">Vamos começar →</button>
+    </div>
+  </section>
+
+  <section id="upload-card" class="card" hidden style="margin-top:22px">
+    <div class="steps">
+      <span class="step">1. Diretrizes</span>
+      <span class="step active">2. Câmera</span>
+      <span class="step">3. Envio</span>
+    </div>
+    <h2 id="upload-heading">Registre os arquivos</h2>
+    <p id="upload-note" class="muted"></p>
+
+    <form id="upload-form">
+      <div id="photos" class="upload-grid"></div>
+
+      <article class="upload-item camera-upload-item video-capture-card" style="margin-top:14px">
+        <strong>Vídeo da vistoria *</strong>
+        <small>Grave um vídeo contínuo, com boa iluminação, mostrando o veículo conforme as diretrizes.</small>
+        <video id="video-preview" class="capture-preview video-preview" controls playsinline hidden></video>
+        <p id="video-status" class="capture-status">Vídeo ainda não gravado.</p>
+        <button id="record-video" class="outline camera-action" type="button">Abrir câmera para gravar</button>
+      </article>
+
+      <p id="capture-summary" class="capture-summary" aria-live="polite">Fotos e vídeo pendentes.</p>
+
+      <div class="actions">
+        <button id="submit-inspection" class="secondary" type="submit">Enviar vistoria com segurança</button>
+      </div>
+    </form>
+  </section>
+
+  <section id="complete" class="card" hidden style="margin-top:22px">
+    <div class="steps">
+      <span class="step">1. Diretrizes</span>
+      <span class="step">2. Câmera</span>
+      <span class="step active">3. Concluído</span>
+    </div>
+    <div class="completion">
+      <div class="check">✓</div>
+      <h2>Retrato NH enviado com sucesso</h2>
+      <p>Os arquivos e o relatório foram armazenados para análise da equipe Novo Horizonte.</p>
+      <div class="actions" style="justify-content:center">
+        <a id="report-link" class="button outline" target="_blank" rel="noreferrer">Abrir relatório</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<section id="camera-modal" class="camera-modal" hidden aria-modal="true" role="dialog" aria-labelledby="camera-title">
+  <div class="camera-panel">
+    <header class="camera-panel-head">
+      <div>
+        <span class="eyebrow">CÂMERA AO VIVO</span>
+        <h2 id="camera-title">Registrar imagem</h2>
+      </div>
+      <button id="close-camera" class="camera-close" type="button" aria-label="Fechar câmera">×</button>
+    </header>
+
+    <div class="camera-live-frame">
+      <video id="camera-preview" autoplay playsinline muted></video>
+      <canvas id="photo-canvas" hidden></canvas>
+      <div id="recording-indicator" class="recording-indicator" hidden>
+        <span></span> Gravando <strong id="recording-time">00:00</strong>
+      </div>
+    </div>
+
+    <p id="camera-instruction" class="camera-instruction"></p>
+
+    <div class="camera-controls">
+      <button id="capture-photo" class="primary" type="button" hidden>Capturar foto</button>
+      <button id="start-recording" class="primary" type="button" hidden>Iniciar gravação</button>
+      <button id="stop-recording" class="danger" type="button" hidden>Parar e usar vídeo</button>
+      <button id="cancel-camera" class="outline" type="button">Cancelar</button>
+    </div>
+  </div>
+</section>
+
+<script src="/retrato/retrato.js"></script>
+</body>
+</html>

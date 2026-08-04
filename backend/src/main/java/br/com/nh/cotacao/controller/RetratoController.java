@@ -37,6 +37,4 @@ public class RetratoController {
         return service.upload(token, photos, labels, video);
     }
 
-    @GetMapping("/api/admin/inspections")
-    public List<InspectionResponse> adminList() { return service.adminList(); }
 }

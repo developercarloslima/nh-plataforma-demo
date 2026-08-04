@@ -16,7 +16,10 @@ public interface QuotationRepository extends JpaRepository<Quotation, UUID> {
     @EntityGraph(attributePaths = {"selectedOptionals", "inspectionPhotos", "consultant"})
     List<Quotation> findTop300ByOrderByCreatedAtDesc();
 
-    @Override
     @EntityGraph(attributePaths = {"selectedOptionals", "inspectionPhotos", "consultant"})
+    List<Quotation> findAllByOrderByCreatedAtDesc();
+
+    @Override
+    @EntityGraph(attributePaths = {"selectedOptionals", "coverageSnapshots", "inspectionPhotos", "consultant"})
     Optional<Quotation> findById(UUID id);
 }

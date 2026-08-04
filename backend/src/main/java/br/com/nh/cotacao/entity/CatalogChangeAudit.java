@@ -15,8 +15,11 @@ public class CatalogChangeAudit {
     @Column(name = "item_type", nullable = false, length = 30)
     private String itemType;
 
-    @Column(name = "item_id", nullable = false)
+    @Column(name = "item_id")
     private Long itemId;
+
+    @Column(name = "item_key", length = 120)
+    private String itemKey;
 
     @Column(nullable = false, length = 260)
     private String description;
@@ -27,10 +30,10 @@ public class CatalogChangeAudit {
     @Column(name = "new_value", precision = 14, scale = 2)
     private BigDecimal newValue;
 
-    @Column(name = "old_text", length = 500)
+    @Column(name = "old_text", length = 2000)
     private String oldText;
 
-    @Column(name = "new_text", length = 500)
+    @Column(name = "new_text", length = 2000)
     private String newText;
 
     @Column(name = "changed_by", nullable = false, length = 160)
@@ -49,7 +52,7 @@ public class CatalogChangeAudit {
             BigDecimal newValue,
             String changedBy
     ) {
-        CatalogChangeAudit audit = base(type, id, description, changedBy);
+        CatalogChangeAudit audit = base(type, id, id == null ? null : String.valueOf(id), description, changedBy);
         audit.oldValue = oldValue;
         audit.newValue = newValue;
         return audit;
@@ -63,17 +66,36 @@ public class CatalogChangeAudit {
             String newText,
             String changedBy
     ) {
-        CatalogChangeAudit audit = base(type, id, description, changedBy);
+        return createText(type, id, id == null ? null : String.valueOf(id), description, oldText, newText, changedBy);
+    }
+
+    public static CatalogChangeAudit createText(
+            String type,
+            Long id,
+            String itemKey,
+            String description,
+            String oldText,
+            String newText,
+            String changedBy
+    ) {
+        CatalogChangeAudit audit = base(type, id, itemKey, description, changedBy);
         audit.oldText = truncate(oldText);
         audit.newText = truncate(newText);
         return audit;
     }
 
-    private static CatalogChangeAudit base(String type, Long id, String description, String changedBy) {
+    private static CatalogChangeAudit base(
+            String type,
+            Long id,
+            String itemKey,
+            String description,
+            String changedBy
+    ) {
         CatalogChangeAudit audit = new CatalogChangeAudit();
         audit.itemType = type;
         audit.itemId = id;
-        audit.description = description;
+        audit.itemKey = truncateKey(itemKey);
+        audit.description = description == null ? "Alteração administrativa" : description.substring(0, Math.min(260, description.length()));
         audit.changedBy = changedBy;
         audit.changedAt = OffsetDateTime.now();
         return audit;
@@ -81,12 +103,18 @@ public class CatalogChangeAudit {
 
     private static String truncate(String value) {
         if (value == null) return null;
-        return value.length() <= 500 ? value : value.substring(0, 500);
+        return value.length() <= 2000 ? value : value.substring(0, 2000);
+    }
+
+    private static String truncateKey(String value) {
+        if (value == null) return null;
+        return value.length() <= 120 ? value : value.substring(0, 120);
     }
 
     public Long getId() { return id; }
     public String getItemType() { return itemType; }
     public Long getItemId() { return itemId; }
+    public String getItemKey() { return itemKey; }
     public String getDescription() { return description; }
     public BigDecimal getOldValue() { return oldValue; }
     public BigDecimal getNewValue() { return newValue; }

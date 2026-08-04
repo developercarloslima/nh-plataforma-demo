@@ -6,5 +6,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 
 public interface CatalogChangeAuditRepository extends JpaRepository<CatalogChangeAudit, Long> {
-    List<CatalogChangeAudit> findTop100ByOrderByChangedAtDesc();
+    List<CatalogChangeAudit> findAllByOrderByChangedAtDesc();
 }
