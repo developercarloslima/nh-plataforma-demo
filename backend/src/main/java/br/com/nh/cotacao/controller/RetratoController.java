@@ -32,9 +32,11 @@ public class RetratoController {
             @PathVariable String token,
             @RequestParam(value = "photos", required = false) List<MultipartFile> photos,
             @RequestParam(value = "labels", required = false) List<String> labels,
-            @RequestParam("video") MultipartFile video
+            @RequestParam("video") MultipartFile video,
+            @RequestParam(value = "residenceAddress", required = false) String residenceAddress,
+            @RequestParam(value = "signature", required = false) MultipartFile signature
     ) {
-        return service.upload(token, photos, labels, video);
+        return service.upload(token, photos, labels, video, residenceAddress, signature);
     }
 
 }

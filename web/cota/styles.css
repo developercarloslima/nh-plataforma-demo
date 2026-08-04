@@ -29,3 +29,8 @@ body.self-service-mode #customer-cpf-field{display:grid!important}
 .self-service-note{margin-top:12px;color:var(--muted);font-size:.9rem}
 .inspection-actions .direct-inspection-link{background:#fff;border:1px solid #cfd5e2;color:var(--navy)}
 @media(max-width:620px){body.self-service-mode #back-link{display:inline-flex}.topbar{height:auto;min-height:78px;padding-top:10px;padding-bottom:10px;gap:10px}.brand div{max-width:180px}}
+
+
+/* Campo de placa condicionado ao veículo 0 km. */
+.field-help{display:block;margin-top:6px;color:#6b7280;font-size:.76rem;font-weight:650;line-height:1.35}
+#plate:disabled{background:#edf0f5;color:#7b8295;cursor:not-allowed;border-color:#d8dce6}

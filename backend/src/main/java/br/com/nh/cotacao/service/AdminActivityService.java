@@ -17,6 +17,7 @@ import java.util.UUID;
 
 @Service
 public class AdminActivityService {
+    private static final String DEFAULT_PUBLIC_WEB_URL = "https://aforma-demo.vercel.app";
     private final QuotationRepository quotationRepository;
     private final InspectionRequestRepository inspectionRepository;
     private final CatalogChangeAuditRepository auditRepository;
@@ -30,14 +31,14 @@ public class AdminActivityService {
             CatalogChangeAuditRepository auditRepository,
             CommunicationSettingsService settingsService,
             @Value("${app.public-api-url:http://localhost:8080}") String publicApiUrl,
-            @Value("${app.public-web-url:http://localhost:3000}") String publicWebUrl
+            @Value("${app.public-web-url:https://aforma-demo.vercel.app}") String publicWebUrl
     ) {
         this.quotationRepository = quotationRepository;
         this.inspectionRepository = inspectionRepository;
         this.auditRepository = auditRepository;
         this.settingsService = settingsService;
         this.publicApiUrl = stripTrailingSlash(publicApiUrl);
-        this.publicWebUrl = stripTrailingSlash(publicWebUrl);
+        this.publicWebUrl = normalizePublicWebUrl(publicWebUrl);
     }
 
     @Transactional(readOnly = true)
@@ -91,7 +92,7 @@ public class AdminActivityService {
                 + "\nCliente: " + item.getCustomerName()
                 + "\nOrigem: " + (item.getOrigin() == QuoteOrigin.SELF_SERVICE ? "Cliente pelo site" : "Consultor")
                 + "\nResponsável: " + item.getConsultantName()
-                + "\nPlaca: " + item.getPlate()
+                + "\nPlaca: " + plateLabel(item.getPlate(), item.isZeroKm())
                 + "\nPlano: " + item.getSelectedPlanName()
                 + "\nPDF: " + pdfUrl;
         String subject = "Cotação " + item.getQuoteNumber() + " - Novo Horizonte";
@@ -113,17 +114,24 @@ public class AdminActivityService {
         String email = settingsService.teamEmail();
         String type = item.getRequestType() == InspectionRequestType.NEW_INSPECTION
                 ? "Nova vistoria" : "Atualização de boleto";
+        String plateLabel = plateLabel(item.getPlate(), item.getRequestType() == InspectionRequestType.NEW_INSPECTION);
+        String signatureUrl = item.getAssets().stream()
+                .filter(asset -> asset.getAssetType() == InspectionAssetType.SIGNATURE)
+                .map(InspectionAsset::getDriveFileUrl)
+                .filter(url -> url != null && !url.isBlank())
+                .findFirst()
+                .orElse(null);
         String message = "Retrato NH - " + type
                 + "\nAssociado: " + item.getAssociateName()
                 + "\nConsultor: " + item.getConsultantName()
-                + "\nPlaca: " + item.getPlate()
+                + "\nPlaca: " + plateLabel
                 + (item.getDriveFolderUrl() == null ? "\nLink: " + publicUrl : "\nDrive: " + item.getDriveFolderUrl())
                 + (item.getReportUrl() == null ? "" : "\nRelatório: " + item.getReportUrl());
-        String subject = "Retrato NH - " + item.getPlate();
+        String subject = "Retrato NH - " + plateLabel;
         return new AdminInspectionResponse(
                 item.getId(), item.getRequestType().name(), item.getAssociateName(), maskCpf(item.getCpf()),
-                item.getWhatsapp(), item.getPlate(), item.getConsultant() == null ? null : item.getConsultant().getId(),
-                item.getConsultantName(), item.getStatus(), item.getCreatedAt(), item.getExpiresAt(), item.getCompletedAt(),
+                item.getWhatsapp(), item.getPlate(), item.getResidenceAddress(), signatureUrl,
+                item.getConsultant() == null ? null : item.getConsultant().getId(), item.getConsultantName(), item.getStatus(), item.getCreatedAt(), item.getExpiresAt(), item.getCompletedAt(),
                 item.getAdminNote(), item.getReviewedAt(), publicUrl, item.getDriveFolderUrl(), item.getReportUrl(),
                 whatsappUrl(whatsapp, message), emailUrl(email, subject, message), item.getAssets().size()
         );
@@ -149,8 +157,19 @@ public class AdminActivityService {
                 + "&body=" + UriUtils.encode(body, StandardCharsets.UTF_8);
     }
 
+    private String plateLabel(String plate, boolean zeroKm) {
+        return plate == null || plate.isBlank() ? (zeroKm ? "Veículo 0 km — sem placa" : "Sem placa") : plate;
+    }
+
     private String value(String value) { return value == null || value.isBlank() ? "—" : value; }
     private String stripTrailingSlash(String value) { return value == null ? "" : value.replaceAll("/+$", ""); }
+    private String normalizePublicWebUrl(String value) {
+        String normalized = stripTrailingSlash(value);
+        if (normalized.isBlank() || normalized.matches("(?i)^https?://(localhost|127\\.0\\.0\\.1)(:\\d+)?$")) {
+            return DEFAULT_PUBLIC_WEB_URL;
+        }
+        return normalized;
+    }
     private String maskCpf(String cpf) {
         return cpf != null && cpf.length() == 11
                 ? "***." + cpf.substring(3, 6) + "." + cpf.substring(6, 9) + "-**"

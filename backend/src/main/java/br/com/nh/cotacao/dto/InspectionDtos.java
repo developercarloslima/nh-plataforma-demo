@@ -21,7 +21,7 @@ public final class InspectionDtos {
             @NotBlank @Size(max = 140) String associateName,
             @NotBlank @Pattern(regexp = "^[0-9.\\-]{11,14}$", message = "CPF inválido") String cpf,
             @Size(max = 30) String whatsapp,
-            @NotBlank @Pattern(regexp = "^[A-Za-z0-9-]{7,10}$", message = "Placa inválida") String plate
+            @Size(max = 10) String plate
     ) {}
 
     public record InspectionAssetResponse(
@@ -41,6 +41,7 @@ public final class InspectionDtos {
             String maskedCpf,
             String whatsapp,
             String plate,
+            String residenceAddress,
             UUID consultantId,
             String consultantName,
             InspectionRequestStatus status,

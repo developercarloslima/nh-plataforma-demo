@@ -55,11 +55,14 @@ public class RetratoPdfService {
             PdfPTable data = new PdfPTable(new float[]{1, 2, 1, 2});
             data.setWidthPercentage(100);
             addPair(data, "Associado", request.getAssociateName());
-            addPair(data, "Placa", request.getPlate());
+            addPair(data, "Placa", request.getPlate() == null || request.getPlate().isBlank() ? "Veículo 0 km — sem placa" : request.getPlate());
             addPair(data, "CPF", maskCpf(request.getCpf()));
             addPair(data, "Consultor", request.getConsultantName());
             addPair(data, "Tipo", request.getRequestType().name().equals("NEW_INSPECTION") ? "Nova vistoria" : "Atualização de boleto");
             addPair(data, "Criada em", request.getCreatedAt().format(DATE_TIME));
+            if (request.getResidenceAddress() != null && !request.getResidenceAddress().isBlank()) {
+                addFullWidthPair(data, "Endereço residencial", request.getResidenceAddress());
+            }
             document.add(data);
             document.add(Chunk.NEWLINE);
 
@@ -78,6 +81,9 @@ public class RetratoPdfService {
                 }
 
                 try {
+                    if (asset.getAssetType() == InspectionAssetType.SIGNATURE) {
+                        document.add(new Paragraph("Assinatura eletrônica do associado", new Font(Font.HELVETICA, 12, Font.BOLD, NAVY)));
+                    }
                     byte[] bytes = driveStorage.download(asset.getDriveFileId());
                     Image image = Image.getInstance(bytes);
                     image.scaleToFit(500, 300);
@@ -112,6 +118,21 @@ public class RetratoPdfService {
         labelCell.setBorderColor(Color.WHITE);
         table.addCell(labelCell);
         PdfPCell valueCell = new PdfPCell(new Phrase(value == null ? "—" : value, new Font(Font.HELVETICA, 9)));
+        valueCell.setPadding(7);
+        valueCell.setBorderColor(Color.WHITE);
+        table.addCell(valueCell);
+    }
+
+
+    private void addFullWidthPair(PdfPTable table, String label, String value) {
+        PdfPCell labelCell = new PdfPCell(new Phrase(label, new Font(Font.HELVETICA, 8, Font.BOLD, NAVY)));
+        labelCell.setBackgroundColor(LIGHT);
+        labelCell.setPadding(7);
+        labelCell.setBorderColor(Color.WHITE);
+        table.addCell(labelCell);
+
+        PdfPCell valueCell = new PdfPCell(new Phrase(value == null ? "—" : value, new Font(Font.HELVETICA, 9)));
+        valueCell.setColspan(3);
         valueCell.setPadding(7);
         valueCell.setBorderColor(Color.WHITE);
         table.addCell(valueCell);

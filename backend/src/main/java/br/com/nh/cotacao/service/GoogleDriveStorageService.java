@@ -107,7 +107,8 @@ public class GoogleDriveStorageService {
             return new DriveFolder(quotation.getDriveFolderId(), quotation.getDriveFolderUrl());
         }
         try {
-            String folderName = sanitizeName(quotation.getCustomerName() + " - " + quotation.getPlate());
+            String plateLabel = quotation.getPlate() == null || quotation.getPlate().isBlank() ? "0KM-SEM-PLACA" : quotation.getPlate();
+            String folderName = sanitizeName(quotation.getCustomerName() + " - " + plateLabel);
             com.google.api.services.drive.model.File metadata = new com.google.api.services.drive.model.File()
                     .setName(folderName)
                     .setMimeType(FOLDER_MIME_TYPE)

@@ -41,9 +41,9 @@ services:
           name: nh-plataforma-db-demo
           property: password
       - key: PUBLIC_WEB_URL
-        sync: false
+        value: https://aforma-demo.vercel.app
       - key: ALLOWED_ORIGINS
-        sync: false
+        value: https://aforma-demo.vercel.app,https://*.vercel.app
       - key: AUTH_TOKEN_SECRET
         generateValue: true
       - key: AUTH_TOKEN_HOURS

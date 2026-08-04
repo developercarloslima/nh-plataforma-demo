@@ -299,10 +299,10 @@ function openConsultantModal(id = '') {
 function renderQuotes() {
   const filter = $('quote-filter').value.trim().toLowerCase();
   $('quotes-body').innerHTML = quotes
-    .filter(item => `${item.consultantName} ${quoteOriginLabel(item.origin)} ${item.customerName} ${item.plate} ${item.quoteNumber}`.toLowerCase().includes(filter))
+    .filter(item => `${item.consultantName} ${quoteOriginLabel(item.origin)} ${item.customerName} ${item.plate || ""} ${item.quoteNumber}`.toLowerCase().includes(filter))
     .map(item => `<tr>
       <td><strong>${esc(item.quoteNumber)}</strong></td><td><strong>${esc(quoteOriginLabel(item.origin))}</strong><small class="table-subtitle">${esc(item.consultantName)}</small></td><td>${esc(item.customerName)}</td>
-      <td>${esc(item.plate)}</td><td>${esc(item.selectedPlanName)}</td><td>${brl.format(item.monthlyValue)}</td>
+      <td>${esc(item.plate || (item.zeroKm ? '0 km — sem placa' : '—'))}</td><td>${esc(item.selectedPlanName)}</td><td>${brl.format(item.monthlyValue)}</td>
       <td>${date(item.validUntil)}</td><td>${quoteBadge(item)}</td>
       <td><div class="row-actions"><button class="secondary small-button" data-quote-analyze="${item.id}" type="button">Analisar</button><a class="button outline small-button" href="${esc(item.pdfUrl)}" target="_blank" rel="noopener">PDF</a></div></td>
     </tr>`).join('') || emptyRow(9, 'Nenhuma cotação encontrada.');
@@ -312,9 +312,9 @@ function renderQuotes() {
 function renderInspections() {
   const filter = $('inspection-filter').value.trim().toLowerCase();
   $('inspections-body').innerHTML = inspections
-    .filter(item => `${item.consultantName} ${item.associateName} ${item.plate}`.toLowerCase().includes(filter))
+    .filter(item => `${item.consultantName} ${item.associateName} ${item.plate || ""}`.toLowerCase().includes(filter))
     .map(item => `<tr>
-      <td><strong>${esc(item.associateName)}</strong></td><td>${esc(item.consultantName)}</td><td>${esc(item.plate)}</td>
+      <td><strong>${esc(item.associateName)}</strong></td><td>${esc(item.consultantName)}</td><td>${esc(item.plate || '0 km — sem placa')}</td>
       <td>${item.requestType === 'NEW_INSPECTION' ? 'Nova vistoria' : 'Atualização de boleto'}</td><td>${item.assetCount}</td>
       <td>${inspectionBadge(item.status)}</td><td>${date(item.createdAt)}</td>
       <td><button class="secondary small-button" data-inspection-analyze="${item.id}" type="button">Analisar</button></td>
@@ -343,9 +343,13 @@ function openQuoteAnalysis(id) {
     ['Taxa única', brl.format(item.oneTimeFee || 0)], ['Emitida em', date(item.createdAt)], ['Válida até', date(item.validUntil)],
     ['Última análise', date(item.reviewedAt)]
   ]);
+  const currentInspectionUrl = item.inspectionUrl
+    ? (window.NH_URLS?.retratoUrl(item.inspectionUrl) || item.inspectionUrl)
+    : null;
   $('quote-links').innerHTML = linkButtons([
-    [item.pdfUrl, 'Abrir PDF'], [item.inspectionUrl, 'Abrir vistoria digital'], [item.driveFolderUrl, 'Abrir Drive'], [item.drivePdfUrl, 'PDF no Drive'],
-    [item.teamWhatsappUrl, 'Enviar por WhatsApp'], [item.teamEmailUrl, 'Enviar por e-mail']
+    [item.pdfUrl, 'Abrir PDF'], [currentInspectionUrl, 'Abrir vistoria digital'], [item.driveFolderUrl, 'Abrir Drive'], [item.drivePdfUrl, 'PDF no Drive'],
+    [window.NH_URLS?.replaceLinkInCommunicationUrl(item.teamWhatsappUrl, item.inspectionUrl, currentInspectionUrl) || item.teamWhatsappUrl, 'Enviar por WhatsApp'],
+    [window.NH_URLS?.replaceLinkInCommunicationUrl(item.teamEmailUrl, item.inspectionUrl, currentInspectionUrl) || item.teamEmailUrl, 'Enviar por e-mail']
   ]);
   openDialog('quote-dialog');
 }
@@ -354,19 +358,24 @@ function openInspectionAnalysis(id) {
   const item = inspections.find(value => value.id === id);
   if (!item) return;
   $('inspection-analysis-id').value = item.id;
-  $('inspection-dialog-title').textContent = `${item.plate} — ${item.associateName}`;
+  $('inspection-dialog-title').textContent = `${item.plate || '0 km — sem placa'} — ${item.associateName}`;
   $('inspection-analysis-status').value = item.status;
   $('inspection-analysis-note').value = item.adminNote || '';
   $('inspection-detail-grid').innerHTML = detailItems([
     ['Associado', item.associateName], ['CPF', item.maskedCpf], ['WhatsApp', formatPhone(item.whatsapp) || '—'],
-    ['Consultor', item.consultantName], ['Placa', item.plate],
+    ['Consultor', item.consultantName], ['Placa', item.plate || '0 km — sem placa'],
+    ['Endereço residencial', item.residenceAddress || '—'],
     ['Tipo', item.requestType === 'NEW_INSPECTION' ? 'Nova vistoria' : 'Atualização de boleto'],
     ['Arquivos enviados', item.assetCount], ['Criada em', date(item.createdAt)], ['Expira em', date(item.expiresAt)],
     ['Concluída em', date(item.completedAt)], ['Última análise', date(item.reviewedAt)]
   ]);
+  const currentPublicUrl = item.publicUrl
+    ? (window.NH_URLS?.retratoUrl(item.publicUrl) || item.publicUrl)
+    : null;
   $('inspection-links').innerHTML = linkButtons([
-    [item.publicUrl, 'Abrir link do associado'], [item.driveFolderUrl, 'Abrir Drive'], [item.reportUrl, 'Abrir relatório'],
-    [item.teamWhatsappUrl, 'Enviar por WhatsApp'], [item.teamEmailUrl, 'Enviar por e-mail']
+    [currentPublicUrl, 'Abrir link do associado'], [item.driveFolderUrl, 'Abrir Drive'], [item.reportUrl, 'Abrir relatório'], [item.signatureUrl, 'Abrir assinatura'],
+    [window.NH_URLS?.replaceLinkInCommunicationUrl(item.teamWhatsappUrl, item.publicUrl, currentPublicUrl) || item.teamWhatsappUrl, 'Enviar por WhatsApp'],
+    [window.NH_URLS?.replaceLinkInCommunicationUrl(item.teamEmailUrl, item.publicUrl, currentPublicUrl) || item.teamEmailUrl, 'Enviar por e-mail']
   ]);
   openDialog('inspection-dialog');
 }

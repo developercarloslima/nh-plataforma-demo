@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#080f63">
   <title>Retrato NH | Vistoria Digital</title>
   <link rel="icon" href="/assets/favicon-nh.png">
-  <link rel="stylesheet" href="/shared/portal.css">
+  <link rel="stylesheet" href="/shared/portal.css?v=20260804-retrato-cadastro">
 </head>
 <body>
 <header class="portal-header">
@@ -33,6 +33,21 @@
     </div>
     <div class="guidelines">
       <h3>Antes de começar</h3>
+      <p class="muted">Confira o guia correspondente ao seu veículo antes de abrir a câmera. Toque na imagem para ampliar.</p>
+      <div class="inspection-guide-grid">
+        <figure>
+          <a href="/assets/guia-vistoria-moto.png" target="_blank" rel="noreferrer">
+            <img src="/assets/guia-vistoria-moto.png" alt="Guia ilustrado para vistoria de motocicleta">
+          </a>
+          <figcaption>Motocicleta — sequência recomendada</figcaption>
+        </figure>
+        <figure>
+          <a href="/assets/guia-vistoria-carro.png" target="_blank" rel="noreferrer">
+            <img src="/assets/guia-vistoria-carro.png" alt="Guia ilustrado para vistoria de carro">
+          </a>
+          <figcaption>Carro — sequência recomendada</figcaption>
+        </figure>
+      </div>
       <ul>
         <li>Posicione o veículo em local aberto, seguro e bem iluminado.</li>
         <li>Limpe a lente da câmera e mantenha as imagens nítidas.</li>
@@ -66,6 +81,28 @@
         <p id="video-status" class="capture-status">Vídeo ainda não gravado.</p>
         <button id="record-video" class="outline camera-action" type="button">Abrir câmera para gravar</button>
       </article>
+
+      <section id="registration-fields" class="registration-fields" hidden>
+        <span class="eyebrow" style="color:#080f63">CONCLUSÃO DO CADASTRO</span>
+        <h3>Endereço e assinatura do associado</h3>
+        <p class="muted">Para venda nova, estes dados são obrigatórios antes do envio da vistoria.</p>
+
+        <label for="residence-address">Endereço completo de residência *</label>
+        <textarea id="residence-address" rows="4" maxlength="600" placeholder="Rua, número, complemento, bairro, cidade, estado e CEP"></textarea>
+        <small class="field-helper">Informe o endereço completo onde o associado reside.</small>
+
+        <div class="signature-block">
+          <div class="signature-heading">
+            <div>
+              <strong>Assinatura do associado *</strong>
+              <small>Assine com o dedo ou com a caneta do aparelho dentro do quadro.</small>
+            </div>
+            <button id="clear-signature" class="outline" type="button">Limpar assinatura</button>
+          </div>
+          <canvas id="signature-pad" width="900" height="260" tabindex="0" aria-label="Área para assinatura do associado"></canvas>
+          <p id="signature-status" class="capture-status">Assinatura pendente.</p>
+        </div>
+      </section>
 
       <p id="capture-summary" class="capture-summary" aria-live="polite">Fotos e vídeo pendentes.</p>
 
@@ -121,7 +158,7 @@
   </div>
 </section>
 
-<script src="/shared/config.js?v=20260804-render"></script>
-<script src="/retrato/retrato.js?v=20260804-render"></script>
+<script src="/shared/config.js?v=20260804-current-origin"></script>
+<script src="/retrato/retrato.js?v=20260804-retrato-cadastro"></script>
 </body>
 </html>

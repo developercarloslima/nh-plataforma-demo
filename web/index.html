@@ -19,7 +19,7 @@
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
     />
-    <link rel="stylesheet" href="style.css?v=20260804-2" />
+    <link rel="stylesheet" href="style.css?v=20260804-3" />
   </head>
   <body>
     <header class="site-header" id="inicio">
@@ -67,6 +67,10 @@
           <a href="boleto.html">2ª Via Boleto</a>
           <a href="escritorios.html">Escritórios</a>
           <a href="#contato">Contato</a>
+          <a class="collaborator-menu-link" href="/colaborador/">
+            <i class="fa-solid fa-user-shield" aria-hidden="true"></i>
+            Área do Colaborador
+          </a>
         </nav>
 
         <a
@@ -549,17 +553,32 @@
               />
             </label>
 
-            <label>
-              Placa
+            <fieldset class="cotacao-zero-km">
+              <legend>O veículo é 0 km?</legend>
+              <div class="cotacao-binary-options" role="radiogroup" aria-label="Veículo zero quilômetro">
+                <label class="cotacao-binary-option">
+                  <input type="radio" name="ZeroKm" value="true" />
+                  <span>Sim</span>
+                </label>
+                <label class="cotacao-binary-option selected">
+                  <input type="radio" name="ZeroKm" value="false" checked />
+                  <span>Não</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <label id="cotacaoPlateField">
+              Placa <span id="cotacaoPlateRequired">*</span>
               <input
                 type="text"
                 name="Placa"
                 id="cotacaoPlate"
-                placeholder="XXX0000"
+                placeholder="ABC1D23"
                 autocomplete="off"
                 maxlength="8"
                 required
               />
+              <small id="cotacaoPlateHelp" class="cotacao-field-help">Obrigatória para veículos que não são 0 km.</small>
             </label>
 
             <button class="cotacao-form__button" type="submit">Fazer minha cotação agora</button>
@@ -578,6 +597,6 @@
       </section>
     </div>
 
-    <script src="script.js"></script>
+    <script src="script.js?v=20260804-3"></script>
   </body>
 </html>

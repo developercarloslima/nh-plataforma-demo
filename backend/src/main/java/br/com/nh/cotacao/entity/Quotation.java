@@ -42,7 +42,7 @@ public class Quotation {
     @Column(length = 30)
     private String whatsapp;
 
-    @Column(nullable = false, length = 10)
+    @Column(length = 10)
     private String plate;
 
     @Column(nullable = false, length = 120)
@@ -252,7 +252,7 @@ public class Quotation {
         q.customerName = cleanName(customerName);
         q.customerCpf = customerCpf == null ? null : customerCpf.replaceAll("\\D", "");
         q.whatsapp = whatsapp;
-        q.plate = plate.replaceAll("[^A-Za-z0-9]", "").toUpperCase(Locale.ROOT);
+        q.plate = normalizePlate(plate, zeroKm);
         q.model = model.trim();
         q.manufactureYear = manufactureYear;
         q.zeroKm = zeroKm;
@@ -274,6 +274,18 @@ public class Quotation {
 
     private static String cleanName(String value) {
         return value.trim().replaceAll("\\s+", " ");
+    }
+
+
+    private static String normalizePlate(String value, boolean zeroKm) {
+        String normalized = value == null ? "" : value.replaceAll("[^A-Za-z0-9]", "").toUpperCase(Locale.ROOT);
+        if (zeroKm && normalized.isBlank()) return null;
+        if (!normalized.matches("^[A-Z0-9]{7,10}$")) {
+            throw new IllegalArgumentException(zeroKm
+                    ? "Informe uma placa válida ou deixe o campo vazio para veículo 0 km."
+                    : "Informe uma placa válida.");
+        }
+        return normalized;
     }
 
     public void addCoverageSnapshot(

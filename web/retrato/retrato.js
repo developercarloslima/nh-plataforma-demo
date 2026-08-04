@@ -32,6 +32,9 @@ let captureMode = null;
 let recordingTimer = null;
 let recordingStartedAt = null;
 let discardRecording = false;
+let signatureHasInk = false;
+let signatureDrawing = false;
+let signatureLastPoint = null;
 
 function msg(text, type = 'error') {
   const element = $('message');
@@ -69,7 +72,7 @@ async function load() {
     $('title').textContent = body.requestType === 'NEW_INSPECTION'
       ? 'Nova vistoria do veículo'
       : 'Atualização de boleto';
-    $('subtitle').textContent = `Associado: ${body.associateName} · Placa: ${body.plate}`;
+    $('subtitle').textContent = `Associado: ${body.associateName} · ${vehiclePlateLabel(body.plate)}`;
     $('guideline-card').hidden = false;
   } catch (error) {
     msg(error.message);
@@ -89,11 +92,17 @@ $('start').addEventListener('click', () => {
     ? 'As imagens devem ser registradas agora. A galeria do aparelho não será utilizada.'
     : 'Grave agora o vídeo solicitado. A galeria do aparelho não será utilizada.';
 
+  $('registration-fields').hidden = !fullInspection;
+  $('residence-address').required = fullInspection;
+
   if (fullInspection) {
     renderPhotoCaptureCards();
+    initializeSignaturePad();
   } else {
     $('photos').innerHTML = '';
   }
+
+  updateCaptureSummary();
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
@@ -424,8 +433,11 @@ function updateCaptureSummary() {
   const requiredPhotos = request?.requestType === 'NEW_INSPECTION' ? labels.length : 0;
   const capturedPhotos = photoFiles.filter(Boolean).length;
   const videoStatus = videoFile ? 'vídeo gravado' : 'vídeo pendente';
+  const registrationStatus = requiredPhotos
+    ? ` · endereço ${$('residence-address').value.trim() ? 'preenchido' : 'pendente'} · assinatura ${signatureHasInk ? 'registrada' : 'pendente'}`
+    : '';
   $('capture-summary').textContent = requiredPhotos
-    ? `${capturedPhotos} de ${requiredPhotos} fotos registradas · ${videoStatus}`
+    ? `${capturedPhotos} de ${requiredPhotos} fotos registradas · ${videoStatus}${registrationStatus}`
     : videoStatus;
 }
 
@@ -448,6 +460,19 @@ $('upload-form').addEventListener('submit', async (event) => {
     return;
   }
 
+  const residenceAddress = $('residence-address').value.trim();
+  if (fullInspection && !residenceAddress) {
+    msg('Informe o endereço completo de residência do associado.');
+    $('residence-address').focus();
+    return;
+  }
+
+  if (fullInspection && !signatureHasInk) {
+    msg('Solicite que o associado assine com o dedo antes de concluir.');
+    $('signature-pad').focus();
+    return;
+  }
+
   const button = event.submitter || $('submit-inspection');
   button.disabled = true;
   button.textContent = 'Enviando arquivos...';
@@ -463,6 +488,15 @@ $('upload-form').addEventListener('submit', async (event) => {
     }
 
     form.append('video', videoFile);
+
+    if (fullInspection) {
+      const signatureBlob = await exportSignatureBlob();
+      form.append('residenceAddress', residenceAddress);
+      form.append('signature', new File([signatureBlob], 'assinatura-associado.png', {
+        type: 'image/png',
+        lastModified: Date.now()
+      }));
+    }
 
     const response = await fetch(window.NH_API?.backend(`/api/public/inspections/${encodeURIComponent(token)}/upload`) || `/api/public/inspections/${encodeURIComponent(token)}/upload`, {
       method: 'POST',
@@ -498,9 +532,105 @@ function showComplete(data) {
   }
 
   $('title').textContent = 'Vistoria concluída';
-  $('subtitle').textContent = `${data.associateName} · ${data.plate}`;
+  $('subtitle').textContent = `${data.associateName} · ${vehiclePlateLabel(data.plate)}`;
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+
+const signatureCanvas = $('signature-pad');
+const signatureContext = signatureCanvas.getContext('2d');
+
+function initializeSignaturePad() {
+  signatureContext.lineCap = 'round';
+  signatureContext.lineJoin = 'round';
+  signatureContext.lineWidth = 4;
+  signatureContext.strokeStyle = '#080f63';
+}
+
+function signaturePoint(event) {
+  const rect = signatureCanvas.getBoundingClientRect();
+  return {
+    x: (event.clientX - rect.left) * (signatureCanvas.width / rect.width),
+    y: (event.clientY - rect.top) * (signatureCanvas.height / rect.height)
+  };
+}
+
+function beginSignature(event) {
+  if ($('registration-fields').hidden) return;
+  event.preventDefault();
+  signatureDrawing = true;
+  signatureLastPoint = signaturePoint(event);
+  signatureCanvas.setPointerCapture?.(event.pointerId);
+}
+
+function drawSignature(event) {
+  if (!signatureDrawing || !signatureLastPoint) return;
+  event.preventDefault();
+  const point = signaturePoint(event);
+  signatureContext.beginPath();
+  signatureContext.moveTo(signatureLastPoint.x, signatureLastPoint.y);
+  signatureContext.lineTo(point.x, point.y);
+  signatureContext.stroke();
+  signatureLastPoint = point;
+  signatureHasInk = true;
+  signatureCanvas.classList.add('has-signature');
+  $('signature-status').textContent = 'Assinatura registrada.';
+  $('signature-status').classList.add('ok');
+  updateCaptureSummary();
+}
+
+function endSignature(event) {
+  if (!signatureDrawing) return;
+  event.preventDefault();
+  signatureDrawing = false;
+  signatureLastPoint = null;
+  if (event?.pointerId !== undefined && signatureCanvas.hasPointerCapture?.(event.pointerId)) {
+    signatureCanvas.releasePointerCapture(event.pointerId);
+  }
+}
+
+function clearSignature() {
+  signatureContext.clearRect(0, 0, signatureCanvas.width, signatureCanvas.height);
+  signatureHasInk = false;
+  signatureDrawing = false;
+  signatureLastPoint = null;
+  signatureCanvas.classList.remove('has-signature');
+  $('signature-status').textContent = 'Assinatura pendente.';
+  $('signature-status').classList.remove('ok');
+  updateCaptureSummary();
+}
+
+async function exportSignatureBlob() {
+  const exportCanvas = document.createElement('canvas');
+  exportCanvas.width = signatureCanvas.width;
+  exportCanvas.height = signatureCanvas.height;
+  const context = exportCanvas.getContext('2d');
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+  context.drawImage(signatureCanvas, 0, 0);
+
+  return new Promise((resolve, reject) => {
+    exportCanvas.toBlob(
+      (blob) => blob ? resolve(blob) : reject(new Error('Não foi possível processar a assinatura.')),
+      'image/png'
+    );
+  });
+}
+
+function vehiclePlateLabel(plate) {
+  return plate ? `Placa: ${plate}` : 'Veículo 0 km — sem placa';
+}
+
+signatureCanvas.addEventListener('pointerdown', beginSignature);
+signatureCanvas.addEventListener('pointermove', drawSignature);
+signatureCanvas.addEventListener('pointerup', endSignature);
+signatureCanvas.addEventListener('pointercancel', endSignature);
+signatureCanvas.addEventListener('pointerleave', (event) => {
+  if (event.pointerType === 'mouse') endSignature(event);
+});
+$('clear-signature').addEventListener('click', clearSignature);
+$('residence-address').addEventListener('input', updateCaptureSummary);
+initializeSignaturePad();
+clearSignature();
 
 function videoExtension(mimeType) {
   switch (mimeType) {

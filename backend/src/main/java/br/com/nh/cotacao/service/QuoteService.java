@@ -17,6 +17,7 @@ import java.time.Year;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
@@ -68,6 +69,7 @@ public class QuoteService {
     @Transactional
     public QuoteResponse create(CreateQuoteRequest request) {
         validateYear(request.manufactureYear());
+        String plate = validateAndNormalizePlate(request.plate(), request.zeroKm());
         PlanSelection selection = resolvePlan(
                 request.selectedPlanCode(), request.categoryCode(), request.region(),
                 request.fipeValue(), request.selectedOptionalCodes()
@@ -79,7 +81,7 @@ public class QuoteService {
                 consultant,
                 request.customerName(),
                 normalizePhone(request.whatsapp()),
-                request.plate(),
+                plate,
                 request.model(),
                 request.manufactureYear(),
                 request.zeroKm(),
@@ -107,6 +109,7 @@ public class QuoteService {
         if (whatsapp == null || whatsapp.length() < 10 || whatsapp.length() > 13) {
             throw new IllegalArgumentException("Informe um WhatsApp válido com DDD.");
         }
+        String plate = validateAndNormalizePlate(request.plate(), request.zeroKm());
 
         PlanSelection selection = resolvePlan(
                 request.selectedPlanCode(), request.categoryCode(), request.region(),
@@ -118,7 +121,7 @@ public class QuoteService {
                 request.customerName(),
                 cpf,
                 whatsapp,
-                request.plate(),
+                plate,
                 request.model(),
                 request.manufactureYear(),
                 request.zeroKm(),
@@ -391,6 +394,23 @@ public class QuoteService {
         return "NH-" + Year.now().getValue() + "-" + suffix;
     }
 
+    private String validateAndNormalizePlate(String plate, boolean zeroKm) {
+        String normalized = plate == null ? "" : plate.replaceAll("[^A-Za-z0-9]", "").toUpperCase(Locale.ROOT);
+        if (zeroKm && normalized.isBlank()) return null;
+        if (!normalized.matches("^[A-Z0-9]{7,10}$")) {
+            throw new IllegalArgumentException(zeroKm
+                    ? "Informe uma placa válida ou deixe o campo vazio para veículo 0 km."
+                    : "Informe a placa do veículo.");
+        }
+        return normalized;
+    }
+
+    private String vehiclePlateLabel(Quotation quotation) {
+        return quotation.getPlate() == null || quotation.getPlate().isBlank()
+                ? "Veículo 0 km — sem placa"
+                : quotation.getPlate();
+    }
+
     private void validateYear(Integer year) {
         int currentYear = Year.now().getValue() + 1;
         if (year < 1950 || year > currentYear) {
@@ -408,7 +428,7 @@ public class QuoteService {
                 + "\nCliente: " + quotation.getCustomerName()
                 + "\nOrigem: " + originLabel(quotation)
                 + "\nResponsável: " + quotation.getConsultantName()
-                + "\nPlaca: " + quotation.getPlate()
+                + "\nPlaca: " + vehiclePlateLabel(quotation)
                 + "\nPlano: " + quotation.getSelectedPlanName()
                 + (quotation.getDriveFolderUrl() == null ? "" : "\nPasta da vistoria: " + quotation.getDriveFolderUrl())
                 + "\nPDF: " + pdfUrl;
@@ -429,7 +449,7 @@ public class QuoteService {
         String message = "Olá! Fiz uma cotação pelo site da Novo Horizonte e aceitei a proposta."
                 + "\n\nCotação: " + quotation.getQuoteNumber()
                 + "\nNome: " + quotation.getCustomerName()
-                + "\nPlaca: " + quotation.getPlate()
+                + "\nPlaca: " + vehiclePlateLabel(quotation)
                 + "\nPlano: " + quotation.getSelectedPlanName()
                 + "\nValor mensal: R$ " + quotation.getMonthlyValue().toPlainString().replace('.', ',')
                 + "\n\nLink para enviar as fotos e o vídeo da vistoria digital: " + inspectionUrl;

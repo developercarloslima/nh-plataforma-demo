@@ -1,4 +1,4 @@
-name: nh-plataforma-local
+name: nh-plataforma-demo
 services:
   database:
     image: postgres:16-alpine

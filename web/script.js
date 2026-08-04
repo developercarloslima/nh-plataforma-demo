@@ -77,6 +77,9 @@ const cotacaoForm = document.querySelector('#cotacaoForm');
 const cotacaoFormMessage = document.querySelector('#cotacaoFormMessage');
 const cotacaoPhone = document.querySelector('#cotacaoPhone');
 const cotacaoPlate = document.querySelector('#cotacaoPlate');
+const cotacaoPlateRequired = document.querySelector('#cotacaoPlateRequired');
+const cotacaoPlateHelp = document.querySelector('#cotacaoPlateHelp');
+const cotacaoZeroKmInputs = document.querySelectorAll('input[name="ZeroKm"]');
 let lastFocusedCotacaoTrigger = null;
 
 function openCotacaoModal(event) {
@@ -102,6 +105,39 @@ function closeCotacaoModal() {
 
   if (lastFocusedCotacaoTrigger) {
     lastFocusedCotacaoTrigger.focus();
+  }
+}
+
+
+function publicQuoteIsZeroKm() {
+  return document.querySelector('input[name="ZeroKm"]:checked')?.value === 'true';
+}
+
+function syncPublicQuoteZeroKm() {
+  const zeroKm = publicQuoteIsZeroKm();
+
+  document.querySelectorAll('.cotacao-binary-option').forEach((option) => {
+    const input = option.querySelector('input[name="ZeroKm"]');
+    option.classList.toggle('selected', Boolean(input?.checked));
+  });
+
+  if (!cotacaoPlate) return;
+
+  cotacaoPlate.disabled = zeroKm;
+  cotacaoPlate.required = !zeroKm;
+  cotacaoPlate.setAttribute('aria-required', String(!zeroKm));
+  cotacaoPlate.placeholder = zeroKm ? 'Não necessário para veículo 0 km' : 'ABC1D23';
+
+  if (zeroKm) {
+    cotacaoPlate.value = '';
+    cotacaoPlate.removeAttribute('aria-invalid');
+  }
+
+  if (cotacaoPlateRequired) cotacaoPlateRequired.hidden = zeroKm;
+  if (cotacaoPlateHelp) {
+    cotacaoPlateHelp.textContent = zeroKm
+      ? 'A placa será informada posteriormente, após o emplacamento.'
+      : 'Obrigatória para veículos que não são 0 km.';
   }
 }
 
@@ -178,6 +214,11 @@ if (cotacaoPlate) {
   });
 }
 
+cotacaoZeroKmInputs.forEach((input) => {
+  input.addEventListener('change', syncPublicQuoteZeroKm);
+});
+syncPublicQuoteZeroKm();
+
 if (cotacaoForm && cotacaoFormMessage) {
   cotacaoForm.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -186,7 +227,8 @@ if (cotacaoForm && cotacaoFormMessage) {
       origem: 'site',
       nome: String(data.get('Nome') || '').trim(),
       whatsapp: String(data.get('Telefone') || '').replace(/\D/g, ''),
-      placa: String(data.get('Placa') || '').trim().toUpperCase()
+      placa: publicQuoteIsZeroKm() ? '' : String(data.get('Placa') || '').trim().toUpperCase(),
+      zeroKm: String(publicQuoteIsZeroKm())
     });
     setFormMessage(cotacaoFormMessage, 'Abrindo sua cotação...', 'loading');
     window.location.href = `/cota/?${params.toString()}`;

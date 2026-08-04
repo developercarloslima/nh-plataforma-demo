@@ -30,8 +30,11 @@ public class InspectionRequest {
     @Column(length = 30)
     private String whatsapp;
 
-    @Column(nullable = false, length = 10)
+    @Column(length = 10)
     private String plate;
+
+    @Column(name = "residence_address", length = 600)
+    private String residenceAddress;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "consultant_id")
@@ -142,7 +145,7 @@ public class InspectionRequest {
         request.associateName = associateName.trim().replaceAll("\\s+", " ");
         request.cpf = cpf.replaceAll("\\D", "");
         request.whatsapp = whatsapp == null ? null : whatsapp.replaceAll("\\D", "");
-        request.plate = plate.replaceAll("[^A-Za-z0-9]", "").toUpperCase(Locale.ROOT);
+        request.plate = normalizePlate(plate);
         request.consultant = consultant;
         request.consultantName = consultantName;
         request.quotation = quotation;
@@ -150,6 +153,12 @@ public class InspectionRequest {
         request.createdAt = OffsetDateTime.now();
         request.expiresAt = request.createdAt.plusDays(7);
         return request;
+    }
+
+    private static String normalizePlate(String value) {
+        if (value == null || value.isBlank()) return null;
+        String normalized = value.replaceAll("[^A-Za-z0-9]", "").toUpperCase(Locale.ROOT);
+        return normalized.isBlank() ? null : normalized;
     }
 
     public boolean isExpired() {
@@ -163,6 +172,21 @@ public class InspectionRequest {
     }
 
     public void addAsset(InspectionAsset asset) { assets.add(asset); }
+
+    public void registerResidenceAddress(String address) {
+        if (requestType != InspectionRequestType.NEW_INSPECTION) {
+            this.residenceAddress = null;
+            return;
+        }
+        if (address == null || address.isBlank()) {
+            throw new IllegalArgumentException("Informe o endereço de residência para concluir o cadastro.");
+        }
+        String clean = address.trim().replaceAll("\\s+", " ");
+        if (clean.length() > 600) {
+            throw new IllegalArgumentException("O endereço de residência deve possuir no máximo 600 caracteres.");
+        }
+        this.residenceAddress = clean;
+    }
 
     public void complete(String reportFileId, String reportUrl) {
         this.reportFileId = reportFileId;
@@ -200,6 +224,7 @@ public class InspectionRequest {
     public String getCpf() { return cpf; }
     public String getWhatsapp() { return whatsapp; }
     public String getPlate() { return plate; }
+    public String getResidenceAddress() { return residenceAddress; }
     public Consultant getConsultant() { return consultant; }
     public String getConsultantName() { return consultantName; }
     public Quotation getQuotation() { return quotation; }

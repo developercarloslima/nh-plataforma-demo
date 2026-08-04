@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#080f63">
   
   <link rel="icon" href="./favicon-nh.png">
-  <link rel="stylesheet" href="./styles.css?v=20260804-self-service">
+  <link rel="stylesheet" href="./styles.css?v=20260804-zero-km">
   <title>NH Cotação Digital</title>
 </head>
 <body>
@@ -45,10 +45,6 @@
         <label>Nome do cliente *<input id="customerName" required placeholder="Nome completo"></label>
         <label id="customer-cpf-field" hidden>CPF *<input id="customerCpf" inputmode="numeric" maxlength="14" placeholder="000.000.000-00"></label>
         <label>WhatsApp do cliente <span id="whatsapp-required"></span><input id="whatsapp" placeholder="(82) 99999-9999"></label>
-        <label>Placa *<input id="plate" required maxlength="10" placeholder="ABC1D23"></label>
-        <label class="span-2">Modelo do veículo *<input id="model" required placeholder="Ex.: Hyundai HB20 Comfort"></label>
-        <label>Ano de fabricação *<input id="manufactureYear" required type="number" min="1950"></label>
-        <label>Valor FIPE *<input id="fipeValue" required inputmode="decimal" placeholder="Ex.: 65.000,00"></label>
 
         <fieldset class="zero-km-selector span-2">
           <legend>O veículo é 0 km? *</legend>
@@ -63,6 +59,14 @@
             </label>
           </div>
         </fieldset>
+
+        <label id="plate-field">Placa <span id="plate-required">*</span>
+          <input id="plate" required maxlength="10" placeholder="ABC1D23">
+          <small id="plate-help" class="field-help">Obrigatória para veículos que não são 0 km.</small>
+        </label>
+        <label>Modelo do veículo *<input id="model" required placeholder="Ex.: Hyundai HB20 Comfort"></label>
+        <label>Ano de fabricação *<input id="manufactureYear" required type="number" min="1950"></label>
+        <label>Valor FIPE *<input id="fipeValue" required inputmode="decimal" placeholder="Ex.: 65.000,00"></label>
 
         <fieldset class="vehicle-selector span-2">
           <legend>Categoria do veículo *</legend>
@@ -182,7 +186,8 @@
   </div>
 
   <footer><img src="./favicon-nh.png" alt="NH"><span id="footer-label">Novo Horizonte Proteção Veicular • Sistema interno de cotações</span></footer>
-  <script src="/shared/config.js?v=20260804-render"></script>
-  <script src="./app.js?v=20260804-render" defer></script>
+  <script src="/shared/config.js?v=20260804-current-origin"></script>
+<script src="/shared/url-tools.js?v=20260804-current-origin"></script>
+  <script src="./app.js?v=20260804-current-origin" defer></script>
 </body>
 </html>

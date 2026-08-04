@@ -162,6 +162,8 @@ public final class AdminDtos {
             String maskedCpf,
             String whatsapp,
             String plate,
+            String residenceAddress,
+            String signatureUrl,
             UUID consultantId,
             String consultantName,
             InspectionRequestStatus status,

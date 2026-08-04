@@ -109,6 +109,33 @@ class QuotationTest {
         assertTrue(quotation.isZeroKm());
     }
 
+    @Test
+    void shouldAllowZeroKilometerVehicleWithoutPlate() {
+        Consultant consultant = Consultant.create("Consultor", "TEST");
+        Quotation quotation = Quotation.createForConsultant(
+                "NH-2026-SEMPLACA",
+                consultant,
+                "Cliente",
+                "82999999999",
+                null,
+                "Veículo zero",
+                2026,
+                true,
+                new BigDecimal("90000.00"),
+                "CAR_NATIONAL",
+                Region.NATIONAL,
+                "CAR_COMPLETO",
+                "Plano Completo",
+                new BigDecimal("200.00"),
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                null
+        );
+
+        assertTrue(quotation.isZeroKm());
+        assertNull(quotation.getPlate());
+    }
+
     private Quotation quotationWithBaseValue(String baseValue) {
         Consultant consultant = Consultant.create("Consultor", "TEST");
         return Quotation.createForConsultant(

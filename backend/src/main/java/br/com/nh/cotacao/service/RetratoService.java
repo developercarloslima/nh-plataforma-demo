@@ -15,8 +15,10 @@ import java.util.*;
 
 @Service
 public class RetratoService {
+    private static final String DEFAULT_PUBLIC_WEB_URL = "https://aforma-demo.vercel.app";
     private static final long MAX_PHOTO_BYTES = 12L * 1024 * 1024;
     private static final long MAX_VIDEO_BYTES = 220L * 1024 * 1024;
+    private static final long MAX_SIGNATURE_BYTES = 3L * 1024 * 1024;
     private static final Set<String> PHOTO_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
     private static final Set<String> VIDEO_TYPES = Set.of("video/mp4", "video/quicktime", "video/webm", "video/3gpp");
 
@@ -33,13 +35,13 @@ public class RetratoService {
             GoogleDriveStorageService driveStorage,
             RetratoPdfService pdfService,
             CommunicationSettingsService communicationSettings,
-            @Value("${app.public-web-url:http://localhost:3000}") String publicWebUrl
+            @Value("${app.public-web-url:https://aforma-demo.vercel.app}") String publicWebUrl
     ) {
         this.repository = repository;
         this.consultantService = consultantService;
         this.driveStorage = driveStorage;
         this.pdfService = pdfService;
-        this.publicWebUrl = stripTrailingSlash(publicWebUrl);
+        this.publicWebUrl = normalizePublicWebUrl(publicWebUrl);
         this.communicationSettings = communicationSettings;
     }
 
@@ -48,13 +50,14 @@ public class RetratoService {
         String cpf = input.cpf().replaceAll("\\D", "");
         if (!validCpf(cpf)) throw new IllegalArgumentException("Informe um CPF válido.");
         Consultant consultant = consultantService.findActive(input.consultantId());
+        String plate = validateAndNormalizeManualPlate(input.plate(), input.requestType());
         InspectionRequest request = InspectionRequest.create(
                 randomToken(),
                 input.requestType(),
                 input.associateName(),
                 cpf,
                 input.whatsapp(),
-                input.plate(),
+                plate,
                 consultant
         );
         return toResponse(repository.save(request));
@@ -92,7 +95,9 @@ public class RetratoService {
             String token,
             List<MultipartFile> photos,
             List<String> labels,
-            MultipartFile video
+            MultipartFile video,
+            String residenceAddress,
+            MultipartFile signature
     ) {
         InspectionRequest request = findByToken(token);
         if (request.getStatus() != InspectionRequestStatus.CREATED
@@ -107,17 +112,26 @@ public class RetratoService {
         }
         validateVideo(video);
 
+        boolean newInspection = request.getRequestType() == InspectionRequestType.NEW_INSPECTION;
+        if (newInspection) {
+            request.registerResidenceAddress(residenceAddress);
+            if (signature == null || signature.isEmpty()) {
+                throw new IllegalArgumentException("A assinatura do associado é obrigatória para concluir o cadastro.");
+            }
+            validateSignature(signature);
+        }
+
         List<MultipartFile> safePhotos = photos == null ? List.of() : photos.stream()
                 .filter(file -> file != null && !file.isEmpty())
                 .toList();
-        if (request.getRequestType() == InspectionRequestType.NEW_INSPECTION && safePhotos.size() < 8) {
+        if (newInspection && safePhotos.size() < 8) {
             throw new IllegalArgumentException("A nova vistoria exige as 8 fotos obrigatórias e o vídeo.");
         }
         safePhotos.forEach(this::validatePhoto);
 
         String date = request.getCreatedAt().format(DateTimeFormatter.ofPattern("dd-MM-yyyy"));
         String type = request.getRequestType() == InspectionRequestType.NEW_INSPECTION ? "Nova vistoria" : "Atualização de boleto";
-        var folder = driveStorage.createFolder(request.getAssociateName() + " - " + request.getPlate() + " - " + type + " - " + date);
+        var folder = driveStorage.createFolder(request.getAssociateName() + " - " + vehiclePlateLabel(request) + " - " + type + " - " + date);
         request.registerFolder(folder.id(), folder.url());
 
         int order = 1;
@@ -140,6 +154,17 @@ public class RetratoService {
                 request, InspectionAssetType.VIDEO, "Vídeo da vistoria", videoName, video.getContentType(), video.getSize(), order,
                 videoFile.id(), videoFile.viewUrl()
         ));
+        order++;
+
+        if (newInspection) {
+            String signatureType = cleanType(signature.getContentType());
+            String signatureName = String.format(Locale.ROOT, "%02d-assinatura-associado%s", order, extension(signatureType, ".png"));
+            var signatureFile = driveStorage.upload(folder.id(), signatureName, signatureType, bytes(signature));
+            request.addAsset(InspectionAsset.create(
+                    request, InspectionAssetType.SIGNATURE, "Assinatura do associado", signatureName,
+                    signatureType, signature.getSize(), order, signatureFile.id(), signatureFile.viewUrl()
+            ));
+        }
 
         repository.saveAndFlush(request);
         byte[] reportBytes = pdfService.generate(request);
@@ -163,7 +188,7 @@ public class RetratoService {
             String message = "Olá, " + request.getAssociateName() + "! Acesse o link abaixo para realizar "
                     + (request.getRequestType() == InspectionRequestType.NEW_INSPECTION
                     ? "a vistoria digital completa" : "o vídeo para atualização de boleto")
-                    + " do veículo " + request.getPlate() + ":\n" + publicUrl;
+                    + " do veículo " + vehiclePlateLabel(request) + ":\n" + publicUrl;
             whatsappUrl = "https://wa.me/55" + normalizeBrazilPhone(request.getWhatsapp())
                     + "?text=" + URLEncoder.encode(message, StandardCharsets.UTF_8);
         }
@@ -176,14 +201,14 @@ public class RetratoService {
 
             if (request.getDriveFolderUrl() == null) {
                 teamMessage = "Nova solicitação do Retrato NH\n\nAssociado: " + request.getAssociateName()
-                        + "\nPlaca: " + request.getPlate()
+                        + "\nPlaca: " + vehiclePlateLabel(request)
                         + "\nWhatsApp do associado: " + visiblePhone(request.getWhatsapp())
                         + "\nConsultor: " + request.getConsultantName()
                         + "\nTipo: " + requestTypeLabel
                         + "\n\nLink para o associado: " + publicUrl;
             } else {
                 teamMessage = "Retrato NH concluído\n\nAssociado: " + request.getAssociateName()
-                        + "\nPlaca: " + request.getPlate()
+                        + "\nPlaca: " + vehiclePlateLabel(request)
                         + "\nConsultor: " + request.getConsultantName()
                         + "\nTipo: " + requestTypeLabel
                         + "\n\nPasta no Drive: " + request.getDriveFolderUrl()
@@ -200,11 +225,22 @@ public class RetratoService {
                 )).toList();
         return new InspectionResponse(
                 request.getId(), request.getPublicToken(), request.getRequestType(), request.getAssociateName(),
-                maskCpf(request.getCpf()), request.getWhatsapp(), request.getPlate(),
+                maskCpf(request.getCpf()), request.getWhatsapp(), request.getPlate(), request.getResidenceAddress(),
                 request.getConsultant() == null ? null : request.getConsultant().getId(),
                 request.getConsultantName(), request.getStatus(), request.getCreatedAt(), request.getExpiresAt(),
                 request.getCompletedAt(), publicUrl, whatsappUrl, teamWhatsappUrl, request.getDriveFolderUrl(), request.getReportUrl(), assets
         );
+    }
+
+    private String validateAndNormalizeManualPlate(String plate, InspectionRequestType requestType) {
+        String normalized = plate == null ? "" : plate.replaceAll("[^A-Za-z0-9]", "").toUpperCase(Locale.ROOT);
+        if (normalized.isBlank() && requestType == InspectionRequestType.NEW_INSPECTION) return null;
+        if (!normalized.matches("^[A-Z0-9]{7,10}$")) {
+            throw new IllegalArgumentException(requestType == InspectionRequestType.NEW_INSPECTION
+                    ? "Informe uma placa válida ou deixe o campo vazio apenas para veículo 0 km."
+                    : "Informe a placa do veículo para atualização de boleto.");
+        }
+        return normalized;
     }
 
     private void validatePhoto(MultipartFile file) {
@@ -215,6 +251,15 @@ public class RetratoService {
     private void validateVideo(MultipartFile file) {
         if (file.getSize() > MAX_VIDEO_BYTES) throw new IllegalArgumentException("O vídeo deve possuir no máximo 220 MB.");
         if (!VIDEO_TYPES.contains(cleanType(file.getContentType()))) throw new IllegalArgumentException("Envie o vídeo em MP4, MOV, WebM ou 3GP.");
+    }
+
+    private void validateSignature(MultipartFile file) {
+        if (file.getSize() > MAX_SIGNATURE_BYTES) {
+            throw new IllegalArgumentException("A assinatura deve possuir no máximo 3 MB.");
+        }
+        if (!PHOTO_TYPES.contains(cleanType(file.getContentType()))) {
+            throw new IllegalArgumentException("A assinatura deve ser enviada como imagem PNG, JPG ou WebP.");
+        }
     }
 
     private byte[] bytes(MultipartFile file) {
@@ -248,6 +293,16 @@ public class RetratoService {
     private String cleanType(String type) { return type == null ? "" : type.toLowerCase(Locale.ROOT).split(";")[0]; }
     private String slug(String value) { return value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-").replaceAll("(^-|-$)", ""); }
     private String stripTrailingSlash(String value) { return value == null ? "" : value.replaceAll("/+$", ""); }
+    private String normalizePublicWebUrl(String value) {
+        String normalized = stripTrailingSlash(value);
+        if (normalized.isBlank() || normalized.matches("(?i)^https?://(localhost|127\\.0\\.0\\.1)(:\\d+)?$")) {
+            return DEFAULT_PUBLIC_WEB_URL;
+        }
+        return normalized;
+    }
+    private String vehiclePlateLabel(InspectionRequest request) {
+        return request.getPlate() == null || request.getPlate().isBlank() ? "Veículo 0 km — sem placa" : request.getPlate();
+    }
     private String maskCpf(String cpf) { return cpf.length() == 11 ? "***." + cpf.substring(3, 6) + "." + cpf.substring(6, 9) + "-**" : "***.***.***-**"; }
     private String visiblePhone(String value) {
         if (value == null || value.isBlank()) return "Não informado";

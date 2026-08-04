@@ -58,10 +58,26 @@ function isZeroKm() {
 }
 
 function syncZeroKmOptions() {
+  const zeroKm = isZeroKm();
   document.querySelectorAll('.binary-option').forEach(option => {
     const input = option.querySelector('input[name="zeroKm"]');
     option.classList.toggle('selected', Boolean(input?.checked));
   });
+
+  const plate = $('plate');
+  if (!plate) return;
+  plate.disabled = zeroKm;
+  plate.required = !zeroKm;
+  plate.setAttribute('aria-required', String(!zeroKm));
+  plate.placeholder = zeroKm ? 'Não necessário para veículo 0 km' : 'ABC1D23';
+  if (zeroKm) plate.value = '';
+
+  if ($('plate-required')) $('plate-required').hidden = zeroKm;
+  if ($('plate-help')) {
+    $('plate-help').textContent = zeroKm
+      ? 'A placa poderá ser cadastrada depois do emplacamento.'
+      : 'Obrigatória para veículos que não são 0 km.';
+  }
 }
 
 function selectedPlan() {
@@ -156,6 +172,7 @@ async function restoreSession() {
     Object.entries(saved.form || {}).forEach(([id, value]) => {
       if (id !== 'consultantName' && id !== 'zeroKm' && $(id) && value != null) $(id).value = value;
     });
+    syncZeroKmOptions();
 
     if (saved.quoteId) {
       const quote = await api(quoteApiPath(`/${saved.quoteId}`));
@@ -316,7 +333,7 @@ function formPayload() {
   const payload = {
     customerName: $('customerName').value.trim(),
     whatsapp: $('whatsapp').value,
-    plate: $('plate').value.trim().toUpperCase(),
+    plate: isZeroKm() ? '' : $('plate').value.trim().toUpperCase(),
     model: $('model').value.trim(),
     manufactureYear: Number($('manufactureYear').value),
     zeroKm: isZeroKm(),
@@ -352,7 +369,7 @@ function renderQuote(quote, scroll = true) {
   $('proposal-description').innerHTML = `O plano escolhido foi <strong>${escapeHtml(quote.selectedPlanName)}</strong>, com mensalidade total de <strong>${brl.format(quote.monthlyValue)} por mês</strong>.`;
   $('quote-details').innerHTML = `
     <div><span>Cliente</span><strong>${escapeHtml(quote.customerName)}</strong></div>
-    <div><span>Veículo</span><strong>${escapeHtml(quote.model)} • ${escapeHtml(quote.plate)}</strong></div>
+    <div><span>Veículo</span><strong>${escapeHtml(quote.model)} • ${escapeHtml(quote.plate || '0 km — sem placa')}</strong></div>
     <div><span>FIPE</span><strong>${brl.format(quote.fipeValue)}</strong></div>
     <div><span>Veículo 0 km</span><strong>${quote.zeroKm ? 'Sim' : 'Não'}</strong></div>
     <div><span>Valor da tabela</span><strong>${brl.format(baseValue)}</strong></div>
@@ -396,11 +413,21 @@ function renderDecisionArea(quote) {
 
 function renderInspectionStage(quote) {
   if (isSelfService) {
-    const whatsappButton = quote.selfServiceWhatsappUrl
-      ? `<a class="whatsapp-button" href="${escapeHtml(quote.selfServiceWhatsappUrl)}" target="_blank" rel="noopener">Falar com um consultor pelo WhatsApp</a>`
+    const currentInspectionUrl = quote.inspectionUrl
+      ? (window.NH_URLS?.retratoUrl(quote.inspectionUrl) || quote.inspectionUrl)
       : '';
-    const inspectionButton = quote.inspectionUrl
-      ? `<a class="primary-button direct-inspection-link" href="${escapeHtml(quote.inspectionUrl)}">Abrir vistoria digital</a>`
+    const currentWhatsappUrl = quote.selfServiceWhatsappUrl
+      ? (window.NH_URLS?.replaceLinkInCommunicationUrl(
+          quote.selfServiceWhatsappUrl,
+          quote.inspectionUrl,
+          currentInspectionUrl
+        ) || quote.selfServiceWhatsappUrl)
+      : '';
+    const whatsappButton = currentWhatsappUrl
+      ? `<a class="whatsapp-button" href="${escapeHtml(currentWhatsappUrl)}" target="_blank" rel="noopener">Falar com um consultor pelo WhatsApp</a>`
+      : '';
+    const inspectionButton = currentInspectionUrl
+      ? `<a class="primary-button direct-inspection-link" href="${escapeHtml(currentInspectionUrl)}">Abrir vistoria digital</a>`
       : '';
     const guidance = quote.selfServiceWhatsappUrl
       ? 'Clique em “Falar com um consultor”. A conversa será aberta no WhatsApp configurado pelo administrador e a mensagem já levará o link para você enviar as fotos e o vídeo da vistoria digital.'
@@ -415,7 +442,8 @@ function renderInspectionStage(quote) {
 
   const params = new URLSearchParams({
     name: quote.customerName,
-    plate: quote.plate,
+    plate: quote.plate || '',
+    zeroKm: String(Boolean(quote.zeroKm)),
     whatsapp: quote.whatsapp || '',
     quoteId: quote.id
   });
@@ -732,6 +760,7 @@ $('quote-form').addEventListener('submit', async event => {
   const button = $('simulate-button');
   setLoading(button, true, 'Calculando...', 'Calcular planos disponíveis →');
   try {
+    if (!isZeroKm() && !$('plate').value.trim()) throw new Error('Informe a placa do veículo.');
     const fipeValue = parseMoney($('fipeValue').value);
     if (!fipeValue || fipeValue <= 0) throw new Error('Informe um valor FIPE válido.');
     const result = await api(quoteApiPath('/options'), {
@@ -754,6 +783,7 @@ $('confirm-plan').addEventListener('click', async () => {
   const button = $('confirm-plan');
   setLoading(button, true, 'Salvando...', 'Confirmar plano e gerar cotação →');
   try {
+    if (!isZeroKm() && !$('plate').value.trim()) throw new Error('Informe a placa do veículo.');
     const quote = await api(quoteApiPath(), {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formPayload())
     });
@@ -769,8 +799,16 @@ async function decide(decision) {
     const result = await api(quoteApiPath(`/${state.quote.id}/decision`), {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision })
     });
-    result.quote.inspectionUrl ||= result.inspectionUrl;
-    result.quote.selfServiceWhatsappUrl ||= result.whatsappUrl;
+    const backendInspectionUrl = result.quote.inspectionUrl || result.inspectionUrl;
+    const currentInspectionUrl = backendInspectionUrl
+      ? (window.NH_URLS?.retratoUrl(backendInspectionUrl) || backendInspectionUrl)
+      : null;
+    result.quote.inspectionUrl = currentInspectionUrl;
+    result.quote.selfServiceWhatsappUrl = window.NH_URLS?.replaceLinkInCommunicationUrl(
+      result.quote.selfServiceWhatsappUrl || result.whatsappUrl,
+      backendInspectionUrl,
+      currentInspectionUrl
+    ) || result.quote.selfServiceWhatsappUrl || result.whatsappUrl;
     renderQuote(result.quote);
   } catch (error) { showError(error.message); }
 }
@@ -882,7 +920,13 @@ function configurePageMode() {
   $('footer-label').textContent = 'Novo Horizonte Proteção Veicular • Cotação online para clientes';
   $('customerName').value = pageParams.get('nome') || '';
   $('whatsapp').value = formatWhatsapp(pageParams.get('whatsapp') || '');
+  const zeroKmParam = pageParams.get('zeroKm');
+  if (zeroKmParam === 'true' || zeroKmParam === 'false') {
+    const option = document.querySelector(`input[name="zeroKm"][value="${zeroKmParam}"]`);
+    if (option) option.checked = true;
+  }
   $('plate').value = (pageParams.get('placa') || '').toUpperCase();
+  syncZeroKmOptions();
 }
 
 $('customerCpf')?.addEventListener('input', event => { event.target.value = formatCpf(event.target.value); });
@@ -891,5 +935,10 @@ $('whatsapp').addEventListener('input', event => { event.target.value = formatWh
 configurePageMode();
 updateConditionalFields();
 restoreSession().finally(() => {
-  if (!isSelfService) $('consultantName').value = selectedConsultant.name;
+  if (isSelfService) {
+    // Os dados vindos do botão público devem prevalecer sobre uma sessão antiga salva no navegador.
+    configurePageMode();
+  } else {
+    $('consultantName').value = selectedConsultant.name;
+  }
 });

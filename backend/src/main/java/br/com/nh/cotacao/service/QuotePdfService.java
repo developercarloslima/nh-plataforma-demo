@@ -160,7 +160,7 @@ public class QuotePdfService {
         table.setSpacingAfter(16);
         addLabelValue(table, "Cliente", quotation.getCustomerName());
         addLabelValue(table, "Consultor", quotation.getConsultantName());
-        addLabelValue(table, "Placa", quotation.getPlate());
+        addLabelValue(table, "Placa", plateLabel(quotation));
         addLabelValue(table, "Modelo", quotation.getModel());
         addLabelValue(table, "Ano", quotation.getManufactureYear().toString());
         addLabelValue(table, "Veículo 0 km", quotation.isZeroKm() ? "Sim" : "Não");
@@ -323,7 +323,7 @@ public class QuotePdfService {
         identity.setWidthPercentage(100);
         identity.setSpacingAfter(14);
         addLabelValue(identity, "Cliente", quotation.getCustomerName());
-        addLabelValue(identity, "Placa", quotation.getPlate());
+        addLabelValue(identity, "Placa", plateLabel(quotation));
         addLabelValue(identity, "Veículo", quotation.getModel());
         addLabelValue(identity, "Consultor", quotation.getConsultantName());
         document.add(identity);
@@ -514,4 +514,11 @@ public class QuotePdfService {
             ColumnText.showTextAligned(canvas, Element.ALIGN_RIGHT, right, document.right(), 20, 0);
         }
     }
+
+    private String plateLabel(Quotation quotation) {
+        return quotation.getPlate() == null || quotation.getPlate().isBlank()
+                ? "Veículo 0 km — sem placa"
+                : quotation.getPlate();
+    }
+
 }
