@@ -24,6 +24,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/public/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/quotes/*/pdf").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/analysis/**").hasAnyRole("ANALYST", "ADMIN")
+                        .requestMatchers("/api/consultant-dashboard/**").hasAnyRole("CONSULTANT", "ADMIN")
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(bearerTokenFilter, UsernamePasswordAuthenticationFilter.class)

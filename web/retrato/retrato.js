@@ -9,7 +9,8 @@ const labels = [
   'Painel e quilometragem',
   'Chassi / numeração',
   'Motor ou compartimento do motor',
-  'Pneus, rodas e estado geral'
+  'Pneus, rodas e estado geral',
+  'Selfie do associado em frente ao veículo, com a placa visível'
 ];
 
 const allowedVideoTypes = new Set([
@@ -111,7 +112,9 @@ function renderPhotoCaptureCards() {
   $('photos').innerHTML = labels.map((label, index) => `
     <article class="upload-item camera-upload-item">
       <strong>${index + 1}. ${escapeHtml(label)}</strong>
-      <small>Abra a câmera e fotografe com nitidez, sem cortar a área solicitada.</small>
+      <small>${index === labels.length - 1
+        ? 'Use a câmera frontal ou traseira e enquadre o associado, a frente do veículo e a placa. Para veículo 0 km sem placa, mostre claramente a dianteira do veículo.'
+        : 'Abra a câmera e fotografe com nitidez, sem cortar a área solicitada.'}</small>
       <img id="photo-preview-${index}" class="capture-preview" alt="Prévia de ${escapeHtml(label)}" hidden>
       <p id="photo-status-${index}" class="capture-status">Foto ainda não registrada.</p>
       <button class="outline camera-action" type="button" data-photo-index="${index}">
@@ -134,7 +137,9 @@ async function openPhotoCamera(index) {
   try {
     await openCamera({ audio: false });
     $('camera-title').textContent = `${index + 1}. ${labels[index]}`;
-    $('camera-instruction').textContent = 'Posicione o veículo no enquadramento e toque em “Capturar foto”.';
+    $('camera-instruction').textContent = index === labels.length - 1
+      ? 'Enquadre o associado em frente ao veículo e mantenha a placa visível. Se o veículo for 0 km e ainda não tiver placa, mostre claramente a dianteira do veículo.'
+      : 'Posicione o veículo no enquadramento e toque em “Capturar foto”.';
     $('capture-photo').hidden = false;
     $('start-recording').hidden = true;
     $('stop-recording').hidden = true;
@@ -530,6 +535,8 @@ function showComplete(data) {
   } else {
     $('report-link').hidden = true;
   }
+
+  $('whatsapp-notice').textContent = 'Seu consultor será orientado a comunicar você pelo WhatsApp. A vistoria agora aguarda análise.';
 
   $('title').textContent = 'Vistoria concluída';
   $('subtitle').textContent = `${data.associateName} · ${vehiclePlateLabel(data.plate)}`;

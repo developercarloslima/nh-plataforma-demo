@@ -3,16 +3,16 @@
   --navy-900: #070c40;
   --navy-800: #070c40;
   --navy-700: #070c40;
-  --yellow: #f5cc44f8;
-  --yellow-dark: #FDC206;
+  --yellow: #f0f000;
+  --yellow-dark: #f0f000;
   --white: #ffffff;
   --off-white: #f7f8fb;
   --text: #070c40;
   --muted: #586174;
   --border: #e3e8f2;
   --shadow: 0 24px 60px rgba(7, 12, 64, 0.12);
-  --font-body: "Poppins", sans-serif;
-  --font-display: "Poppins", sans-serif;
+  --font-body: "Helvetica Now Display", "Helvetica Neue", Helvetica, Arial, Inter, sans-serif;
+  --font-display: "Helvetica Now Display", "Helvetica Neue", Helvetica, Arial, Inter, sans-serif;
 }
 
 
@@ -165,7 +165,7 @@ button {
   border: 0;
   border-radius: 11px;
   color: var(--navy-950);
-  background: linear-gradient(180deg, #ffff33, var(--yellow));
+  background: linear-gradient(180deg, #f0f000, var(--yellow));
   box-shadow: 0 14px 28px rgba(240, 240, 0, 0.24);
   font-size: 0.88rem;
   font-weight: 900;
@@ -2407,7 +2407,7 @@ body.cotacao-modal-open {
   border-radius: 999px;
   padding: 0 28px;
   color: var(--navy-950);
-  background: linear-gradient(180deg, #ffff33, var(--yellow));
+  background: linear-gradient(180deg, #f0f000, var(--yellow));
   font-size: 0.9rem;
   font-weight: 900;
   text-transform: uppercase;
@@ -2524,7 +2524,7 @@ body.cotacao-modal-open {
   color: var(--white);
   background:
     radial-gradient(circle at 84% 18%, rgba(255, 255, 255, 0.10), transparent 28%),
-    linear-gradient(135deg, #061139 0%, #071957 58%, #0b236e 100%);
+    linear-gradient(135deg, #070C40 0%, #070C40 58%, #070c40 100%);
   box-shadow: 0 34px 90px rgba(7, 12, 64, 0.18);
   overflow: hidden;
 }
@@ -2599,7 +2599,7 @@ body.cotacao-modal-open {
 
 .contact-button-primary {
   color: var(--navy-950);
-  background: linear-gradient(180deg, #fff200 0%, #ffc400 100%);
+  background: linear-gradient(180deg, #f0f000 0%, #f0f000 100%);
   box-shadow: 0 18px 38px rgba(240, 240, 0, 0.22);
 }
 
@@ -2658,7 +2658,7 @@ body.cotacao-modal-open {
   border: 0;
   border-radius: 999px;
   color: var(--navy-950);
-  background: linear-gradient(180deg, #fff200 0%, #ffc400 100%);
+  background: linear-gradient(180deg, #f0f000 0%, #f0f000 100%);
   cursor: pointer;
   font-size: 0.94rem;
   font-weight: 900;
@@ -3918,7 +3918,7 @@ body.cotacao-modal-open {
 .boleto-call-button {
   width: fit-content;
   padding-inline: 18px;
-  background: linear-gradient(180deg, #ffff33, var(--yellow));
+  background: linear-gradient(180deg, #f0f000, var(--yellow));
 }
 
 .boleto-call-button i {
@@ -6922,9 +6922,9 @@ footer {
   }
 }
 
-.header-collaborator { display:inline-flex; align-items:center; gap:.45rem; padding:.75rem 1rem; border-radius:999px; background:#080f63; color:#fff; font-weight:800; text-decoration:none; white-space:nowrap; }
-.header-collaborator:hover { background:#121e8b; transform:translateY(-1px); }
-.collaborator-menu-link { font-weight:800 !important; color:#080f63 !important; }
+.header-collaborator { display:inline-flex; align-items:center; gap:.45rem; padding:.75rem 1rem; border-radius:999px; background:#070c40; color:#fff; font-weight:800; text-decoration:none; white-space:nowrap; }
+.header-collaborator:hover { background:#070c40; transform:translateY(-1px); }
+.collaborator-menu-link { font-weight:800 !important; color:#070c40 !important; }
 @media (max-width: 1180px){ .header-collaborator{display:none;} }
 
 /* Botões da capa: cotação e download do Regulamento PPV 2026 */
@@ -7083,7 +7083,7 @@ footer {
   border-color: var(--navy-900);
   background: var(--navy-900);
   color: #fff;
-  box-shadow: 0 7px 18px rgba(8, 15, 99, .15);
+  box-shadow: 0 7px 18px rgba(7, 12, 64, .15);
 }
 
 .cotacao-binary-option input {
@@ -7138,5 +7138,186 @@ footer {
 @media (max-width: 480px) {
   .cotacao-binary-options {
     grid-template-columns: 1fr 1fr;
+  }
+}
+
+
+/* =========================================================
+   IDENTIDADE VISUAL OFICIAL NH - Manual da Marca 2026
+   Azul profundo: #070C40 | Amarelo vibrante: #F0F000 | Branco: #FFFFFF
+   Cabeçalhos/corpo: Helvetica Now Display (com fallbacks seguros)
+   Slogan e destaques institucionais: League Spartan
+   ========================================================= */
+:root {
+  --brand-blue: #070c40;
+  --brand-yellow: #f0f000;
+  --brand-white: #ffffff;
+  --navy-950: var(--brand-blue);
+  --navy-900: var(--brand-blue);
+  --navy-800: var(--brand-blue);
+  --navy-700: var(--brand-blue);
+  --yellow: var(--brand-yellow);
+  --yellow-dark: var(--brand-yellow);
+  --white: var(--brand-white);
+  --text: var(--brand-blue);
+  --font-body: "Helvetica Now Display", "Helvetica Neue", Helvetica, Arial, Inter, sans-serif;
+  --font-display: "Helvetica Now Display", "Helvetica Neue", Helvetica, Arial, Inter, sans-serif;
+  --font-slogan: "League Spartan", "Helvetica Neue", Arial, sans-serif;
+  --shadow: 0 18px 45px rgba(7, 12, 64, .12);
+}
+
+body,
+button,
+input,
+select,
+textarea {
+  font-family: var(--font-body);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.brand-name strong {
+  font-family: var(--font-display);
+}
+
+.brand-name small,
+.section-heading > span,
+.eyebrow,
+.step-tag,
+.footer-brand small {
+  font-family: var(--font-slogan);
+  letter-spacing: .06em;
+}
+
+.site-header,
+.mobile-menu,
+.site-footer {
+  background-color: var(--brand-blue);
+}
+
+.site-header {
+  border-bottom: 3px solid var(--brand-yellow);
+  box-shadow: 0 8px 26px rgba(7, 12, 64, .2);
+}
+
+.brand-symbol,
+.portal-brand img,
+.footer-brand img {
+  filter: none !important;
+  transform: none !important;
+}
+
+.header-cta,
+.primary-button,
+.cotacao-submit,
+.cotacao-binary-option.selected,
+.main-menu .collaborator-menu-link {
+  color: var(--brand-blue);
+  background: var(--brand-yellow);
+  border-color: var(--brand-yellow);
+  box-shadow: 0 10px 24px rgba(7, 12, 64, .16);
+}
+
+.header-cta:hover,
+.primary-button:hover,
+.cotacao-submit:hover {
+  background: var(--brand-yellow);
+  box-shadow: 0 14px 28px rgba(7, 12, 64, .2);
+}
+
+.header-phone,
+.regulation-button,
+.secondary-button,
+.outline-button {
+  border-color: rgba(240, 240, 0, .9);
+}
+
+.hero-section {
+  background: var(--brand-blue);
+}
+
+.hero-bg {
+  background-image:
+    linear-gradient(90deg, var(--brand-blue) 0%, rgba(7, 12, 64, .94) 16%, rgba(7, 12, 64, .58) 45%, rgba(7, 12, 64, .24) 72%, rgba(7, 12, 64, .62) 100%),
+    url("assets/carro-hero.png");
+}
+
+.hero-bg::after {
+  background:
+    linear-gradient(180deg, rgba(7, 12, 64, .04), rgba(7, 12, 64, .58)),
+    radial-gradient(circle at 70% 28%, rgba(255, 255, 255, .12), transparent 16%);
+}
+
+.hero-copy h1 span,
+.section-heading > span,
+.footer-title,
+.brand-name small {
+  color: var(--brand-yellow);
+}
+
+.benefit-card,
+.office-card,
+.boleto-page-card,
+.contact-card,
+.app-card,
+.cotacao-modal-content {
+  border-color: rgba(7, 12, 64, .14);
+  box-shadow: 0 12px 34px rgba(7, 12, 64, .08);
+}
+
+.icon-circle,
+.boleto-page-icon,
+.social-icon,
+.contact-icon {
+  background: var(--brand-blue);
+}
+
+.benefit-card:hover,
+.office-card:hover {
+  border-color: var(--brand-yellow);
+  box-shadow: 0 18px 38px rgba(7, 12, 64, .13);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--brand-blue) !important;
+  box-shadow: 0 0 0 4px rgba(240, 240, 0, .24) !important;
+}
+
+.cotacao-zero-km legend,
+.cotacao-field-help,
+.section-description,
+.boleto-form-message {
+  color: rgba(7, 12, 64, .72);
+}
+
+.cotacao-binary-option.selected {
+  box-shadow: 0 8px 20px rgba(7, 12, 64, .18);
+}
+
+.header-collaborator {
+  background: transparent;
+  color: var(--brand-white);
+  border: 1px solid rgba(240, 240, 0, .72);
+}
+
+.header-collaborator:hover {
+  color: var(--brand-blue);
+  background: var(--brand-yellow);
+}
+
+@media (max-width: 1180px) {
+  .main-menu {
+    background: var(--brand-blue);
+    border-top: 1px solid rgba(240, 240, 0, .32);
+  }
+
+  .main-menu .collaborator-menu-link {
+    color: var(--brand-blue) !important;
   }
 }

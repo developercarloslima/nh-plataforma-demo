@@ -375,7 +375,8 @@ function openInspectionAnalysis(id) {
   $('inspection-links').innerHTML = linkButtons([
     [currentPublicUrl, 'Abrir link do associado'], [item.driveFolderUrl, 'Abrir Drive'], [item.reportUrl, 'Abrir relatório'], [item.signatureUrl, 'Abrir assinatura'],
     [window.NH_URLS?.replaceLinkInCommunicationUrl(item.teamWhatsappUrl, item.publicUrl, currentPublicUrl) || item.teamWhatsappUrl, 'Enviar por WhatsApp'],
-    [window.NH_URLS?.replaceLinkInCommunicationUrl(item.teamEmailUrl, item.publicUrl, currentPublicUrl) || item.teamEmailUrl, 'Enviar por e-mail']
+    [window.NH_URLS?.replaceLinkInCommunicationUrl(item.teamEmailUrl, item.publicUrl, currentPublicUrl) || item.teamEmailUrl, 'Enviar por e-mail'],
+    [item.associateDecisionWhatsappUrl, item.status === 'APPROVED' ? 'Informar aprovação ao associado' : 'Informar recusa ao associado']
   ]);
   openDialog('inspection-dialog');
 }

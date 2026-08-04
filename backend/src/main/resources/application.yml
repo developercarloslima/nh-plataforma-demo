@@ -43,9 +43,18 @@ app:
     token-hours: ${AUTH_TOKEN_HOURS:12}
     consultant-username: ${CONSULTANT_USERNAME:consultor}
     consultant-password: ${CONSULTANT_PASSWORD:nh2027}
+    analyst-username: ${ANALYST_USERNAME:analista}
+    analyst-password: ${ANALYST_PASSWORD:nh2027}
     admin-username: ${ADMIN_USERNAME:admin@nh.local}
     admin-password: ${ADMIN_PASSWORD:altere-agora}
   allowed-origins: ${ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000,https://aforma-demo.vercel.app,https://*.vercel.app}
+  whatsapp-cloud:
+    enabled: ${WHATSAPP_CLOUD_ENABLED:false}
+    api-version: ${WHATSAPP_CLOUD_API_VERSION:v23.0}
+    phone-number-id: ${WHATSAPP_CLOUD_PHONE_NUMBER_ID:}
+    access-token: ${WHATSAPP_CLOUD_ACCESS_TOKEN:}
+    completion-template-name: ${WHATSAPP_COMPLETION_TEMPLATE_NAME:}
+    language-code: ${WHATSAPP_TEMPLATE_LANGUAGE:pt_BR}
   google-drive:
     enabled: ${GOOGLE_DRIVE_ENABLED:false}
     credentials-base64: ${GOOGLE_DRIVE_CREDENTIALS_BASE64:}

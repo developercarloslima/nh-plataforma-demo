@@ -66,6 +66,14 @@ public class AdminActivityService {
     }
 
     @Transactional
+    public AdminInspectionResponse markDecisionMessageSent(UUID id) {
+        InspectionRequest inspection = inspectionRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
+        inspection.markDecisionMessageSent();
+        return toInspection(inspectionRepository.save(inspection));
+    }
+
+    @Transactional
     public AdminInspectionResponse updateInspectionStatus(UUID id, UpdateInspectionStatusRequest request, String username) {
         InspectionRequest inspection = inspectionRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
@@ -128,13 +136,42 @@ public class AdminActivityService {
                 + (item.getDriveFolderUrl() == null ? "\nLink: " + publicUrl : "\nDrive: " + item.getDriveFolderUrl())
                 + (item.getReportUrl() == null ? "" : "\nRelatório: " + item.getReportUrl());
         String subject = "Retrato NH - " + plateLabel;
+        String associateDecisionUrl = associateDecisionWhatsappUrl(item);
+        boolean decisionMessagePending = associateDecisionUrl != null && item.getDecisionMessageSentAt() == null;
         return new AdminInspectionResponse(
                 item.getId(), item.getRequestType().name(), item.getAssociateName(), maskCpf(item.getCpf()),
                 item.getWhatsapp(), item.getPlate(), item.getResidenceAddress(), signatureUrl,
                 item.getConsultant() == null ? null : item.getConsultant().getId(), item.getConsultantName(), item.getStatus(), item.getCreatedAt(), item.getExpiresAt(), item.getCompletedAt(),
                 item.getAdminNote(), item.getReviewedAt(), publicUrl, item.getDriveFolderUrl(), item.getReportUrl(),
-                whatsappUrl(whatsapp, message), emailUrl(email, subject, message), item.getAssets().size()
+                whatsappUrl(whatsapp, message), emailUrl(email, subject, message),
+                associateDecisionUrl, item.getDecisionMessageSentAt(), decisionMessagePending, item.getAssets().size()
         );
+    }
+
+    private String associateDecisionWhatsappUrl(InspectionRequest item) {
+        if (item.getStatus() != InspectionRequestStatus.APPROVED
+                && item.getStatus() != InspectionRequestStatus.REJECTED) return null;
+        String phone = normalizeAssociatePhone(item.getWhatsapp());
+        if (phone == null) return null;
+        String firstName = item.getAssociateName() == null || item.getAssociateName().isBlank()
+                ? "associado" : item.getAssociateName().trim().split("\\s+")[0];
+        String message;
+        if (item.getStatus() == InspectionRequestStatus.APPROVED) {
+            message = "Olá, " + firstName + "! Sua vistoria foi aprovada pela equipe Novo Horizonte Proteção Veicular.";
+        } else {
+            message = "Olá, " + firstName + "! Sua vistoria foi recusada pela equipe Novo Horizonte Proteção Veicular."
+                    + (item.getAdminNote() == null || item.getAdminNote().isBlank()
+                    ? " Entre em contato com o seu consultor para receber as orientações."
+                    : " Motivo/orientação: " + item.getAdminNote());
+        }
+        return whatsappUrl(phone, message);
+    }
+
+    private String normalizeAssociatePhone(String value) {
+        if (value == null || value.isBlank()) return null;
+        String digits = value.replaceAll("\\D", "");
+        if (digits.length() == 10 || digits.length() == 11) digits = "55" + digits;
+        return digits.matches("^[1-9][0-9]{11,14}$") ? digits : null;
     }
 
     private String quoteAnalysisSummary(Quotation item) {

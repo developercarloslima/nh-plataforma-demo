@@ -20,6 +20,8 @@ public class AuthController {
     private final AccessTokenService tokenService;
     private final String consultantUsername;
     private final String consultantPassword;
+    private final String analystUsername;
+    private final String analystPassword;
     private final String adminUsername;
     private final String adminPassword;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
@@ -28,12 +30,16 @@ public class AuthController {
             AccessTokenService tokenService,
             @Value("${app.auth.consultant-username}") String consultantUsername,
             @Value("${app.auth.consultant-password}") String consultantPassword,
+            @Value("${app.auth.analyst-username}") String analystUsername,
+            @Value("${app.auth.analyst-password}") String analystPassword,
             @Value("${app.auth.admin-username}") String adminUsername,
             @Value("${app.auth.admin-password}") String adminPassword
     ) {
         this.tokenService = tokenService;
         this.consultantUsername = consultantUsername;
         this.consultantPassword = consultantPassword;
+        this.analystUsername = analystUsername;
+        this.analystPassword = analystPassword;
         this.adminUsername = adminUsername;
         this.adminPassword = adminPassword;
     }
@@ -43,6 +49,8 @@ public class AuthController {
         PortalRole role;
         if (constantEquals(request.username(), adminUsername) && passwordMatches(request.password(), adminPassword)) {
             role = PortalRole.ADMIN;
+        } else if (constantEquals(request.username(), analystUsername) && passwordMatches(request.password(), analystPassword)) {
+            role = PortalRole.ANALYST;
         } else if (constantEquals(request.username(), consultantUsername) && passwordMatches(request.password(), consultantPassword)) {
             role = PortalRole.CONSULTANT;
         } else {

@@ -539,7 +539,10 @@ function inspectionRequirementsForQuote(quote) {
       ['Painel e quilometragem', 'Ligue o painel e garanta que a quilometragem esteja nítida.'],
       ['Chassi / numeração', 'Aproxime apenas o necessário e mantenha toda a numeração legível.'],
       ['Motor', 'Registre o conjunto do motor com boa iluminação e sem obstruções.'],
-      ['Pneus e rodas', 'Registre o estado geral dos pneus e rodas de forma nítida.']
+      ['Pneus e rodas', 'Registre o estado geral dos pneus e rodas de forma nítida.'],
+      ['Selfie do associado em frente à motocicleta', quote.zeroKm
+        ? 'Enquadre o associado em frente à motocicleta e mostre claramente a dianteira do veículo, mesmo que ainda não tenha placa.'
+        : 'Enquadre o associado em frente à motocicleta e mantenha a placa perfeitamente visível e legível.']
     ];
   }
   return [
@@ -550,7 +553,10 @@ function inspectionRequirementsForQuote(quote) {
     ['Painel e quilometragem', 'Ligue o painel e mantenha a quilometragem nítida e centralizada.'],
     ['Chassi / numeração', 'Registre a numeração do chassi sem reflexos e com todos os caracteres legíveis.'],
     ['Para-brisa dianteiro', 'Fotografe o para-brisa inteiro para demonstrar o estado do vidro.'],
-    ['Interior do veículo', 'Registre bancos, painel e estado geral da cabine com boa iluminação.']
+    ['Interior do veículo', 'Registre bancos, painel e estado geral da cabine com boa iluminação.'],
+    ['Selfie do associado em frente ao veículo', quote.zeroKm
+      ? 'Enquadre o associado em frente ao veículo e mostre claramente a dianteira, mesmo que o veículo ainda não tenha placa.'
+      : 'Enquadre o associado em frente ao veículo e mantenha a placa perfeitamente visível e legível.']
   ].map(([label, instruction]) => ({ label, instruction }));
 }
 

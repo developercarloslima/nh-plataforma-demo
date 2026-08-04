@@ -23,7 +23,7 @@ import java.util.UUID;
 @Service
 public class InspectionService {
 
-    private static final int REQUIRED_PHOTO_COUNT = 8;
+    private static final int REQUIRED_PHOTO_COUNT = 9;
     private static final long MAX_PHOTO_BYTES = 10L * 1024 * 1024;
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of("image/jpeg", "image/png");
 
@@ -170,7 +170,7 @@ public class InspectionService {
         if (photos == null || labels == null
                 || photos.size() != REQUIRED_PHOTO_COUNT
                 || labels.size() != REQUIRED_PHOTO_COUNT) {
-            throw new IllegalArgumentException("Envie as 8 fotos obrigatórias da vistoria.");
+            throw new IllegalArgumentException("Envie as 9 fotos obrigatórias da vistoria, incluindo a selfie do associado em frente ao veículo.");
         }
         Set<String> uniqueLabels = new HashSet<>();
         for (int index = 0; index < photos.size(); index++) {

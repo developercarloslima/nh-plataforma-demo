@@ -1,0 +1,1337 @@
+/* =========================================================
+   NH PROTEÇÃO VEICULAR — CAMADA RESPONSIVA GLOBAL
+   Compatibilidade: celulares pequenos, tablets, notebooks,
+   desktops, ultrawide, modo paisagem e dispositivos com notch.
+   ========================================================= */
+
+:root {
+  --responsive-gutter: clamp(14px, 3vw, 32px);
+  --responsive-content: 1180px;
+  --responsive-content-wide: 1440px;
+  --responsive-radius: clamp(14px, 2vw, 24px);
+}
+
+html {
+  width: 100%;
+  min-width: 0;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-behavior: smooth;
+  scroll-padding-top: 90px;
+}
+
+body {
+  width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-x: clip;
+}
+
+body,
+main,
+section,
+article,
+header,
+footer,
+nav,
+form,
+fieldset,
+div {
+  min-width: 0;
+}
+
+img,
+picture,
+video,
+canvas,
+svg,
+iframe {
+  max-inline-size: 100%;
+}
+
+img,
+video,
+canvas,
+svg {
+  height: auto;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  max-width: 100%;
+}
+
+p,
+li,
+label,
+small,
+strong,
+span,
+a,
+button,
+th,
+td,
+code,
+pre {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+pre,
+code,
+.public-link,
+#public-link,
+.table-code {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.container {
+  width: min(var(--responsive-content), calc(100% - var(--responsive-gutter) - var(--responsive-gutter)));
+  margin-inline: auto;
+}
+
+.shell {
+  width: min(var(--responsive-content), calc(100% - var(--responsive-gutter) - var(--responsive-gutter)));
+  margin-inline: auto;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* Evita zoom automático do iOS ao focar formulários. */
+@media (max-width: 820px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+@media (pointer: coarse) {
+  button,
+  .button,
+  .primary-button,
+  .secondary-button,
+  .header-cta,
+  .header-collaborator,
+  .menu-toggle,
+  .small-button,
+  input[type="button"],
+  input[type="submit"] {
+    min-height: 44px;
+  }
+
+  a,
+  button,
+  label,
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
+  }
+}
+
+/* =========================================================
+   SITE INSTITUCIONAL
+   ========================================================= */
+
+.site-header {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+.nav-wrapper,
+.brand,
+.brand-name,
+.main-menu,
+.hero-content,
+.hero-copy,
+.hero-actions,
+.contact-panel,
+.app-card,
+.footer-compact,
+.footer-compact-top,
+.footer-compact-item {
+  min-width: 0;
+}
+
+.brand-symbol {
+  flex: 0 0 auto;
+}
+
+.brand-name {
+  overflow: hidden;
+}
+
+.brand-name strong,
+.brand-name small {
+  display: block;
+  max-width: 100%;
+}
+
+.hero-copy h1 {
+  font-size: clamp(2rem, 6vw, 4.9rem);
+  text-wrap: balance;
+}
+
+.hero-copy p,
+.section-description,
+.contact-copy p,
+.app-copy p {
+  max-width: 70ch;
+}
+
+.hero-actions > *,
+.contact-actions > *,
+.boleto-page-actions > *,
+.proposal-actions > *,
+.review-actions > *,
+.modal-actions > * {
+  min-width: 0;
+}
+
+.benefits-grid,
+.benefits-grid-expanded {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.benefit-card,
+.office-card,
+.step-card {
+  min-width: 0;
+}
+
+.benefit-card h3,
+.office-card h3,
+.step-card h3 {
+  text-wrap: balance;
+}
+
+.app-card,
+.contact-panel {
+  align-items: center;
+}
+
+.phone-mockup,
+.app-phone-image {
+  max-width: 100%;
+}
+
+.store-buttons,
+.store-badges {
+  flex-wrap: wrap;
+}
+
+.store-badge-link {
+  max-width: min(190px, 100%);
+}
+
+.contact-form,
+.cotacao-form,
+.boleto-form {
+  min-width: 0;
+}
+
+.cotacao-modal,
+.modal-backdrop {
+  padding-top: max(14px, env(safe-area-inset-top, 0px));
+  padding-right: max(14px, env(safe-area-inset-right, 0px));
+  padding-bottom: max(14px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(14px, env(safe-area-inset-left, 0px));
+}
+
+.cotacao-modal__box,
+.inspection-modal {
+  width: min(720px, 100%);
+  max-height: calc(100dvh - 28px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.floating-social {
+  right: max(14px, env(safe-area-inset-right, 0px));
+  bottom: max(14px, env(safe-area-inset-bottom, 0px));
+}
+
+.boleto-page-card,
+.boleto-flow-card,
+.boleto-result-header,
+.boleto-result-header--inline,
+.boleto-list,
+.boleto-list > * {
+  min-width: 0;
+}
+
+.boleto-result-header--inline {
+  flex-wrap: wrap;
+}
+
+.boleto-page-actions {
+  flex-wrap: wrap;
+}
+
+/* =========================================================
+   PORTAIS: COLABORADOR, ADMIN, ANÁLISE E RETRATO NH
+   ========================================================= */
+
+.portal-header {
+  padding-top: max(10px, env(safe-area-inset-top, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+}
+
+.portal-brand,
+.portal-brand span,
+.header-actions,
+.section-head,
+.actions,
+.row-actions,
+.dialog-head,
+.signature-heading,
+.camera-panel-head,
+.camera-controls,
+.communication-actions {
+  min-width: 0;
+}
+
+.portal-brand span {
+  overflow: hidden;
+}
+
+.portal-brand strong,
+.portal-brand small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.hero-panel h1,
+.card h1,
+.card h2,
+.card h3,
+.dialog-card h2,
+.communication-card h2 {
+  text-wrap: balance;
+}
+
+.form-grid > *,
+.filter-grid > *,
+.detail-grid > *,
+.kpi-grid > *,
+.overview-grid > *,
+.tool-grid > *,
+.upload-grid > * {
+  min-width: 0;
+}
+
+.actions > a,
+.actions > button,
+.row-actions > a,
+.row-actions > button {
+  max-width: 100%;
+}
+
+.table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+
+.table-wrap table {
+  max-width: none;
+}
+
+.table-wrap::after {
+  content: "";
+  display: block;
+  width: 1px;
+  height: 1px;
+}
+
+.admin-tabs {
+  max-width: 100%;
+}
+
+.admin-dialog {
+  max-width: calc(100% - 24px);
+  max-height: calc(100dvh - 24px);
+}
+
+.dialog-card {
+  overscroll-behavior: contain;
+}
+
+#public-link,
+.public-link,
+.result-link,
+.table-code {
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.inspection-guide-grid img {
+  max-height: min(78dvh, 1200px);
+  object-fit: contain;
+}
+
+.signature-block canvas {
+  max-width: 100%;
+  min-height: 110px;
+}
+
+.camera-modal {
+  padding-top: max(12px, env(safe-area-inset-top, 0px));
+  padding-right: max(12px, env(safe-area-inset-right, 0px));
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(12px, env(safe-area-inset-left, 0px));
+}
+
+.camera-panel {
+  max-height: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.camera-live-frame video {
+  max-width: 100%;
+}
+
+/* =========================================================
+   COTAÇÃO E VISTORIA DO FLUXO DE VENDA
+   ========================================================= */
+
+.topbar,
+.hero,
+.content-card,
+.comparison-section,
+.proposal-card,
+.inspection-modal,
+.selection-summary,
+.accept-box {
+  min-width: 0;
+}
+
+.topbar {
+  padding-top: max(12px, env(safe-area-inset-top, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+}
+
+.hero {
+  width: min(1120px, calc(100% - var(--responsive-gutter) - var(--responsive-gutter)));
+}
+
+.content-card,
+.comparison-section,
+.proposal-card {
+  width: min(1120px, calc(100% - var(--responsive-gutter) - var(--responsive-gutter)));
+}
+
+.plan-cards {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.optional-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.comparison-table {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.comparison-row,
+.comparison-header {
+  min-width: 720px;
+}
+
+.quote-details,
+.inspection-review-grid,
+.guideline-grid {
+  min-width: 0;
+}
+
+.capture-preview,
+.review-photo {
+  width: 100%;
+  object-fit: cover;
+}
+
+/* =========================================================
+   NOTEBOOKS E TABLETS GRANDES
+   ========================================================= */
+
+@media (max-width: 1180px) {
+  .nav-wrapper {
+    width: min(100%, calc(100% - var(--responsive-gutter) - var(--responsive-gutter)));
+  }
+
+  .main-menu {
+    max-height: calc(100dvh - 78px - env(safe-area-inset-top, 0px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .header-phone,
+  .header-cta,
+  .header-collaborator {
+    flex: 0 0 auto;
+  }
+
+  .benefits-grid,
+  .benefits-grid-expanded {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .tool-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1024px) {
+  .benefits-grid,
+  .benefits-grid-expanded {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .app-card,
+  .contact-panel {
+    grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
+  }
+
+  .footer-compact-top {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .footer-compact-address {
+    grid-column: 1 / -1;
+  }
+
+  .plan-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .overview-grid,
+  .detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* =========================================================
+   TABLETS E CELULARES
+   ========================================================= */
+
+@media (max-width: 820px) {
+  :root {
+    --responsive-gutter: clamp(12px, 4vw, 22px);
+  }
+
+  html {
+    scroll-padding-top: 72px;
+  }
+
+  .portal-header {
+    min-height: 64px;
+    gap: 10px;
+  }
+
+  .portal-brand img {
+    width: 42px;
+    height: 42px;
+  }
+
+  .header-actions {
+    gap: 7px;
+  }
+
+  .header-actions a,
+  .header-actions button {
+    padding: 9px 11px;
+  }
+
+  .shell {
+    margin-top: 20px;
+    margin-bottom: max(42px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .login-wrap {
+    width: min(calc(100% - var(--responsive-gutter) - var(--responsive-gutter)), 480px);
+    margin-top: 26px;
+    margin-bottom: max(36px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .hero-panel,
+  .card,
+  .dialog-card,
+  .tool-card,
+  .communication-card {
+    border-radius: var(--responsive-radius);
+  }
+
+  .hero-panel h1 {
+    font-size: clamp(1.8rem, 8vw, 2.65rem);
+  }
+
+  .form-grid,
+  .filter-grid,
+  .detail-grid,
+  .kpi-grid,
+  .overview-grid,
+  .upload-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .span-2 {
+    grid-column: auto;
+  }
+
+  .settings-row {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  .section-head {
+    align-items: stretch;
+  }
+
+  .section-head > *,
+  .section-head input,
+  .section-head select,
+  .section-head [style*="max-width"] {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  .admin-tabs {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+    padding-bottom: 8px;
+  }
+
+  .admin-tabs button {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+    white-space: nowrap;
+  }
+
+  .table-wrap {
+    margin-inline: -2px;
+  }
+
+  .table-wrap table {
+    min-width: 680px;
+  }
+
+  .camera-upload-item .camera-action {
+    width: 100%;
+  }
+
+  .inspection-guide-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .topbar .brand {
+    flex: 1 1 180px;
+  }
+
+  .hero {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .hero-logo {
+    width: min(230px, 70vw);
+    margin-inline: auto;
+  }
+
+  .form-grid {
+    gap: 14px;
+  }
+
+  .vehicle-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .optional-list,
+  .plan-cards,
+  .inspection-review-grid,
+  .guideline-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .selection-summary,
+  .quote-details {
+    width: 100%;
+  }
+}
+
+@media (max-width: 760px) {
+  .site-header {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .nav-wrapper {
+    gap: 8px;
+  }
+
+  .brand-symbol {
+    width: 48px;
+    height: 48px;
+  }
+
+  .brand-name strong {
+    font-size: clamp(.8rem, 4vw, 1rem);
+  }
+
+  .brand-name small {
+    font-size: clamp(.58rem, 3vw, .72rem);
+  }
+
+  .menu-toggle {
+    flex: 0 0 46px;
+    width: 46px;
+    height: 46px;
+  }
+
+  .hero-section {
+    min-height: auto;
+  }
+
+  .hero-content {
+    min-height: auto;
+    padding-top: clamp(42px, 10vw, 70px);
+    padding-bottom: clamp(42px, 10vw, 70px);
+  }
+
+  .hero-copy {
+    width: 100%;
+  }
+
+  .hero-copy h1 {
+    font-size: clamp(2rem, 11vw, 3.25rem);
+    line-height: .98;
+  }
+
+  .hero-copy p {
+    font-size: clamp(.98rem, 4.4vw, 1.12rem);
+  }
+
+  .hero-actions,
+  .contact-actions,
+  .boleto-page-actions,
+  .proposal-actions,
+  .review-actions,
+  .modal-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .hero-actions > *,
+  .contact-actions > *,
+  .boleto-page-actions > *,
+  .proposal-actions > *,
+  .review-actions > *,
+  .modal-actions > * {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  .benefits-grid,
+  .benefits-grid-expanded {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .benefit-card {
+    padding: clamp(13px, 4vw, 20px);
+  }
+
+  .benefit-card .icon-circle {
+    width: clamp(62px, 20vw, 88px);
+    height: clamp(62px, 20vw, 88px);
+  }
+
+  .benefit-card h3 {
+    font-size: clamp(.82rem, 3.8vw, 1rem);
+  }
+
+  .steps-grid,
+  .app-card,
+  .contact-panel,
+  .footer-compact-top {
+    grid-template-columns: 1fr;
+  }
+
+  .phone-mockup {
+    width: min(300px, 84vw);
+    margin-inline: auto;
+  }
+
+  .app-copy,
+  .contact-copy {
+    text-align: left;
+  }
+
+  .store-buttons,
+  .store-badges {
+    justify-content: flex-start;
+  }
+
+  .footer-compact-address {
+    grid-column: auto;
+  }
+
+  .footer-compact-item {
+    width: 100%;
+  }
+
+  .cotacao-modal,
+  .modal-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .cotacao-modal__box,
+  .inspection-modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100dvh - env(safe-area-inset-top, 0px));
+    border-radius: 22px 22px 0 0;
+    padding-bottom: max(18px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .cotacao-modal__header,
+  .modal-actions {
+    position: relative;
+  }
+
+  .boleto-page-card,
+  .boleto-flow-card {
+    grid-template-columns: 1fr;
+  }
+
+  .boleto-page-icon {
+    margin-inline: auto;
+  }
+
+  .portal-header {
+    flex-wrap: wrap;
+  }
+
+  .portal-brand {
+    flex: 1 1 auto;
+  }
+
+  .portal-brand span {
+    display: block;
+  }
+
+  .header-actions {
+    flex: 0 1 auto;
+  }
+
+  .header-actions a,
+  .header-actions button {
+    font-size: .82rem;
+  }
+
+  .tool-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .actions,
+  .communication-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .actions > a,
+  .actions > button,
+  .communication-actions > a,
+  .communication-actions > button {
+    width: 100%;
+  }
+
+  .row-actions {
+    min-width: 0;
+  }
+
+  .admin-dialog,
+  .admin-dialog.wide-dialog {
+    width: 100%;
+    max-width: 100%;
+    max-height: 100dvh;
+    margin: auto 0 0;
+  }
+
+  .admin-dialog[open] {
+    display: flex;
+    align-items: flex-end;
+  }
+
+  .dialog-card,
+  .communication-card {
+    width: 100%;
+    max-height: calc(100dvh - env(safe-area-inset-top, 0px));
+    border-radius: 22px 22px 0 0;
+    padding: 20px var(--responsive-gutter) max(20px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .dialog-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    margin-inline: calc(0px - var(--responsive-gutter));
+    margin-bottom: -20px;
+    padding: 12px var(--responsive-gutter) max(12px, env(safe-area-inset-bottom, 0px));
+    background: rgba(255,255,255,.96);
+    border-top: 1px solid var(--line);
+    backdrop-filter: blur(8px);
+  }
+
+  .signature-heading {
+    flex-direction: column;
+  }
+
+  .signature-heading button {
+    width: 100%;
+  }
+
+  .camera-modal {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .camera-panel {
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100dvh - env(safe-area-inset-top, 0px));
+    border-radius: 22px 22px 0 0;
+    padding: 16px var(--responsive-gutter) max(16px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .camera-controls {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .camera-controls button {
+    width: 100%;
+  }
+
+  .content-card,
+  .comparison-section,
+  .proposal-card,
+  .hero {
+    border-radius: var(--responsive-radius);
+  }
+
+  .comparison-table {
+    margin-inline: -4px;
+    padding-inline: 4px;
+  }
+
+  .comparison-row,
+  .comparison-header {
+    min-width: 660px;
+  }
+}
+
+/* =========================================================
+   CELULARES PEQUENOS
+   ========================================================= */
+
+@media (max-width: 480px) {
+  :root {
+    --responsive-gutter: 14px;
+  }
+
+  .section-padding {
+    padding-top: clamp(42px, 13vw, 62px);
+    padding-bottom: clamp(42px, 13vw, 62px);
+  }
+
+  .section-heading h2,
+  .section-heading > h2,
+  .contact-copy h2,
+  .app-copy h2 {
+    font-size: clamp(1.75rem, 9vw, 2.45rem);
+  }
+
+  .hero-copy h1 {
+    font-size: clamp(1.92rem, 10.7vw, 2.75rem);
+  }
+
+  .brand-name {
+    max-width: min(48vw, 170px);
+  }
+
+  .benefits-grid,
+  .benefits-grid-expanded {
+    gap: 10px;
+  }
+
+  .benefit-card {
+    min-height: 0;
+  }
+
+  .office-card,
+  .step-card,
+  .content-card,
+  .card,
+  .tool-card,
+  .login-card {
+    padding: 16px;
+  }
+
+  .hero-panel {
+    padding: 22px 17px;
+  }
+
+  .hero-panel p {
+    font-size: .95rem;
+  }
+
+  .portal-brand img {
+    width: 38px;
+    height: 38px;
+  }
+
+  .portal-brand strong {
+    font-size: .92rem;
+  }
+
+  .portal-brand small {
+    font-size: .7rem;
+  }
+
+  .header-actions a,
+  .header-actions button {
+    padding: 8px 9px;
+    font-size: .76rem;
+  }
+
+  .steps {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .step {
+    width: 100%;
+    text-align: center;
+  }
+
+  .guidelines,
+  .registration-fields,
+  .upload-item {
+    padding: 14px;
+  }
+
+  .signature-block canvas {
+    min-height: 96px;
+    aspect-ratio: 2.6 / 1;
+  }
+
+  .camera-panel-head h2,
+  .dialog-head h2 {
+    font-size: 1.35rem;
+  }
+
+  .camera-close,
+  .dialog-close {
+    flex: 0 0 42px;
+  }
+
+  .topbar {
+    align-items: stretch;
+  }
+
+  .topbar .brand {
+    flex-basis: 100%;
+  }
+
+  .secure-pill {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .hero,
+  .content-card,
+  .comparison-section,
+  .proposal-card {
+    width: calc(100% - 28px);
+    padding: 17px;
+  }
+
+  .hero-copy h1,
+  .content-card h2,
+  .proposal-card h2 {
+    text-wrap: balance;
+  }
+
+  .vehicle-options,
+  .binary-options,
+  .cotacao-binary-options {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .vehicle-option,
+  .binary-option,
+  .cotacao-binary-option {
+    min-width: 0;
+    padding-inline: 8px;
+    font-size: .88rem;
+  }
+
+  .selection-summary {
+    padding: 15px;
+  }
+}
+
+@media (max-width: 350px) {
+  :root {
+    --responsive-gutter: 10px;
+  }
+
+  .brand-name {
+    max-width: 132px;
+  }
+
+  .brand-symbol {
+    width: 43px;
+    height: 43px;
+  }
+
+  .menu-toggle {
+    width: 43px;
+    height: 43px;
+    flex-basis: 43px;
+  }
+
+  .hero-copy h1 {
+    font-size: 1.82rem;
+  }
+
+  .benefits-grid,
+  .benefits-grid-expanded {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .benefit-card {
+    padding: 11px 8px;
+  }
+
+  .benefit-card .icon-circle {
+    width: 58px;
+    height: 58px;
+  }
+
+  .portal-brand span {
+    display: none;
+  }
+
+  .header-actions {
+    margin-left: auto;
+  }
+
+  .vehicle-options,
+  .binary-options,
+  .cotacao-binary-options {
+    grid-template-columns: 1fr;
+  }
+
+  .hero,
+  .content-card,
+  .comparison-section,
+  .proposal-card {
+    width: calc(100% - 20px);
+    padding: 14px;
+  }
+}
+
+@media (max-width: 290px) {
+  .benefits-grid,
+  .benefits-grid-expanded,
+  .vehicle-options,
+  .binary-options,
+  .cotacao-binary-options {
+    grid-template-columns: 1fr;
+  }
+
+  .brand-name {
+    display: none;
+  }
+}
+
+/* =========================================================
+   TELAS GRANDES E ULTRAWIDE
+   ========================================================= */
+
+@media (min-width: 1600px) {
+  :root {
+    --responsive-content: var(--responsive-content-wide);
+  }
+
+  .hero-content,
+  .nav-wrapper,
+  .footer-compact,
+  .contact-panel,
+  .app-card {
+    max-width: var(--responsive-content-wide);
+  }
+
+  .hero-copy {
+    max-width: 900px;
+  }
+
+  .benefits-grid,
+  .benefits-grid-expanded {
+    gap: 22px;
+  }
+
+  .tool-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .shell:not([style*="max-width"]) {
+    max-width: var(--responsive-content-wide);
+  }
+
+  .hero,
+  .content-card,
+  .comparison-section,
+  .proposal-card {
+    width: min(1280px, calc(100% - 64px));
+  }
+}
+
+@media (min-width: 2200px) {
+  :root {
+    --responsive-content-wide: 1560px;
+  }
+
+  body {
+    font-size: 17px;
+  }
+
+  .site-header,
+  .portal-header {
+    min-height: 82px;
+  }
+}
+
+/* =========================================================
+   MODO PAISAGEM COM POUCA ALTURA
+   ========================================================= */
+
+@media (orientation: landscape) and (max-height: 640px) {
+  .hero-content {
+    min-height: auto;
+    padding-top: 32px;
+    padding-bottom: 32px;
+  }
+
+  .hero-copy h1 {
+    font-size: clamp(2rem, 7vh, 3.2rem);
+  }
+
+  .cotacao-modal__box,
+  .inspection-modal,
+  .dialog-card,
+  .camera-panel {
+    max-height: calc(100dvh - 12px);
+  }
+
+  .camera-modal,
+  .cotacao-modal,
+  .modal-backdrop {
+    align-items: stretch;
+  }
+
+  .camera-panel,
+  .cotacao-modal__box,
+  .inspection-modal,
+  .dialog-card {
+    border-radius: 16px;
+  }
+
+  .camera-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(220px, .65fr);
+    grid-template-areas:
+      "head head"
+      "video instruction"
+      "video controls";
+    gap: 10px 14px;
+  }
+
+  .camera-panel-head { grid-area: head; margin-bottom: 0; }
+  .camera-live-frame { grid-area: video; aspect-ratio: 16 / 9; }
+  .camera-instruction { grid-area: instruction; margin: 0; }
+  .camera-controls { grid-area: controls; align-self: end; margin: 0; }
+}
+
+/* Impressão: evita componentes quebrados entre páginas. */
+@media print {
+  .site-header,
+  .portal-header,
+  .floating-social,
+  .menu-toggle,
+  .header-actions,
+  .admin-tabs,
+  .actions,
+  .camera-modal,
+  .cotacao-modal,
+  .modal-backdrop {
+    display: none !important;
+  }
+
+  body {
+    overflow: visible;
+    background: #fff;
+  }
+
+  .container,
+  .shell,
+  .content-card,
+  .card {
+    width: 100%;
+    max-width: none;
+    box-shadow: none;
+  }
+
+  .card,
+  .tool-card,
+  .table-wrap,
+  .content-card {
+    break-inside: avoid;
+  }
+}

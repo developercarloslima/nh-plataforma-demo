@@ -21,7 +21,8 @@ public final class InspectionDtos {
             @NotBlank @Size(max = 140) String associateName,
             @NotBlank @Pattern(regexp = "^[0-9.\\-]{11,14}$", message = "CPF inválido") String cpf,
             @Size(max = 30) String whatsapp,
-            @Size(max = 10) String plate
+            @Size(max = 10) String plate,
+            boolean zeroKm
     ) {}
 
     public record InspectionAssetResponse(
@@ -51,6 +52,7 @@ public final class InspectionDtos {
             String publicUrl,
             String whatsappUrl,
             String teamWhatsappUrl,
+            String associateCompletionWhatsappUrl,
             String driveFolderUrl,
             String reportUrl,
             List<InspectionAssetResponse> assets
@@ -59,6 +61,8 @@ public final class InspectionDtos {
     public record InspectionUploadResponse(
             InspectionResponse inspection,
             String driveFolderUrl,
-            String reportUrl
+            String reportUrl,
+            boolean automaticWhatsappSent,
+            String automaticWhatsappDetail
     ) {}
 }

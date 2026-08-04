@@ -50,7 +50,8 @@ public class RetratoService {
         String cpf = input.cpf().replaceAll("\\D", "");
         if (!validCpf(cpf)) throw new IllegalArgumentException("Informe um CPF válido.");
         Consultant consultant = consultantService.findActive(input.consultantId());
-        String plate = validateAndNormalizeManualPlate(input.plate(), input.requestType());
+        boolean zeroKm = input.requestType() == InspectionRequestType.NEW_INSPECTION && input.zeroKm();
+        String plate = validateAndNormalizeManualPlate(input.plate(), input.requestType(), zeroKm);
         InspectionRequest request = InspectionRequest.create(
                 randomToken(),
                 input.requestType(),
@@ -124,8 +125,8 @@ public class RetratoService {
         List<MultipartFile> safePhotos = photos == null ? List.of() : photos.stream()
                 .filter(file -> file != null && !file.isEmpty())
                 .toList();
-        if (newInspection && safePhotos.size() < 8) {
-            throw new IllegalArgumentException("A nova vistoria exige as 8 fotos obrigatórias e o vídeo.");
+        if (newInspection && safePhotos.size() < 9) {
+            throw new IllegalArgumentException("A nova vistoria exige as 9 fotos obrigatórias, incluindo a selfie do associado em frente ao veículo, e o vídeo.");
         }
         safePhotos.forEach(this::validatePhoto);
 
@@ -173,7 +174,10 @@ public class RetratoService {
         repository.save(request);
 
         InspectionResponse response = toResponse(request);
-        return new InspectionUploadResponse(response, request.getDriveFolderUrl(), request.getReportUrl());
+        return new InspectionUploadResponse(
+                response, request.getDriveFolderUrl(), request.getReportUrl(),
+                false, "Envio manual pelo consultor."
+        );
     }
 
     private InspectionRequest findByToken(String token) {
@@ -192,6 +196,7 @@ public class RetratoService {
             whatsappUrl = "https://wa.me/55" + normalizeBrazilPhone(request.getWhatsapp())
                     + "?text=" + URLEncoder.encode(message, StandardCharsets.UTF_8);
         }
+        String associateCompletionWhatsappUrl = buildAssociateCompletionWhatsappUrl(request);
         String teamWhatsappUrl = null;
         String teamWhatsappNumber = communicationSettings.teamWhatsapp();
         if (teamWhatsappNumber != null && !teamWhatsappNumber.isBlank()) {
@@ -228,16 +233,34 @@ public class RetratoService {
                 maskCpf(request.getCpf()), request.getWhatsapp(), request.getPlate(), request.getResidenceAddress(),
                 request.getConsultant() == null ? null : request.getConsultant().getId(),
                 request.getConsultantName(), request.getStatus(), request.getCreatedAt(), request.getExpiresAt(),
-                request.getCompletedAt(), publicUrl, whatsappUrl, teamWhatsappUrl, request.getDriveFolderUrl(), request.getReportUrl(), assets
+                request.getCompletedAt(), publicUrl, whatsappUrl, teamWhatsappUrl, associateCompletionWhatsappUrl,
+                request.getDriveFolderUrl(), request.getReportUrl(), assets
         );
     }
 
-    private String validateAndNormalizeManualPlate(String plate, InspectionRequestType requestType) {
+    private String buildAssociateCompletionWhatsappUrl(InspectionRequest request) {
+        if (request.getWhatsapp() == null || request.getWhatsapp().isBlank()) return null;
+        String phone = request.getWhatsapp().replaceAll("\\D", "");
+        if (phone.length() == 10 || phone.length() == 11) phone = "55" + phone;
+        if (!phone.matches("^[1-9][0-9]{11,14}$")) return null;
+        String message = "Olá, " + request.getAssociateName().trim().split("\\s+")[0]
+                + "! Sua vistoria foi realizada com sucesso. Aguarde a análise da equipe Novo Horizonte Proteção Veicular.";
+        return "https://wa.me/" + phone + "?text=" + URLEncoder.encode(message, StandardCharsets.UTF_8);
+    }
+
+    private String validateAndNormalizeManualPlate(
+            String plate,
+            InspectionRequestType requestType,
+            boolean zeroKm
+    ) {
+        if (requestType == InspectionRequestType.NEW_INSPECTION && zeroKm) {
+            return null;
+        }
+
         String normalized = plate == null ? "" : plate.replaceAll("[^A-Za-z0-9]", "").toUpperCase(Locale.ROOT);
-        if (normalized.isBlank() && requestType == InspectionRequestType.NEW_INSPECTION) return null;
         if (!normalized.matches("^[A-Z0-9]{7,10}$")) {
             throw new IllegalArgumentException(requestType == InspectionRequestType.NEW_INSPECTION
-                    ? "Informe uma placa válida ou deixe o campo vazio apenas para veículo 0 km."
+                    ? "Informe a placa do veículo ou marque Sim em veículo 0 km."
                     : "Informe a placa do veículo para atualização de boleto.");
         }
         return normalized;

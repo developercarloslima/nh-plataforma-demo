@@ -177,6 +177,9 @@ public final class AdminDtos {
             String reportUrl,
             String teamWhatsappUrl,
             String teamEmailUrl,
+            String associateDecisionWhatsappUrl,
+            OffsetDateTime decisionMessageSentAt,
+            boolean associateDecisionMessagePending,
             int assetCount
     ) {}
 

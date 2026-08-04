@@ -1,7 +1,42 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#080f63"><title>Área do Colaborador | Novo Horizonte</title><link rel="icon" href="/assets/favicon-nh.png"><link rel="stylesheet" href="/shared/portal.css"></head><body>
+<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#070c40"><title>Área do Colaborador | Novo Horizonte</title><link rel="icon" href="/assets/favicon-nh.png"><link rel="stylesheet" href="/shared/portal.css?v=20260804-brand-manual">  <link rel="stylesheet" href="/shared/responsive.css?v=20260804-universal">
+</head><body>
 <header class="portal-header"><a class="portal-brand" href="/"><img src="/assets/logo-nh-simbolo.png" alt="Novo Horizonte"><span><strong>Novo Horizonte</strong><small>Área do Colaborador</small></span></a><div class="header-actions"><a href="/">Site principal</a><button id="logout" hidden>Sair</button></div></header>
-<section id="login-view" class="login-wrap"><div class="card login-card"><span class="eyebrow" style="color:#080f63">ACESSO RESTRITO</span><h1>Área do Colaborador</h1><p>Entre com o acesso fornecido pela Novo Horizonte.</p><form id="login-form" class="form-grid"><label class="span-2">Usuário<input id="username" autocomplete="username" required></label><label class="span-2">Senha<input id="password" type="password" autocomplete="current-password" required></label><button class="primary span-2" type="submit">Entrar com segurança</button></form><div id="login-message"></div></div></section>
+<section id="login-view" class="login-wrap"><div class="card login-card"><span class="eyebrow" style="color:#070c40">ACESSO RESTRITO</span><h1>Área do Colaborador</h1><p>Entre com o acesso fornecido pela Novo Horizonte.</p><form id="login-form" class="form-grid"><label class="span-2">Usuário<input id="username" autocomplete="username" required></label><label class="span-2">Senha<input id="password" type="password" autocomplete="current-password" required></label><button class="primary span-2" type="submit">Entrar com segurança</button></form><div id="login-message"></div></div></section>
 <main id="portal-view" class="shell" hidden><section class="hero-panel"><span class="eyebrow">PAINEL INTERNO</span><h1>Bem-vindo à Área do Colaborador</h1><p>Selecione quem está realizando a atividade. Essa identificação será registrada nas cotações e vistorias para organização do painel administrativo.</p></section>
 <section class="card" style="margin-top:22px"><div class="section-head" style="margin-top:0"><div><h2>Quem está realizando esta atividade?</h2><p>Pesquise um consultor ativo ou cadastre um novo nome quando ele não estiver na lista.</p></div><span id="current-chip" class="consultant-chip" hidden></span></div><div class="form-grid"><label class="span-2">Consultor responsável<input id="consultant-search" list="consultants-list" placeholder="Digite ou selecione o nome"><datalist id="consultants-list"></datalist></label></div><div class="actions"><button id="select-consultant" class="secondary">Confirmar consultor</button><button id="show-create" class="outline">+ Cadastrar novo consultor/voluntário</button><button id="change-consultant" class="outline" hidden>Trocar consultor</button></div><div id="create-box" class="form-grid" hidden style="margin-top:18px"><label class="span-2">Nome completo do novo consultor/voluntário<input id="new-consultant-name" placeholder="Nome completo"></label><button id="create-consultant" class="primary">Cadastrar e selecionar</button><button id="cancel-create" class="outline">Cancelar</button></div><div id="portal-message"></div></section>
-<section id="tools" hidden><div class="section-head"><div><h2>Escolha a ferramenta</h2><p>O consultor selecionado será vinculado automaticamente à atividade.</p></div></div><div class="tool-grid"><a id="sga-card" class="tool-card" href="https://sga.hinova.com.br/sga/sgav4_novohorizonte/v5/login.php" target="_blank" rel="noopener noreferrer"><div class="tool-icon">⚙</div><h2>SGA</h2><p>Acessar o sistema de gestão da associação.</p><div class="tool-link">Abrir SGA →</div></a><a class="tool-card" href="/cota/"><div class="tool-icon">$</div><h2>Cota NH</h2><p>Sua proteção em poucos cliques.</p><div class="tool-link">Realizar cotação →</div></a><a class="tool-card" href="/colaborador/retrato.html"><div class="tool-icon">◉</div><h2>Retrato NH</h2><p>Vistoria digital, fotos e vídeo.</p><div class="tool-link">Criar vistoria →</div></a></div><div id="admin-card-wrap" hidden style="margin-top:18px"><a class="tool-card" href="/admin/"><div class="tool-icon">▦</div><h2>Painel administrativo</h2><p>Gerenciar consultores, cotações, vistorias e valores.</p><div class="tool-link">Abrir administração →</div></a></div></section><p class="footer-note">Novo Horizonte Proteção Veicular · Ambiente interno</p></main>
-<script src="/shared/config.js?v=20260804-current-origin"></script><script src="/colaborador/portal.js?v=20260804-render"></script></body></html>
+<section id="tools" hidden><div class="section-head"><div><h2>Escolha a ferramenta</h2><p>O consultor selecionado será vinculado automaticamente à atividade.</p></div></div><div class="tool-grid"><a id="sga-card" class="tool-card" href="https://sga.hinova.com.br/sga/sgav4_novohorizonte/v5/login.php" target="_blank" rel="noopener noreferrer"><div class="tool-icon">⚙</div><h2>SGA</h2><p>Acessar o sistema de gestão da associação.</p><div class="tool-link">Abrir SGA →</div></a><a class="tool-card" href="/cota/"><div class="tool-icon">$</div><h2>Cota NH</h2><p>Sua proteção em poucos cliques.</p><div class="tool-link">Realizar cotação →</div></a><a class="tool-card" href="/colaborador/retrato.html"><div class="tool-icon">◉</div><h2>Retrato NH</h2><p>Vistoria digital, fotos e vídeo.</p><div class="tool-link">Criar vistoria →</div></a></div><div id="admin-card-wrap" hidden style="margin-top:18px"><a class="tool-card" href="/admin/"><div class="tool-icon">▦</div><h2>Painel administrativo</h2><p>Gerenciar consultores, cotações, vistorias e valores.</p><div class="tool-link">Abrir administração →</div></a></div></section>
+<section id="activity-dashboard" hidden>
+  <div class="section-head">
+    <div><h2>Minhas cotações e vistorias</h2><p>Acompanhe emissão, validade e o andamento das vistorias vinculadas ao consultor selecionado.</p></div>
+    <button id="refresh-dashboard" class="outline" type="button">Atualizar informações</button>
+  </div>
+  <div class="card compact-card">
+    <h3>Cotações</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Número</th><th>Cliente</th><th>Veículo</th><th>Emissão</th><th>Validade</th><th>Cotação</th><th>Vistoria</th></tr></thead>
+      <tbody id="consultant-quotes-body"></tbody>
+    </table></div>
+  </div>
+  <div class="card compact-card" style="margin-top:18px">
+    <h3>Vistorias realizadas</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Associado</th><th>Placa</th><th>Tipo</th><th>Solicitada em</th><th>Concluída em</th><th>Status</th><th>Relatório</th><th>Comunicação</th></tr></thead>
+      <tbody id="consultant-inspections-body"></tbody>
+    </table></div>
+  </div>
+</section>
+<p class="footer-note">Novo Horizonte Proteção Veicular · Ambiente interno</p></main>
+<dialog id="consultant-whatsapp-dialog" class="admin-dialog communication-dialog">
+  <div class="dialog-card communication-card">
+    <div class="communication-icon">✓</div>
+    <span class="eyebrow" style="color:#070c40">VISTORIA CONCLUÍDA</span>
+    <h2>Comunique ao associado</h2>
+    <p id="consultant-whatsapp-text">A vistoria foi concluída e está aguardando análise.</p>
+    <div id="consultant-whatsapp-details" class="communication-summary"></div>
+    <div class="actions communication-actions">
+      <button id="consultant-whatsapp-later" class="outline" type="button">Comunicar depois</button>
+      <button id="consultant-whatsapp-send" class="secondary" type="button">Enviar mensagem ao associado</button>
+    </div>
+  </div>
+</dialog>
+<script src="/shared/config.js?v=20260804-current-origin"></script><script src="/colaborador/portal.js?v=20260804-manual-whatsapp"></script></body></html>

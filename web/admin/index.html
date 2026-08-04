@@ -2,11 +2,12 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#080f63">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#070c40">
   <title>Painel Administrativo NH</title>
   <link rel="icon" href="/assets/favicon-nh.png">
-  <link rel="stylesheet" href="/shared/portal.css?v=20260804-admin-total">
+  <link rel="stylesheet" href="/shared/portal.css?v=20260804-brand-manual">
+  <link rel="stylesheet" href="/shared/responsive.css?v=20260804-universal">
 </head>
 <body>
 <header class="portal-header">
@@ -22,7 +23,7 @@
 
 <section id="admin-login" class="login-wrap">
   <div class="card login-card">
-    <span class="eyebrow" style="color:#080f63">ACESSO ADMINISTRATIVO</span>
+    <span class="eyebrow" style="color:#070c40">ACESSO ADMINISTRATIVO</span>
     <h1>Entrar no painel</h1>
     <p>Entre com o usuário e a senha administrativos configurados para a plataforma.</p>
     <form id="admin-login-form" class="form-grid">
@@ -194,7 +195,7 @@
 
 <dialog id="confirm-dialog" class="admin-dialog">
   <form method="dialog" class="dialog-card">
-    <div class="dialog-head"><div><span class="eyebrow" style="color:#080f63">CONFIRMAÇÃO</span><h2 id="confirm-title">Confirmar ação</h2></div><button class="dialog-close" value="cancel" aria-label="Fechar">×</button></div>
+    <div class="dialog-head"><div><span class="eyebrow" style="color:#070c40">CONFIRMAÇÃO</span><h2 id="confirm-title">Confirmar ação</h2></div><button class="dialog-close" value="cancel" aria-label="Fechar">×</button></div>
     <p id="confirm-text" class="muted"></p>
     <div class="actions dialog-actions"><button class="outline" value="cancel">Cancelar</button><button id="confirm-action" class="danger" value="default">Confirmar</button></div>
   </form>
@@ -202,7 +203,7 @@
 
 <dialog id="consultant-dialog" class="admin-dialog">
   <form id="consultant-form" class="dialog-card">
-    <div class="dialog-head"><div><span class="eyebrow" style="color:#080f63">CONSULTOR</span><h2 id="consultant-dialog-title">Cadastrar consultor</h2></div><button class="dialog-close" type="button" data-close-dialog="consultant-dialog">×</button></div>
+    <div class="dialog-head"><div><span class="eyebrow" style="color:#070c40">CONSULTOR</span><h2 id="consultant-dialog-title">Cadastrar consultor</h2></div><button class="dialog-close" type="button" data-close-dialog="consultant-dialog">×</button></div>
     <input id="consultant-id" type="hidden">
     <label>Nome completo<input id="consultant-name" maxlength="140" required></label>
     <div id="consultant-active-wrap" class="form-check form-switch" hidden><input id="consultant-active" class="form-check-input" type="checkbox"><label class="form-check-label" for="consultant-active">Consultor ativo</label></div>
@@ -212,7 +213,7 @@
 
 <dialog id="plan-dialog" class="admin-dialog">
   <form id="plan-form" class="dialog-card">
-    <div class="dialog-head"><div><span class="eyebrow" style="color:#080f63">PLANO OU PACOTE</span><h2 id="plan-dialog-title">Novo plano</h2></div><button class="dialog-close" type="button" data-close-dialog="plan-dialog">×</button></div>
+    <div class="dialog-head"><div><span class="eyebrow" style="color:#070c40">PLANO OU PACOTE</span><h2 id="plan-dialog-title">Novo plano</h2></div><button class="dialog-close" type="button" data-close-dialog="plan-dialog">×</button></div>
     <input id="plan-id" type="hidden">
     <div class="form-grid">
       <label class="span-2">Nome<input id="plan-name" maxlength="120" required></label>
@@ -228,7 +229,7 @@
 
 <dialog id="price-dialog" class="admin-dialog">
   <form id="price-form" class="dialog-card">
-    <div class="dialog-head"><div><span class="eyebrow" style="color:#080f63">FAIXA FIPE</span><h2 id="price-dialog-title">Nova faixa de valor</h2></div><button class="dialog-close" type="button" data-close-dialog="price-dialog">×</button></div>
+    <div class="dialog-head"><div><span class="eyebrow" style="color:#070c40">FAIXA FIPE</span><h2 id="price-dialog-title">Nova faixa de valor</h2></div><button class="dialog-close" type="button" data-close-dialog="price-dialog">×</button></div>
     <input id="price-id" type="hidden">
     <div class="form-grid">
       <label class="span-2">Plano<select id="price-plan" required></select></label>
@@ -242,7 +243,7 @@
 
 <dialog id="coverage-dialog" class="admin-dialog">
   <form id="coverage-form" class="dialog-card">
-    <div class="dialog-head"><div><span class="eyebrow" style="color:#080f63">COBERTURA OU OPCIONAL</span><h2 id="coverage-dialog-title">Nova cobertura</h2></div><button class="dialog-close" type="button" data-close-dialog="coverage-dialog">×</button></div>
+    <div class="dialog-head"><div><span class="eyebrow" style="color:#070c40">COBERTURA OU OPCIONAL</span><h2 id="coverage-dialog-title">Nova cobertura</h2></div><button class="dialog-close" type="button" data-close-dialog="coverage-dialog">×</button></div>
     <input id="coverage-id" type="hidden">
     <div class="form-grid">
       <label class="span-2">Plano<select id="coverage-plan" required></select></label>
@@ -259,7 +260,7 @@
 
 <dialog id="quote-dialog" class="admin-dialog wide-dialog">
   <form id="quote-analysis-form" class="dialog-card">
-    <div class="dialog-head"><div><span class="eyebrow" style="color:#080f63">ANÁLISE DE COTAÇÃO</span><h2 id="quote-dialog-title">Cotação</h2></div><button class="dialog-close" type="button" data-close-dialog="quote-dialog">×</button></div>
+    <div class="dialog-head"><div><span class="eyebrow" style="color:#070c40">ANÁLISE DE COTAÇÃO</span><h2 id="quote-dialog-title">Cotação</h2></div><button class="dialog-close" type="button" data-close-dialog="quote-dialog">×</button></div>
     <input id="quote-analysis-id" type="hidden">
     <div id="quote-detail-grid" class="detail-grid"></div>
     <div class="form-grid" style="margin-top:18px">
@@ -273,7 +274,7 @@
 
 <dialog id="inspection-dialog" class="admin-dialog wide-dialog">
   <form id="inspection-analysis-form" class="dialog-card">
-    <div class="dialog-head"><div><span class="eyebrow" style="color:#080f63">ANÁLISE DO RETRATO NH</span><h2 id="inspection-dialog-title">Retrato NH</h2></div><button class="dialog-close" type="button" data-close-dialog="inspection-dialog">×</button></div>
+    <div class="dialog-head"><div><span class="eyebrow" style="color:#070c40">ANÁLISE DO RETRATO NH</span><h2 id="inspection-dialog-title">Retrato NH</h2></div><button class="dialog-close" type="button" data-close-dialog="inspection-dialog">×</button></div>
     <input id="inspection-analysis-id" type="hidden">
     <div id="inspection-detail-grid" class="detail-grid"></div>
     <div class="form-grid" style="margin-top:18px">
@@ -287,7 +288,7 @@
 
 <dialog id="settings-dialog" class="admin-dialog">
   <form id="settings-form" class="dialog-card">
-    <div class="dialog-head"><div><span class="eyebrow" style="color:#080f63">DESTINOS DE ENVIO</span><h2>Alterar comunicação da equipe</h2></div><button class="dialog-close" type="button" data-close-dialog="settings-dialog">×</button></div>
+    <div class="dialog-head"><div><span class="eyebrow" style="color:#070c40">DESTINOS DE ENVIO</span><h2>Alterar comunicação da equipe</h2></div><button class="dialog-close" type="button" data-close-dialog="settings-dialog">×</button></div>
     <label>E-mail que receberá as cotações<input id="settings-email-input" type="email" maxlength="180" placeholder="comercial@empresa.com.br"></label>
     <label style="margin-top:14px">WhatsApp da equipe<input id="settings-whatsapp-input" inputmode="numeric" maxlength="15" placeholder="5582999999999"></label>
     <p class="helper">Informe o WhatsApp somente com números, incluindo DDI e DDD.</p>
@@ -297,6 +298,6 @@
 
 <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
-<script src="/admin/admin.js?v=20260804-current-origin"></script>
+<script src="/admin/admin.js?v=20260804-analyst-notification"></script>
 </body>
 </html>

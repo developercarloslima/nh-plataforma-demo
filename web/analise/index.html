@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#070c40">
+  <title>Equipe de Análise | Novo Horizonte</title>
+  <link rel="icon" href="/assets/favicon-nh.png">
+  <link rel="stylesheet" href="/shared/portal.css?v=20260804-brand-manual">
+  <link rel="stylesheet" href="/shared/responsive.css?v=20260804-universal">
+</head>
+<body>
+<header class="portal-header">
+  <a class="portal-brand" href="/"><img src="/assets/logo-nh-simbolo.png" alt="Novo Horizonte"><span><strong>Novo Horizonte</strong><small>Equipe de Análise</small></span></a>
+  <div class="header-actions"><a href="/">Site principal</a><button id="logout" hidden>Sair</button></div>
+</header>
+
+<section id="analysis-login" class="login-wrap">
+  <div class="card login-card">
+    <span class="eyebrow" style="color:#070c40">ACESSO RESTRITO</span>
+    <h1>Equipe de Análise</h1>
+    <p>Entre com o usuário disponibilizado para analisar as vistorias.</p>
+    <form id="login-form" class="form-grid">
+      <label class="span-2">Usuário<input id="username" autocomplete="username" required></label>
+      <label class="span-2">Senha<input id="password" type="password" autocomplete="current-password" required></label>
+      <button class="primary span-2" type="submit">Entrar com segurança</button>
+    </form>
+    <div id="login-message"></div>
+  </div>
+</section>
+
+<main id="analysis-view" class="shell" hidden>
+  <section class="hero-panel">
+    <span class="eyebrow">RETRATO NH</span>
+    <h1>Análise de vistorias</h1>
+    <p>Confira os materiais enviados, atualize o status e informe o associado quando a vistoria for aprovada ou recusada.</p>
+  </section>
+  <div id="message" aria-live="polite"></div>
+  <section style="margin-top:22px">
+    <div class="section-head">
+      <div><h2>Vistorias recebidas</h2><p>As solicitações mais recentes aparecem primeiro.</p></div>
+      <div class="actions" style="margin-top:0"><input id="filter" placeholder="Buscar associado, placa ou consultor"><button id="refresh" class="outline" type="button">Atualizar</button></div>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Associado</th><th>Placa</th><th>Consultor</th><th>Tipo</th><th>Enviada em</th><th>Status</th><th>Ação</th></tr></thead>
+      <tbody id="inspections-body"></tbody>
+    </table></div>
+  </section>
+</main>
+
+<dialog id="inspection-dialog" class="admin-dialog wide-dialog">
+  <form id="inspection-form" class="dialog-card">
+    <div class="dialog-head">
+      <div><span class="eyebrow" style="color:#070c40">ANÁLISE DO RETRATO NH</span><h2 id="dialog-title">Vistoria</h2></div>
+      <button id="close-dialog" class="dialog-close" type="button" aria-label="Fechar">×</button>
+    </div>
+    <input id="inspection-id" type="hidden">
+    <div id="inspection-details" class="detail-grid"></div>
+    <div class="form-grid" style="margin-top:18px">
+      <label>Status<select id="inspection-status">
+        <option value="COMPLETED">Aguardando análise</option>
+        <option value="UNDER_REVIEW">Em análise</option>
+        <option value="APPROVED">Aprovada</option>
+        <option value="REJECTED">Recusada</option>
+        <option value="CANCELLED">Cancelada</option>
+      </select></label>
+      <label class="span-2">Observação da análise<textarea id="inspection-note" maxlength="1200" rows="4" placeholder="Informe pendências, motivo da recusa ou orientações."></textarea></label>
+    </div>
+    <div id="inspection-links" class="actions"></div>
+    <div id="associate-notification" class="message success" hidden>
+      Status atualizado. Use o botão abaixo para informar o associado pelo WhatsApp.
+      <div class="actions"><button id="notify-associate" class="secondary" type="button">Enviar mensagem ao associado</button></div>
+    </div>
+    <div class="actions dialog-actions"><button id="cancel-dialog" class="outline" type="button">Fechar</button><button class="primary" type="submit">Salvar análise</button></div>
+  </form>
+</dialog>
+
+<dialog id="decision-whatsapp-dialog" class="admin-dialog communication-dialog">
+  <div class="dialog-card communication-card">
+    <div id="decision-whatsapp-icon" class="communication-icon">!</div>
+    <span class="eyebrow" style="color:#070c40">STATUS ATUALIZADO</span>
+    <h2>Comunique ao associado</h2>
+    <p id="decision-whatsapp-text">O status da vistoria foi modificado.</p>
+    <div id="decision-whatsapp-details" class="communication-summary"></div>
+    <div class="actions communication-actions">
+      <button id="decision-whatsapp-later" class="outline" type="button">Comunicar depois</button>
+      <button id="decision-whatsapp-send" class="secondary" type="button">Enviar mensagem ao associado</button>
+    </div>
+  </div>
+</dialog>
+
+<script src="/shared/config.js?v=20260804-current-origin"></script>
+<script src="/shared/url-tools.js?v=20260804-current-origin"></script>
+<script src="/analise/analise.js?v=20260804-manual-whatsapp"></script>
+</body>
+</html>

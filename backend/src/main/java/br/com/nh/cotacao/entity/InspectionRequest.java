@@ -66,6 +66,12 @@ public class InspectionRequest {
     @Column(name = "reviewed_at")
     private OffsetDateTime reviewedAt;
 
+    @Column(name = "completion_message_sent_at")
+    private OffsetDateTime completionMessageSentAt;
+
+    @Column(name = "decision_message_sent_at")
+    private OffsetDateTime decisionMessageSentAt;
+
     @Column(name = "drive_folder_id", length = 160)
     private String driveFolderId;
 
@@ -193,11 +199,16 @@ public class InspectionRequest {
         this.reportUrl = reportUrl;
         this.status = InspectionRequestStatus.COMPLETED;
         this.completedAt = OffsetDateTime.now();
+        this.completionMessageSentAt = null;
     }
 
     public void adminReview(InspectionRequestStatus newStatus, String note) {
         if (newStatus == null) throw new IllegalArgumentException("Informe o novo status do Retrato NH.");
+        InspectionRequestStatus previousStatus = this.status;
         this.status = newStatus;
+        if (previousStatus != newStatus) {
+            this.decisionMessageSentAt = null;
+        }
         this.adminNote = cleanNote(note);
         this.reviewedAt = OffsetDateTime.now();
         if (newStatus == InspectionRequestStatus.COMPLETED
@@ -208,6 +219,21 @@ public class InspectionRequest {
                 this.completedAt = this.reviewedAt;
             }
         }
+    }
+
+    public void markCompletionMessageSent() {
+        if (this.completedAt == null) {
+            throw new IllegalArgumentException("A vistoria ainda não foi concluída.");
+        }
+        this.completionMessageSentAt = OffsetDateTime.now();
+    }
+
+    public void markDecisionMessageSent() {
+        if (this.status != InspectionRequestStatus.APPROVED
+                && this.status != InspectionRequestStatus.REJECTED) {
+            throw new IllegalArgumentException("A vistoria precisa estar aprovada ou recusada para comunicar a decisão.");
+        }
+        this.decisionMessageSentAt = OffsetDateTime.now();
     }
 
     private String cleanNote(String note) {
@@ -234,6 +260,8 @@ public class InspectionRequest {
     public OffsetDateTime getCompletedAt() { return completedAt; }
     public String getAdminNote() { return adminNote; }
     public OffsetDateTime getReviewedAt() { return reviewedAt; }
+    public OffsetDateTime getCompletionMessageSentAt() { return completionMessageSentAt; }
+    public OffsetDateTime getDecisionMessageSentAt() { return decisionMessageSentAt; }
     public String getDriveFolderId() { return driveFolderId; }
     public String getDriveFolderUrl() { return driveFolderUrl; }
     public String getReportFileId() { return reportFileId; }

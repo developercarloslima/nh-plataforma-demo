@@ -23,19 +23,26 @@ function msg(text, type = 'error') {
   element.textContent = text;
 }
 
+function isNewInspection() {
+  return $('requestType').value === 'NEW_INSPECTION';
+}
+
 function isZeroKm() {
-  return $('requestType').value === 'NEW_INSPECTION' && $('zeroKm').value === 'true';
+  return isNewInspection() && $('zeroKm').value === 'true';
 }
 
 function syncVehicleFields() {
-  const newInspection = $('requestType').value === 'NEW_INSPECTION';
-  const zeroKm = newInspection && $('zeroKm').value === 'true';
+  const newInspection = isNewInspection();
+  const zeroKm = isZeroKm();
 
   $('zeroKm').disabled = !newInspection;
   if (!newInspection) $('zeroKm').value = 'false';
 
   $('plate').disabled = zeroKm;
   $('plate').required = !zeroKm;
+  $('plate').toggleAttribute('required', !zeroKm);
+  $('plate').setAttribute('aria-required', String(!zeroKm));
+  $('plate').setAttribute('aria-disabled', String(zeroKm));
   $('plate').placeholder = zeroKm ? 'Não necessário para veículo 0 km' : 'ABC1D23';
   if (zeroKm) $('plate').value = '';
 
@@ -77,8 +84,11 @@ $('plate').addEventListener('input', (event) => {
 
 $('inspection-form').addEventListener('submit', async (event) => {
   event.preventDefault();
+  syncVehicleFields();
 
-  if (!isZeroKm() && !$('plate').value.trim()) {
+  const zeroKm = isZeroKm();
+
+  if (!zeroKm && !$('plate').value.trim()) {
     msg('Informe a placa do veículo.');
     $('plate').focus();
     return;
@@ -93,7 +103,8 @@ $('inspection-form').addEventListener('submit', async (event) => {
         requestType: $('requestType').value,
         associateName: $('associateName').value.trim(),
         cpf: $('cpf').value,
-        plate: isZeroKm() ? '' : $('plate').value.trim(),
+        plate: zeroKm ? null : $('plate').value.trim(),
+        zeroKm,
         whatsapp: $('whatsapp').value
       })
     });
