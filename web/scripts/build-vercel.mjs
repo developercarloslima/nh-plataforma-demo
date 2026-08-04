@@ -5,7 +5,7 @@ import path from 'node:path';
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dist = path.join(projectRoot, 'dist');
 const excluded = new Set([
-  'dist', 'node_modules', 'scripts', '.git', '.vercel', '.vscode',
+  'dist', 'node_modules', 'scripts', 'api', '.git', '.vercel', '.vscode',
   'Dockerfile', 'nginx.conf', 'docker-entrypoint-nh.sh', 'package.json',
   'package-lock.json', 'vercel.mjs', 'README.md', '.dockerignore', '.gitignore', '.hintrc'
 ]);
