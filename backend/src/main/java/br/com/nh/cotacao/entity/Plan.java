@@ -80,4 +80,18 @@ public class Plan {
     public BigDecimal getTrackerInstallationFee() { return trackerInstallationFee; }
     public BigDecimal getTrackerMonthlyFee() { return trackerMonthlyFee; }
     public List<PlanCoverage> getCoverages() { return coverages; }
+
+    public void updateAdmin(String name, String subtitle, Boolean active) {
+        if (name != null) {
+            if (name.isBlank()) throw new IllegalArgumentException("O nome do plano não pode ficar vazio.");
+            this.name = name.trim();
+        }
+        if (subtitle != null) {
+            this.subtitle = subtitle.isBlank() ? null : subtitle.trim();
+        }
+        if (active != null) {
+            this.active = active;
+        }
+    }
 }
+

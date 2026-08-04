@@ -3,46 +3,74 @@ services:
   database:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: nh_plataforma
-      POSTGRES_USER: nh
-      POSTGRES_PASSWORD: nh123
-    volumes: [nh_local_data:/var/lib/postgresql/data]
+      POSTGRES_DB: ${POSTGRES_DB:-nh_plataforma}
+      POSTGRES_USER: ${POSTGRES_USER:-nh}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nh123}
+    volumes:
+      - nh_local_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U nh -d nh_plataforma"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nh} -d ${POSTGRES_DB:-nh_plataforma}"]
       interval: 5s
       timeout: 5s
       retries: 20
+
   backend:
     build: ./backend
     environment:
-      DATABASE_URL: jdbc:postgresql://database:5432/nh_plataforma
-      DATABASE_USERNAME: nh
-      DATABASE_PASSWORD: nh123
+      DATABASE_URL: jdbc:postgresql://database:5432/${POSTGRES_DB:-nh_plataforma}
+      DATABASE_USERNAME: ${POSTGRES_USER:-nh}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-nh123}
       PUBLIC_API_URL: http://localhost:3000
       PUBLIC_WEB_URL: http://localhost:3000
       ALLOWED_ORIGINS: http://localhost:3000
-      AUTH_TOKEN_SECRET: chave-local-de-desenvolvimento-com-mais-de-32-caracteres
-      CONSULTANT_USERNAME: consultor
-      CONSULTANT_PASSWORD: nh2027
-      ADMIN_USERNAME: admin@nh.local
-      ADMIN_PASSWORD: admin12345
-      GOOGLE_DRIVE_ENABLED: "false"
+      TEAM_WHATSAPP_NUMBER: ${TEAM_WHATSAPP_NUMBER:-}
+
+      AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:-chave-local-de-desenvolvimento-com-mais-de-32-caracteres}
+      AUTH_TOKEN_HOURS: ${AUTH_TOKEN_HOURS:-12}
+      CONSULTANT_USERNAME: ${CONSULTANT_USERNAME:-consultor}
+      CONSULTANT_PASSWORD: ${CONSULTANT_PASSWORD:-nh2027}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin@nh.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin12345}
+
+      GOOGLE_DRIVE_ENABLED: ${GOOGLE_DRIVE_ENABLED:-false}
+      GOOGLE_DRIVE_ROOT_FOLDER_ID: ${GOOGLE_DRIVE_ROOT_FOLDER_ID:-}
+      GOOGLE_DRIVE_OAUTH_CLIENT_ID: ${GOOGLE_DRIVE_OAUTH_CLIENT_ID:-}
+      GOOGLE_DRIVE_OAUTH_CLIENT_SECRET: ${GOOGLE_DRIVE_OAUTH_CLIENT_SECRET:-}
+      GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN: ${GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN:-}
+      GOOGLE_DRIVE_CREDENTIALS_BASE64: ${GOOGLE_DRIVE_CREDENTIALS_BASE64:-}
+      GOOGLE_DRIVE_PUBLIC_LINKS: ${GOOGLE_DRIVE_PUBLIC_LINKS:-false}
+      GOOGLE_DRIVE_TEAM_EMAILS: ${GOOGLE_DRIVE_TEAM_EMAILS:-}
     depends_on:
       database:
         condition: service_healthy
+
   hinova-api:
     build: ./hinova-api
     environment:
       PORT: 3001
+      HINOVA_API_BASE_URL: ${HINOVA_API_BASE_URL:-https://api.hinova.com.br/api/sga/v2}
       HINOVA_API_TOKEN: ${HINOVA_API_TOKEN:-}
       HINOVA_API_USER: ${HINOVA_API_USER:-}
       HINOVA_API_PASSWORD: ${HINOVA_API_PASSWORD:-}
+      HINOVA_API_USER_TOKEN: ${HINOVA_API_USER_TOKEN:-}
+      HINOVA_ASSOCIADO_CPF_PATH: ${HINOVA_ASSOCIADO_CPF_PATH:-}
+      HINOVA_ASSOCIADO_DEFAULT_PASSWORD: ${HINOVA_ASSOCIADO_DEFAULT_PASSWORD:-}
+      BOLETO_MAX_DAYS_AFTER_DUE: ${BOLETO_MAX_DAYS_AFTER_DUE:-6}
+      BOLETO_SEARCH_DAYS_PAST: ${BOLETO_SEARCH_DAYS_PAST:-180}
+      BOLETO_SEARCH_DAYS_FUTURE: ${BOLETO_SEARCH_DAYS_FUTURE:-420}
+      BOLETO_SEARCH_CHUNK_DAYS: ${BOLETO_SEARCH_CHUNK_DAYS:-180}
+      HINOVA_DEBUG_RESPONSE: ${HINOVA_DEBUG_RESPONSE:-false}
 
   web:
     build: ./web
     environment:
       SGA_URL: ${SGA_URL:-https://sga.hinova.com.br/sga/sgav4_novohorizonte/v5/login.php}
-    depends_on: [backend, hinova-api]
-    ports: ["3000:80"]
+      TEAM_WHATSAPP_NUMBER: ${TEAM_WHATSAPP_NUMBER:-}
+    depends_on:
+      - backend
+      - hinova-api
+    ports:
+      - "3000:80"
+
 volumes:
   nh_local_data:

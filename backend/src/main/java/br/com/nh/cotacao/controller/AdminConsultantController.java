@@ -3,6 +3,7 @@ package br.com.nh.cotacao.controller;
 import br.com.nh.cotacao.dto.PortalDtos.*;
 import br.com.nh.cotacao.service.ConsultantService;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -18,10 +19,27 @@ public class AdminConsultantController {
     }
 
     @GetMapping
-    public List<ConsultantResponse> all() { return service.all(); }
+    public List<ConsultantResponse> all() {
+        return service.all();
+    }
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public ConsultantResponse create(@Valid @RequestBody CreateConsultantRequest request) {
+        return service.create(request.name(), "ADMIN");
+    }
 
     @PatchMapping("/{id}")
-    public ConsultantResponse update(@PathVariable UUID id, @Valid @RequestBody UpdateConsultantRequest request) {
+    public ConsultantResponse update(
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateConsultantRequest request
+    ) {
         return service.update(id, request.name(), request.active());
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable UUID id) {
+        service.delete(id);
     }
 }

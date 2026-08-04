@@ -1,11 +1,201 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#080f63"><title>Painel Administrativo NH</title><link rel="icon" href="/assets/favicon-nh.png"><link rel="stylesheet" href="/shared/portal.css"></head><body>
-<header class="portal-header"><a class="portal-brand" href="/colaborador/"><img src="/assets/logo-nh-simbolo.png" alt="Novo Horizonte"><span><strong>Painel Administrativo</strong><small>Novo Horizonte</small></span></a><div class="header-actions"><a href="/colaborador/">Área do Colaborador</a><button id="logout">Sair</button></div></header>
-<main class="shell"><section class="hero-panel"><span class="eyebrow">ADMINISTRAÇÃO</span><h1>Gestão da operação comercial</h1><p>Acompanhe consultores, cotações, Retratos NH e valores cadastrados.</p></section><div id="message"></div>
-<div class="admin-tabs"><button data-tab="overview" class="active">Visão geral</button><button data-tab="consultants">Consultores</button><button data-tab="quotes">Cotações</button><button data-tab="inspections">Retrato NH</button><button data-tab="prices">Valores</button><button data-tab="audit">Auditoria</button></div>
-<section id="tab-overview"><div class="kpi-grid"><div class="kpi"><span>Consultores ativos</span><strong id="kpi-consultants">—</strong></div><div class="kpi"><span>Cotações</span><strong id="kpi-quotes">—</strong></div><div class="kpi"><span>Vistorias</span><strong id="kpi-inspections">—</strong></div><div class="kpi"><span>Propostas aceitas</span><strong id="kpi-accepted">—</strong></div></div></section>
-<section id="tab-consultants" hidden><div class="section-head"><div><h2>Consultores e voluntários</h2><p>Nomes criados no portal aparecem automaticamente aqui.</p></div></div><div class="table-wrap"><table><thead><tr><th>Nome</th><th>Origem</th><th>Cotações</th><th>Vistorias</th><th>Status</th><th>Ação</th></tr></thead><tbody id="consultants-body"></tbody></table></div></section>
-<section id="tab-quotes" hidden><div class="section-head"><div><h2>Cotações</h2><p>Últimas 300 cotações, organizadas por consultor.</p></div><input id="quote-filter" placeholder="Filtrar por consultor, cliente ou placa" style="max-width:340px"></div><div class="table-wrap"><table><thead><tr><th>Número</th><th>Consultor</th><th>Cliente</th><th>Placa</th><th>0 km</th><th>Plano</th><th>Total</th><th>Validade</th><th>Status</th><th>PDF</th></tr></thead><tbody id="quotes-body"></tbody></table></div></section>
-<section id="tab-inspections" hidden><div class="section-head"><div><h2>Retrato NH</h2><p>Novas vistorias e atualizações de boleto.</p></div><input id="inspection-filter" placeholder="Filtrar por consultor, associado ou placa" style="max-width:340px"></div><div class="table-wrap"><table><thead><tr><th>Associado</th><th>Consultor</th><th>Placa</th><th>Tipo</th><th>Status</th><th>Criada</th><th>Arquivos</th></tr></thead><tbody id="inspections-body"></tbody></table></div></section>
-<section id="tab-prices" hidden><div class="section-head"><div><h2>Valores das proteções</h2><p>Altere mensalidades por faixa FIPE e valores dos opcionais.</p></div></div><h3>Faixas FIPE</h3><div class="table-wrap"><table><thead><tr><th>Plano</th><th>Categoria</th><th>Região</th><th>Faixa</th><th>Mensalidade</th></tr></thead><tbody id="prices-body"></tbody></table></div><h3 style="margin-top:26px">Benefícios opcionais</h3><div class="table-wrap"><table><thead><tr><th>Plano</th><th>Opcional</th><th>Detalhe</th><th>Mensalidade</th></tr></thead><tbody id="optionals-body"></tbody></table></div></section>
-<section id="tab-audit" hidden><div class="section-head"><div><h2>Histórico de alterações</h2><p>Registro das últimas mudanças de valores.</p></div></div><div class="table-wrap"><table><thead><tr><th>Data</th><th>Item</th><th>Valor anterior</th><th>Novo valor</th><th>Alterado por</th></tr></thead><tbody id="audit-body"></tbody></table></div></section></main>
-<script src="/admin/admin.js"></script></body></html>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#080f63">
+  <title>Painel Administrativo NH</title>
+  <link rel="icon" href="/assets/favicon-nh.png">
+  <link rel="stylesheet" href="/shared/portal.css">
+</head>
+<body>
+<header class="portal-header">
+  <a class="portal-brand" href="/">
+    <img src="/assets/logo-nh-simbolo.png" alt="Novo Horizonte">
+    <span><strong>Painel Administrativo</strong><small>Novo Horizonte</small></span>
+  </a>
+  <div class="header-actions">
+    <a href="/colaborador/">Área do Colaborador</a>
+    <button id="logout" hidden>Sair</button>
+  </div>
+</header>
+
+<section id="admin-login" class="login-wrap">
+  <div class="card login-card">
+    <span class="eyebrow" style="color:#080f63">ACESSO ADMINISTRATIVO</span>
+    <h1>Entrar no painel</h1>
+    <p>Use o usuário e a senha definidos nas variáveis <strong>ADMIN_USERNAME</strong> e <strong>ADMIN_PASSWORD</strong>.</p>
+    <form id="admin-login-form" class="form-grid">
+      <label class="span-2">Usuário administrativo
+        <input id="admin-username" autocomplete="username" required>
+      </label>
+      <label class="span-2">Senha
+        <input id="admin-password" type="password" autocomplete="current-password" required>
+      </label>
+      <button class="primary span-2" type="submit">Entrar como administrador</button>
+    </form>
+    <div id="admin-login-message"></div>
+  </div>
+</section>
+
+<main id="admin-view" class="shell" hidden>
+  <section class="hero-panel">
+    <span class="eyebrow">ADMINISTRAÇÃO</span>
+    <h1>Gestão da operação comercial</h1>
+    <p>Gerencie consultores, atividades, planos, valores, coberturas e serviços opcionais.</p>
+  </section>
+  <div id="message" aria-live="polite"></div>
+
+  <div class="admin-tabs" aria-label="Seções do painel">
+    <button type="button" data-tab="overview" class="active">Visão geral</button>
+    <button type="button" data-tab="activities">Atividades</button>
+    <button type="button" data-tab="consultants">Consultores</button>
+    <button type="button" data-tab="quotes">Cotações</button>
+    <button type="button" data-tab="inspections">Retrato NH</button>
+    <button type="button" data-tab="plans">Planos</button>
+    <button type="button" data-tab="prices">Valores</button>
+    <button type="button" data-tab="coverages">Coberturas e opcionais</button>
+    <button type="button" data-tab="audit">Auditoria</button>
+  </div>
+
+  <section id="tab-overview">
+    <div class="kpi-grid">
+      <div class="kpi"><span>Consultores ativos</span><strong id="kpi-consultants">—</strong></div>
+      <div class="kpi"><span>Cotações</span><strong id="kpi-quotes">—</strong></div>
+      <div class="kpi"><span>Vistorias</span><strong id="kpi-inspections">—</strong></div>
+      <div class="kpi"><span>Propostas aceitas</span><strong id="kpi-accepted">—</strong></div>
+    </div>
+    <div class="card" style="margin-top:18px">
+      <h2 style="margin-top:0;color:#080f63">Acesso administrativo confirmado</h2>
+      <p class="muted">Todas as alterações feitas neste painel são aplicadas às novas cotações. Cotações antigas mantêm o valor e os opcionais registrados no momento da emissão.</p>
+    </div>
+  </section>
+
+  <section id="tab-activities" hidden>
+    <div class="section-head">
+      <div><h2>Atividades dos consultores</h2><p>Cotações e solicitações do Retrato NH em uma única linha do tempo.</p></div>
+      <input id="activity-filter" placeholder="Filtrar por consultor, cliente ou placa" style="max-width:360px">
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Data</th><th>Consultor</th><th>Atividade</th><th>Cliente/associado</th><th>Placa</th><th>Status</th><th>Abrir</th></tr></thead>
+      <tbody id="activities-body"></tbody>
+    </table></div>
+  </section>
+
+  <section id="tab-consultants" hidden>
+    <div class="section-head">
+      <div><h2>Consultores e voluntários</h2><p>Cadastre, renomeie, desative ou exclua nomes sem histórico.</p></div>
+    </div>
+    <div class="card compact-card">
+      <div class="form-grid">
+        <label class="span-2">Novo consultor ou voluntário
+          <input id="new-admin-consultant" placeholder="Nome completo">
+        </label>
+        <button id="add-admin-consultant" class="primary" type="button">Cadastrar</button>
+      </div>
+    </div>
+    <div class="table-wrap" style="margin-top:16px"><table>
+      <thead><tr><th>Nome</th><th>Origem</th><th>Cotações</th><th>Vistorias</th><th>Status</th><th>Ações</th></tr></thead>
+      <tbody id="consultants-body"></tbody>
+    </table></div>
+  </section>
+
+  <section id="tab-quotes" hidden>
+    <div class="section-head">
+      <div><h2>Cotações</h2><p>Últimas 300 cotações, com validade e status.</p></div>
+      <input id="quote-filter" placeholder="Filtrar por consultor, cliente ou placa" style="max-width:340px">
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Número</th><th>Consultor</th><th>Cliente</th><th>Placa</th><th>0 km</th><th>Plano</th><th>Total</th><th>Validade</th><th>Status</th><th>PDF</th></tr></thead>
+      <tbody id="quotes-body"></tbody>
+    </table></div>
+  </section>
+
+  <section id="tab-inspections" hidden>
+    <div class="section-head">
+      <div><h2>Retrato NH</h2><p>Novas vistorias e atualizações de boleto.</p></div>
+      <input id="inspection-filter" placeholder="Filtrar por consultor, associado ou placa" style="max-width:340px">
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Associado</th><th>Consultor</th><th>Placa</th><th>Tipo</th><th>Status</th><th>Criada</th><th>Arquivos</th></tr></thead>
+      <tbody id="inspections-body"></tbody>
+    </table></div>
+  </section>
+
+  <section id="tab-plans" hidden>
+    <div class="section-head">
+      <div><h2>Planos e pacotes</h2><p>Altere nome, subtítulo e disponibilidade de cada pacote.</p></div>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Plano</th><th>Categoria</th><th>Região</th><th>Subtítulo</th><th>Status</th><th>Ação</th></tr></thead>
+      <tbody id="plans-body"></tbody>
+    </table></div>
+  </section>
+
+  <section id="tab-prices" hidden>
+    <div class="section-head">
+      <div><h2>Valores dos pacotes</h2><p>Altere a mensalidade de cada faixa FIPE.</p></div>
+      <input id="price-filter" placeholder="Filtrar por plano, categoria ou região" style="max-width:360px">
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Plano</th><th>Categoria</th><th>Região</th><th>Faixa FIPE</th><th>Mensalidade</th></tr></thead>
+      <tbody id="prices-body"></tbody>
+    </table></div>
+  </section>
+
+  <section id="tab-coverages" hidden>
+    <div class="section-head">
+      <div><h2>Coberturas e serviços opcionais</h2><p>Defina o que está incluído, não incluído ou disponível como adicional.</p></div>
+      <button id="show-add-coverage" class="primary" type="button">+ Adicionar cobertura</button>
+    </div>
+
+    <div id="coverage-create-card" class="card" hidden>
+      <h3 style="margin-top:0;color:#080f63">Nova cobertura ou serviço opcional</h3>
+      <div class="form-grid">
+        <label>Plano<select id="coverage-create-plan"></select></label>
+        <label>Classificação<select id="coverage-create-status"><option value="INCLUDED">Incluído</option><option value="NOT_INCLUDED">Não incluído</option><option value="OPTIONAL">Serviço opcional</option></select></label>
+        <label class="span-2">Nome<input id="coverage-create-name" maxlength="180"></label>
+        <label class="span-2">Condições ou limites<textarea id="coverage-create-detail" maxlength="240" rows="3"></textarea></label>
+        <label>Mensalidade do opcional<input id="coverage-create-price" inputmode="decimal" placeholder="0,00"></label>
+        <label>Ordem de exibição<input id="coverage-create-order" type="number" min="0" value="100"></label>
+      </div>
+      <div class="actions"><button id="create-coverage" class="primary" type="button">Salvar cobertura</button><button id="cancel-create-coverage" class="outline" type="button">Cancelar</button></div>
+    </div>
+
+    <div class="filter-grid" style="margin-top:16px">
+      <label>Plano<select id="coverage-plan-filter"><option value="">Todos os planos</option></select></label>
+      <label>Classificação<select id="coverage-status-filter"><option value="">Todas</option><option value="INCLUDED">Incluído</option><option value="NOT_INCLUDED">Não incluído</option><option value="OPTIONAL">Serviço opcional</option></select></label>
+      <label>Pesquisar<input id="coverage-text-filter" placeholder="Nome ou detalhe"></label>
+    </div>
+
+    <div class="table-wrap" style="margin-top:16px"><table>
+      <thead><tr><th>Plano</th><th>Cobertura/serviço</th><th>Classificação</th><th>Detalhe</th><th>Mensalidade</th><th>Ordem</th><th>Ações</th></tr></thead>
+      <tbody id="coverages-body"></tbody>
+    </table></div>
+
+    <div id="coverage-editor" class="card" hidden style="margin-top:18px">
+      <div class="section-head" style="margin-top:0"><div><h2>Editar cobertura</h2><p id="coverage-editor-plan"></p></div><button id="close-coverage-editor" class="outline" type="button">Fechar</button></div>
+      <input id="coverage-editor-id" type="hidden">
+      <div class="form-grid">
+        <label class="span-2">Nome<input id="coverage-editor-name" maxlength="180"></label>
+        <label>Classificação<select id="coverage-editor-status"><option value="INCLUDED">Incluído</option><option value="NOT_INCLUDED">Não incluído</option><option value="OPTIONAL">Serviço opcional</option></select></label>
+        <label>Mensalidade do opcional<input id="coverage-editor-price" inputmode="decimal"></label>
+        <label class="span-2">Condições ou limites<textarea id="coverage-editor-detail" maxlength="240" rows="3"></textarea></label>
+        <label>Ordem de exibição<input id="coverage-editor-order" type="number" min="0"></label>
+      </div>
+      <p class="helper">Ao selecionar “Incluído” ou “Não incluído”, o valor mensal do opcional é removido. Alterar o nome modifica essa cobertura nos planos que utilizam o mesmo cadastro.</p>
+      <div class="actions"><button id="save-coverage" class="primary" type="button">Salvar alterações</button></div>
+    </div>
+  </section>
+
+  <section id="tab-audit" hidden>
+    <div class="section-head"><div><h2>Histórico de alterações</h2><p>Registro das últimas mudanças feitas no catálogo.</p></div></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Data</th><th>Item</th><th>Antes</th><th>Depois</th><th>Alterado por</th></tr></thead>
+      <tbody id="audit-body"></tbody>
+    </table></div>
+  </section>
+</main>
+<script src="/admin/admin.js"></script>
+</body>
+</html>

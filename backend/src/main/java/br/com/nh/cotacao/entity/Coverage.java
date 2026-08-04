@@ -18,6 +18,24 @@ public class Coverage {
     protected Coverage() {
     }
 
+    public static Coverage create(String code, String name) {
+        Coverage coverage = new Coverage();
+        coverage.code = requireText(code, "Código da cobertura");
+        coverage.name = requireText(name, "Nome da cobertura");
+        return coverage;
+    }
+
+    public void rename(String name) {
+        this.name = requireText(name, "Nome da cobertura");
+    }
+
+    private static String requireText(String value, String field) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(field + " é obrigatório.");
+        }
+        return value.trim();
+    }
+
     public Long getId() { return id; }
     public String getCode() { return code; }
     public String getName() { return name; }

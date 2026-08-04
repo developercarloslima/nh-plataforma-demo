@@ -35,6 +35,41 @@ public class PlanCoverage {
     protected PlanCoverage() {
     }
 
+    public static PlanCoverage create(
+            Plan plan,
+            Coverage coverage,
+            CoverageStatus status,
+            String detail,
+            BigDecimal monthlyPrice,
+            Integer sortOrder
+    ) {
+        PlanCoverage item = new PlanCoverage();
+        item.plan = plan;
+        item.coverage = coverage;
+        item.update(status, detail, monthlyPrice, sortOrder);
+        return item;
+    }
+
+    public void update(CoverageStatus status, String detail, BigDecimal monthlyPrice, Integer sortOrder) {
+        if (status == null) {
+            throw new IllegalArgumentException("Defina se a cobertura está incluída, não incluída ou é opcional.");
+        }
+        if (sortOrder == null || sortOrder < 0) {
+            throw new IllegalArgumentException("A ordem de exibição deve ser zero ou maior.");
+        }
+        if (monthlyPrice != null && monthlyPrice.signum() < 0) {
+            throw new IllegalArgumentException("Valor mensal inválido.");
+        }
+        if (status == CoverageStatus.OPTIONAL && monthlyPrice == null) {
+            throw new IllegalArgumentException("Serviços opcionais precisam de um valor mensal.");
+        }
+
+        this.status = status;
+        this.detail = detail == null || detail.isBlank() ? null : detail.trim();
+        this.monthlyPrice = status == CoverageStatus.OPTIONAL ? monthlyPrice : null;
+        this.sortOrder = sortOrder;
+    }
+
     public Long getId() { return id; }
     public Plan getPlan() { return plan; }
     public Coverage getCoverage() { return coverage; }
@@ -42,9 +77,14 @@ public class PlanCoverage {
     public String getDetail() { return detail; }
     public BigDecimal getMonthlyPrice() { return monthlyPrice; }
     public Integer getSortOrder() { return sortOrder; }
+
     public void updateMonthlyPrice(BigDecimal monthlyPrice) {
-        if (status != CoverageStatus.OPTIONAL) throw new IllegalArgumentException("Somente benefícios opcionais possuem valor editável.");
-        if (monthlyPrice == null || monthlyPrice.signum() < 0) throw new IllegalArgumentException("Valor mensal inválido.");
+        if (status != CoverageStatus.OPTIONAL) {
+            throw new IllegalArgumentException("Somente benefícios opcionais possuem valor editável.");
+        }
+        if (monthlyPrice == null || monthlyPrice.signum() < 0) {
+            throw new IllegalArgumentException("Valor mensal inválido.");
+        }
         this.monthlyPrice = monthlyPrice;
     }
 }

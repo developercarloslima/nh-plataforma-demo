@@ -50,6 +50,19 @@ public class ConsultantService {
     }
 
     @Transactional
+    public void delete(UUID id) {
+        Consultant consultant = findActiveOrInactive(id);
+        long quoteCount = quotationRepository.countByConsultantId(id);
+        long inspectionCount = inspectionRepository.countByConsultantId(id);
+        if (quoteCount > 0 || inspectionCount > 0) {
+            throw new IllegalArgumentException(
+                    "Este consultor possui atividades registradas. Desative-o para preservar o histórico."
+            );
+        }
+        repository.delete(consultant);
+    }
+
+    @Transactional
     public ConsultantResponse update(UUID id, String name, Boolean active) {
         Consultant consultant = findActiveOrInactive(id);
         if (name != null && !name.isBlank() && !Consultant.normalize(name).equals(consultant.getNormalizedName())) {

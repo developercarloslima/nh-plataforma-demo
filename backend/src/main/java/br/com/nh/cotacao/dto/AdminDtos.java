@@ -1,7 +1,7 @@
 package br.com.nh.cotacao.dto;
 
-import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.NotNull;
+import br.com.nh.cotacao.entity.CoverageStatus;
+import jakarta.validation.constraints.*;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -30,6 +30,55 @@ public final class AdminDtos {
             BigDecimal monthlyPrice
     ) {}
 
+    public record PlanAdminResponse(
+            Long id,
+            String code,
+            String name,
+            String subtitle,
+            String category,
+            String region,
+            boolean active
+    ) {}
+
+    public record UpdatePlanRequest(
+            @Size(max = 120) String name,
+            @Size(max = 180) String subtitle,
+            Boolean active
+    ) {}
+
+    public record CoverageAdminResponse(
+            Long id,
+            Long planId,
+            String planCode,
+            String planName,
+            String category,
+            String region,
+            Long coverageId,
+            String coverageCode,
+            String coverageName,
+            CoverageStatus status,
+            String detail,
+            BigDecimal monthlyPrice,
+            Integer sortOrder
+    ) {}
+
+    public record CreateCoverageRequest(
+            @NotBlank @Size(max = 180) String coverageName,
+            @Size(max = 80) String coverageCode,
+            @NotNull CoverageStatus status,
+            @Size(max = 240) String detail,
+            @DecimalMin("0.00") BigDecimal monthlyPrice,
+            @NotNull @Min(0) Integer sortOrder
+    ) {}
+
+    public record UpdateCoverageRequest(
+            @NotBlank @Size(max = 180) String coverageName,
+            @NotNull CoverageStatus status,
+            @Size(max = 240) String detail,
+            @DecimalMin("0.00") BigDecimal monthlyPrice,
+            @NotNull @Min(0) Integer sortOrder
+    ) {}
+
     public record UpdatePriceRequest(@NotNull @DecimalMin("0.00") BigDecimal monthlyPrice) {}
 
     public record AuditResponse(
@@ -39,6 +88,8 @@ public final class AdminDtos {
             String description,
             BigDecimal oldValue,
             BigDecimal newValue,
+            String oldText,
+            String newText,
             String changedBy,
             OffsetDateTime changedAt
     ) {}
