@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#070c40">
   <title>Retrato NH | Vistoria Digital</title>
   <link rel="icon" href="/assets/favicon-nh.png">
-  <link rel="stylesheet" href="/shared/portal.css?v=20260804-brand-manual">
-  <link rel="stylesheet" href="/shared/responsive.css?v=20260804-universal">
+  <link rel="stylesheet" href="/shared/portal.css?v=20260805-guide-page">
+  <link rel="stylesheet" href="/shared/responsive.css?v=20260805-guide-page">
 </head>
 <body>
 <header class="portal-header">
@@ -34,28 +34,21 @@
     </div>
     <div class="guidelines">
       <h3>Antes de começar</h3>
-      <p class="muted">Confira o guia correspondente ao seu veículo antes de abrir a câmera. Toque na imagem para ampliar.</p>
-      <div class="inspection-guide-grid">
-        <figure>
-          <a href="/assets/guia-vistoria-moto.png" target="_blank" rel="noreferrer">
-            <img src="/assets/guia-vistoria-moto.png" alt="Guia ilustrado para vistoria de motocicleta">
-          </a>
-          <figcaption>Motocicleta — sequência recomendada</figcaption>
-        </figure>
-        <figure>
-          <a href="/assets/guia-vistoria-carro.png" target="_blank" rel="noreferrer">
-            <img src="/assets/guia-vistoria-carro.png" alt="Guia ilustrado para vistoria de carro">
-          </a>
-          <figcaption>Carro — sequência recomendada</figcaption>
-        </figure>
+      <p class="muted">O sistema mostrará a imagem ilustrativa correta antes de abrir a câmera em cada etapa.</p>
+      <div class="vehicle-guide-summary">
+        <div class="vehicle-guide-icon" aria-hidden="true">📷</div>
+        <div>
+          <span>Sequência selecionada</span>
+          <strong id="vehicle-guide-title">Identificando o tipo de veículo...</strong>
+          <small id="vehicle-guide-count">Carregando etapas...</small>
+        </div>
       </div>
       <ul>
         <li>Posicione o veículo em local aberto, seguro e bem iluminado.</li>
         <li>Limpe a lente da câmera e mantenha as imagens nítidas.</li>
+        <li>Toque em “Abrir câmera”; primeiro aparecerá o exemplo exato da foto que deve ser feita.</li>
+        <li>Observe no exemplo o ângulo, a distância e a parte do veículo que precisa aparecer.</li>
         <li>As fotos e o vídeo serão registrados diretamente pela câmera; não será possível selecionar arquivos da galeria.</li>
-        <li>Mostre o veículo por completo, sem cortar as extremidades.</li>
-        <li>Na última foto, faça uma selfie em frente ao veículo, enquadrando o associado e deixando a placa visível. Para veículo 0 km ainda sem placa, mostre claramente a dianteira do veículo.</li>
-        <li>No vídeo, caminhe devagar ao redor do veículo e mostre placa, painel e estado geral.</li>
         <li>Quando solicitado, permita que o navegador use a câmera e o microfone.</li>
       </ul>
     </div>
@@ -77,8 +70,8 @@
       <div id="photos" class="upload-grid"></div>
 
       <article class="upload-item camera-upload-item video-capture-card" style="margin-top:14px">
-        <strong>Vídeo da vistoria *</strong>
-        <small>Grave um vídeo contínuo, com boa iluminação, mostrando o veículo conforme as diretrizes.</small>
+        <strong id="video-title">Vídeo da vistoria *</strong>
+        <small id="video-card-instruction">Antes de gravar, as diretrizes específicas do vídeo serão exibidas.</small>
         <video id="video-preview" class="capture-preview video-preview" controls playsinline hidden></video>
         <p id="video-status" class="capture-status">Vídeo ainda não gravado.</p>
         <button id="record-video" class="outline camera-action" type="button">Abrir câmera para gravar</button>
@@ -114,6 +107,36 @@
     </form>
   </section>
 
+  <section id="capture-guide-card" class="card capture-guide-page" hidden style="margin-top:22px" aria-labelledby="capture-guide-title">
+    <div class="steps">
+      <span class="step">1. Diretrizes</span>
+      <span class="step active">2. Guia da captura</span>
+      <span class="step">3. Envio</span>
+    </div>
+  
+    <div class="capture-guide-panel">
+      <header class="capture-guide-head">
+        <div>
+          <span id="capture-guide-eyebrow" class="eyebrow">GUIA DA FOTO</span>
+          <h2 id="capture-guide-title">Confira o exemplo</h2>
+        </div>
+      </header>
+  
+      <p id="capture-guide-warning" class="capture-guide-warning">Esta foto deve seguir as diretrizes da imagem ilustrativa.</p>
+  
+      <figure class="capture-guide-figure">
+        <img id="capture-guide-image" alt="">
+      </figure>
+  
+      <p id="capture-guide-instruction" class="capture-guide-instruction"></p>
+  
+      <div class="capture-guide-actions">
+        <button id="capture-guide-back" class="outline" type="button">Voltar</button>
+        <button id="capture-guide-continue" class="primary" type="button">Entendi, abrir câmera</button>
+      </div>
+    </div>
+  </section>
+
   <section id="complete" class="card" hidden style="margin-top:22px">
     <div class="steps">
       <span class="step">1. Diretrizes</span>
@@ -131,6 +154,8 @@
     </div>
   </section>
 </main>
+
+
 
 <section id="camera-modal" class="camera-modal" hidden aria-modal="true" role="dialog" aria-labelledby="camera-title">
   <div class="camera-panel">
@@ -162,6 +187,6 @@
 </section>
 
 <script src="/shared/config.js?v=20260804-current-origin"></script>
-<script src="/retrato/retrato.js?v=20260804-manual-whatsapp"></script>
+<script src="/retrato/retrato.js?v=20260805-guide-page"></script>
 </body>
 </html>

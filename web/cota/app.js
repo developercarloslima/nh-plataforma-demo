@@ -444,6 +444,9 @@ function renderInspectionStage(quote) {
     name: quote.customerName,
     plate: quote.plate || '',
     zeroKm: String(Boolean(quote.zeroKm)),
+    vehicleType: String(quote.categoryCode || '').startsWith('MOTORCYCLE')
+      ? 'MOTORCYCLE'
+      : 'FOUR_WHEELS_OR_MORE',
     whatsapp: quote.whatsapp || '',
     quoteId: quote.id
   });

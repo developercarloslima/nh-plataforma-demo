@@ -21,6 +21,10 @@ public class InspectionRequest {
     @Column(name = "request_type", nullable = false, length = 30)
     private InspectionRequestType requestType;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "vehicle_type", nullable = false, length = 30)
+    private InspectionVehicleType vehicleType;
+
     @Column(name = "associate_name", nullable = false, length = 140)
     private String associateName;
 
@@ -97,6 +101,7 @@ public class InspectionRequest {
             String cpf,
             String whatsapp,
             String plate,
+            InspectionVehicleType vehicleType,
             Consultant consultant
     ) {
         if (consultant == null) throw new IllegalArgumentException("Informe o consultor responsável.");
@@ -107,6 +112,7 @@ public class InspectionRequest {
                 cpf,
                 whatsapp,
                 plate,
+                vehicleType == null ? InspectionVehicleType.FOUR_WHEELS_OR_MORE : vehicleType,
                 consultant,
                 consultant.getName(),
                 null
@@ -127,6 +133,7 @@ public class InspectionRequest {
                 quotation.getCustomerCpf(),
                 quotation.getWhatsapp(),
                 quotation.getPlate(),
+                InspectionVehicleType.fromCategoryCode(quotation.getCategoryCode()),
                 null,
                 Quotation.SELF_SERVICE_CONSULTANT_NAME,
                 quotation
@@ -140,6 +147,7 @@ public class InspectionRequest {
             String cpf,
             String whatsapp,
             String plate,
+            InspectionVehicleType vehicleType,
             Consultant consultant,
             String consultantName,
             Quotation quotation
@@ -148,6 +156,7 @@ public class InspectionRequest {
         request.id = UUID.randomUUID();
         request.publicToken = publicToken;
         request.requestType = type;
+        request.vehicleType = vehicleType == null ? InspectionVehicleType.FOUR_WHEELS_OR_MORE : vehicleType;
         request.associateName = associateName.trim().replaceAll("\\s+", " ");
         request.cpf = cpf.replaceAll("\\D", "");
         request.whatsapp = whatsapp == null ? null : whatsapp.replaceAll("\\D", "");
@@ -246,6 +255,7 @@ public class InspectionRequest {
     public UUID getId() { return id; }
     public String getPublicToken() { return publicToken; }
     public InspectionRequestType getRequestType() { return requestType; }
+    public InspectionVehicleType getVehicleType() { return vehicleType; }
     public String getAssociateName() { return associateName; }
     public String getCpf() { return cpf; }
     public String getWhatsapp() { return whatsapp; }

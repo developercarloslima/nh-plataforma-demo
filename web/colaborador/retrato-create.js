@@ -65,6 +65,7 @@ $('associateName').value = query.get('name') || '';
 $('plate').value = (query.get('plate') || '').toUpperCase();
 $('whatsapp').value = query.get('whatsapp') || '';
 if (query.get('zeroKm') === 'true') $('zeroKm').value = 'true';
+if (query.get('vehicleType')) $('vehicleType').value = query.get('vehicleType');
 syncVehicleFields();
 
 $('requestType').addEventListener('change', syncVehicleFields);
@@ -101,6 +102,7 @@ $('inspection-form').addEventListener('submit', async (event) => {
       body: JSON.stringify({
         consultantId: consultant.id,
         requestType: $('requestType').value,
+        vehicleType: $('vehicleType').value,
         associateName: $('associateName').value.trim(),
         cpf: $('cpf').value,
         plate: zeroKm ? null : $('plate').value.trim(),

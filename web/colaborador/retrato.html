@@ -37,6 +37,13 @@
           <option value="BILL_UPDATE">Atualização de boleto — somente vídeo</option>
         </select>
       </label>
+      <label class="span-2">Tipo de veículo
+        <select id="vehicleType" required>
+          <option value="FOUR_WHEELS_OR_MORE">Carro, utilitário ou veículo com 4 rodas ou mais</option>
+          <option value="MOTORCYCLE">Moto ou veículo com menos de 4 rodas</option>
+        </select>
+        <small class="field-helper">Essa escolha define a sequência de fotos e as orientações do vídeo.</small>
+      </label>
       <label class="span-2">Nome do associado
         <input id="associateName" required maxlength="140" placeholder="Nome completo">
       </label>
@@ -80,6 +87,6 @@
 
 <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
-<script src="/colaborador/retrato-create.js?v=20260804-zero-km-link"></script>
+<script src="/colaborador/retrato-create.js?v=20260805-guided-capture"></script>
 </body>
 </html>

@@ -59,6 +59,7 @@ public class RetratoPdfService {
             addPair(data, "CPF", maskCpf(request.getCpf()));
             addPair(data, "Consultor", request.getConsultantName());
             addPair(data, "Tipo", request.getRequestType().name().equals("NEW_INSPECTION") ? "Nova vistoria" : "Atualização de boleto");
+            addPair(data, "Veículo", request.getVehicleType().displayName());
             addPair(data, "Criada em", request.getCreatedAt().format(DATE_TIME));
             if (request.getResidenceAddress() != null && !request.getResidenceAddress().isBlank()) {
                 addFullWidthPair(data, "Endereço residencial", request.getResidenceAddress());

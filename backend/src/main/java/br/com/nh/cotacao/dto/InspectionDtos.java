@@ -3,6 +3,7 @@ package br.com.nh.cotacao.dto;
 import br.com.nh.cotacao.entity.InspectionAssetType;
 import br.com.nh.cotacao.entity.InspectionRequestStatus;
 import br.com.nh.cotacao.entity.InspectionRequestType;
+import br.com.nh.cotacao.entity.InspectionVehicleType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -18,6 +19,7 @@ public final class InspectionDtos {
     public record CreateInspectionRequest(
             @NotNull UUID consultantId,
             @NotNull InspectionRequestType requestType,
+            InspectionVehicleType vehicleType,
             @NotBlank @Size(max = 140) String associateName,
             @NotBlank @Pattern(regexp = "^[0-9.\\-]{11,14}$", message = "CPF inválido") String cpf,
             @Size(max = 30) String whatsapp,
@@ -38,6 +40,7 @@ public final class InspectionDtos {
             UUID id,
             String publicToken,
             InspectionRequestType requestType,
+            InspectionVehicleType vehicleType,
             String associateName,
             String maskedCpf,
             String whatsapp,

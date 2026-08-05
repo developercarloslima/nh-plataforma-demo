@@ -59,6 +59,7 @@ public class RetratoService {
                 cpf,
                 input.whatsapp(),
                 plate,
+                input.vehicleType() == null ? InspectionVehicleType.FOUR_WHEELS_OR_MORE : input.vehicleType(),
                 consultant
         );
         return toResponse(repository.save(request));
@@ -125,8 +126,12 @@ public class RetratoService {
         List<MultipartFile> safePhotos = photos == null ? List.of() : photos.stream()
                 .filter(file -> file != null && !file.isEmpty())
                 .toList();
-        if (newInspection && safePhotos.size() < 9) {
-            throw new IllegalArgumentException("A nova vistoria exige as 9 fotos obrigatórias, incluindo a selfie do associado em frente ao veículo, e o vídeo.");
+        int requiredPhotoCount = request.getVehicleType().requiredPhotoCount();
+        if (newInspection && safePhotos.size() != requiredPhotoCount) {
+            throw new IllegalArgumentException(
+                    "A nova vistoria para " + request.getVehicleType().displayName().toLowerCase(Locale.ROOT)
+                            + " exige exatamente " + requiredPhotoCount + " fotos obrigatórias e o vídeo."
+            );
         }
         safePhotos.forEach(this::validatePhoto);
 
@@ -229,7 +234,7 @@ public class RetratoService {
                         asset.getDriveFileUrl(), asset.getSortOrder()
                 )).toList();
         return new InspectionResponse(
-                request.getId(), request.getPublicToken(), request.getRequestType(), request.getAssociateName(),
+                request.getId(), request.getPublicToken(), request.getRequestType(), request.getVehicleType(), request.getAssociateName(),
                 maskCpf(request.getCpf()), request.getWhatsapp(), request.getPlate(), request.getResidenceAddress(),
                 request.getConsultant() == null ? null : request.getConsultant().getId(),
                 request.getConsultantName(), request.getStatus(), request.getCreatedAt(), request.getExpiresAt(),

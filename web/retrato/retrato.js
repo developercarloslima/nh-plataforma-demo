@@ -1,17 +1,44 @@
 const $ = (id) => document.getElementById(id);
 const token = new URLSearchParams(location.search).get('token');
 
-const labels = [
-  'Frente do veículo',
-  'Traseira do veículo',
-  'Lateral esquerda',
-  'Lateral direita',
-  'Painel e quilometragem',
-  'Chassi / numeração',
-  'Motor ou compartimento do motor',
-  'Pneus, rodas e estado geral',
-  'Selfie do associado em frente ao veículo, com a placa visível'
-];
+const VEHICLE_PROFILES = {
+  MOTORCYCLE: {
+    title: 'Moto ou veículo com menos de 4 rodas',
+    photos: [
+      { label: 'Selfie mostrando a placa da moto', guide: '/assets/inspection-guides/moto-01-selfie-placa.webp', facingMode: 'user' },
+      { label: 'Frente', guide: '/assets/inspection-guides/moto-02-frente.webp' },
+      { label: 'Lateral esquerda', guide: '/assets/inspection-guides/moto-03-lateral-esquerda.webp' },
+      { label: 'Traseira', guide: '/assets/inspection-guides/moto-04-traseira.webp' },
+      { label: 'Lateral direita', guide: '/assets/inspection-guides/moto-05-lateral-direita.webp' },
+      { label: 'Chassi', guide: '/assets/inspection-guides/moto-06-chassi.webp' },
+      { label: 'Odômetro', guide: '/assets/inspection-guides/moto-07-odometro.webp' }
+    ],
+    videoGuide: '/assets/guia-vistoria-moto.png',
+    videoInstruction: 'Com o veículo ligado, inicie a gravação mostrando o chassi legível. Fale seu nome completo, o dia, o mês e o ano. Mostre os 4 lados da motocicleta detalhadamente, dando um giro de 360° em torno do veículo. Finalize mostrando o odômetro com o KM total e encerre o vídeo. Tempo ideal: 1 minuto e 30 segundos.'
+  },
+  FOUR_WHEELS_OR_MORE: {
+    title: 'Carro, utilitário ou veículo com 4 rodas ou mais',
+    photos: [
+      { label: 'Selfie na frente do carro', guide: '/assets/inspection-guides/carro-01-selfie-frente.webp', facingMode: 'user' },
+      { label: 'Frente do carro', guide: '/assets/inspection-guides/carro-02-frente.webp' },
+      { label: 'Frente do carro com motor e placa', guide: '/assets/inspection-guides/carro-03-motor-placa.webp' },
+      { label: 'Para-brisa', guide: '/assets/inspection-guides/carro-04-parabrisa.webp' },
+      { label: 'Caixa de roda dianteira — lado direito', guide: '/assets/inspection-guides/carro-05-roda-dianteira-direita.webp' },
+      { label: 'Lateral direita', guide: '/assets/inspection-guides/carro-06-lateral-direita.webp' },
+      { label: 'Caixa de roda traseira — lado direito', guide: '/assets/inspection-guides/carro-07-roda-traseira-direita.webp' },
+      { label: 'Traseira do veículo', guide: '/assets/inspection-guides/carro-08-traseira.webp' },
+      { label: 'Mala aberta', guide: '/assets/inspection-guides/carro-09-mala-aberta.webp' },
+      { label: 'Caixa de roda traseira — lado esquerdo', guide: '/assets/inspection-guides/carro-10-roda-traseira-esquerda.webp' },
+      { label: 'Lateral esquerda', guide: '/assets/inspection-guides/carro-11-lateral-esquerda.webp' },
+      { label: 'Caixa de roda dianteira — lado esquerdo', guide: '/assets/inspection-guides/carro-12-roda-dianteira-esquerda.webp' },
+      { label: 'Odômetro mostrando o KM total', guide: '/assets/inspection-guides/carro-13-odometro.webp' },
+      { label: 'Foto interna mostrando o painel completo', guide: '/assets/inspection-guides/carro-14-painel-interno.webp' },
+      { label: 'Foto do chassi', guide: '/assets/inspection-guides/carro-15-chassi.webp' }
+    ],
+    videoGuide: '/assets/guia-vistoria-carro.png',
+    videoInstruction: 'Com o veículo ligado, inicie a gravação mostrando o chassi legível. Fale seu nome completo, o dia, o mês e o ano. Mostre os 4 lados do veículo detalhadamente, dando um giro de 360° em torno do veículo. Finalize abrindo a porta do motorista e mostrando o odômetro com o KM total. Encerre o vídeo. Tempo ideal: 1 minuto e 30 segundos.'
+  }
+};
 
 const allowedVideoTypes = new Set([
   'video/mp4',
@@ -21,8 +48,11 @@ const allowedVideoTypes = new Set([
 ]);
 
 let request = null;
-let photoFiles = new Array(labels.length).fill(null);
-let photoPreviewUrls = new Array(labels.length).fill(null);
+let inspectionProfile = VEHICLE_PROFILES.FOUR_WHEELS_OR_MORE;
+let labels = [];
+let photoFiles = [];
+let photoPreviewUrls = [];
+let pendingGuideAction = null;
 let videoFile = null;
 let videoPreviewUrl = null;
 let activeStream = null;
@@ -36,6 +66,18 @@ let discardRecording = false;
 let signatureHasInk = false;
 let signatureDrawing = false;
 let signatureLastPoint = null;
+
+function configureInspectionProfile(vehicleType) {
+  inspectionProfile = VEHICLE_PROFILES[vehicleType] || VEHICLE_PROFILES.FOUR_WHEELS_OR_MORE;
+  labels = inspectionProfile.photos.map((photo) => photo.label);
+  photoFiles = new Array(labels.length).fill(null);
+  photoPreviewUrls = new Array(labels.length).fill(null);
+
+  $('vehicle-guide-title').textContent = inspectionProfile.title;
+  $('vehicle-guide-count').textContent = `${labels.length} fotos obrigatórias + 1 vídeo`;
+  $('video-title').textContent = `${labels.length + 1}. Vídeo da vistoria *`;
+  $('video-card-instruction').textContent = inspectionProfile.videoInstruction;
+}
 
 function msg(text, type = 'error') {
   const element = $('message');
@@ -64,6 +106,10 @@ async function load() {
     }
 
     request = body;
+    configureInspectionProfile(body.vehicleType);
+    $('vehicle-guide-count').textContent = body.requestType === 'NEW_INSPECTION'
+      ? `${labels.length} fotos obrigatórias + 1 vídeo`
+      : '1 vídeo obrigatório para atualização de boleto';
 
     if (body.status === 'COMPLETED') {
       showComplete(body);
@@ -87,14 +133,17 @@ $('start').addEventListener('click', () => {
 
   const fullInspection = request.requestType === 'NEW_INSPECTION';
   $('upload-heading').textContent = fullInspection
-    ? 'Fotos completas e vídeo'
+    ? `Vistoria de ${inspectionProfile.title.toLowerCase()}`
     : 'Vídeo para atualização de boleto';
   $('upload-note').textContent = fullInspection
-    ? 'As imagens devem ser registradas agora. A galeria do aparelho não será utilizada.'
-    : 'Grave agora o vídeo solicitado. A galeria do aparelho não será utilizada.';
+    ? `Registre as ${labels.length} fotos na ordem indicada. Antes de cada abertura da câmera, a imagem ilustrativa correspondente será exibida.`
+    : 'Antes da gravação, você verá as diretrizes específicas para este tipo de veículo.';
 
   $('registration-fields').hidden = !fullInspection;
   $('residence-address').required = fullInspection;
+  $('video-title').textContent = fullInspection
+    ? `${labels.length + 1}. Vídeo da vistoria *`
+    : 'Vídeo para atualização de boleto *';
 
   if (fullInspection) {
     renderPhotoCaptureCards();
@@ -112,9 +161,7 @@ function renderPhotoCaptureCards() {
   $('photos').innerHTML = labels.map((label, index) => `
     <article class="upload-item camera-upload-item">
       <strong>${index + 1}. ${escapeHtml(label)}</strong>
-      <small>${index === labels.length - 1
-        ? 'Use a câmera frontal ou traseira e enquadre o associado, a frente do veículo e a placa. Para veículo 0 km sem placa, mostre claramente a dianteira do veículo.'
-        : 'Abra a câmera e fotografe com nitidez, sem cortar a área solicitada.'}</small>
+      <small>Ao tocar em “Abrir câmera”, você verá primeiro a imagem ilustrativa desta etapa.</small>
       <img id="photo-preview-${index}" class="capture-preview" alt="Prévia de ${escapeHtml(label)}" hidden>
       <p id="photo-status-${index}" class="capture-status">Foto ainda não registrada.</p>
       <button class="outline camera-action" type="button" data-photo-index="${index}">
@@ -124,9 +171,72 @@ function renderPhotoCaptureCards() {
   `).join('');
 
   document.querySelectorAll('[data-photo-index]').forEach((button) => {
-    button.addEventListener('click', () => openPhotoCamera(Number(button.dataset.photoIndex)));
+    button.addEventListener('click', () => showPhotoGuide(Number(button.dataset.photoIndex)));
   });
 }
+
+function showPhotoGuide(index) {
+  const photo = inspectionProfile.photos[index];
+  pendingGuideAction = { type: 'photo', index };
+  $('capture-guide-eyebrow').textContent = `FOTO ${index + 1} DE ${labels.length}`;
+  $('capture-guide-title').textContent = photo.label;
+  $('capture-guide-warning').textContent = 'Esta foto deve seguir as diretrizes da imagem ilustrativa.';
+  $('capture-guide-image').src = photo.guide;
+  $('capture-guide-image').alt = `Imagem ilustrativa: ${photo.label}`;
+  $('capture-guide-image').hidden = false;
+  $('capture-guide-instruction').textContent = photo.label.toLowerCase().includes('selfie')
+    ? 'Enquadre o associado e o veículo como no exemplo. Quando houver placa, ela precisa ficar legível. Para veículo 0 km sem placa, mostre claramente a dianteira.'
+    : 'Observe o ângulo, a distância e a área do veículo mostrada no exemplo. Tire a foto com boa iluminação e sem cortar a parte solicitada.';
+  $('capture-guide-continue').textContent = 'Entendi, abrir câmera';
+  showGuidePage();
+}
+
+function showVideoGuide() {
+  pendingGuideAction = { type: 'video' };
+  $('capture-guide-eyebrow').textContent = request?.requestType === 'NEW_INSPECTION'
+    ? `VÍDEO ${labels.length + 1}`
+    : 'VÍDEO OBRIGATÓRIO';
+  $('capture-guide-title').textContent = 'Vídeo de conclusão da vistoria';
+  $('capture-guide-warning').textContent = 'Este vídeo deve seguir todas as diretrizes abaixo.';
+  $('capture-guide-image').src = inspectionProfile.videoGuide;
+  $('capture-guide-image').alt = `Guia de vídeo para ${inspectionProfile.title.toLowerCase()}`;
+  $('capture-guide-image').hidden = false;
+  $('capture-guide-instruction').textContent = inspectionProfile.videoInstruction;
+  $('capture-guide-continue').textContent = 'Entendi, abrir câmera para gravar';
+  showGuidePage();
+}
+
+function showGuidePage() {
+  $('upload-card').hidden = true;
+  $('capture-guide-card').hidden = false;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function hideGuidePage({ restoreUpload = false } = {}) {
+  $('capture-guide-card').hidden = true;
+  if (restoreUpload) {
+    $('upload-card').hidden = false;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  pendingGuideAction = null;
+}
+
+$('capture-guide-back').addEventListener('click', () => hideGuidePage({ restoreUpload: true }));
+$('capture-guide-continue').addEventListener('click', async () => {
+  const action = pendingGuideAction;
+
+  // O clique em “Entendi” é o gesto direto do usuário que libera a câmera no mobile.
+  $('capture-guide-card').hidden = true;
+  $('upload-card').hidden = false;
+  pendingGuideAction = null;
+
+  if (!action) return;
+  if (action.type === 'photo') {
+    await openPhotoCamera(action.index);
+  } else {
+    await openVideoCamera();
+  }
+});
 
 async function openPhotoCamera(index) {
   currentPhotoIndex = index;
@@ -135,11 +245,12 @@ async function openPhotoCamera(index) {
   clearMessage();
 
   try {
-    await openCamera({ audio: false });
+    const photo = inspectionProfile.photos[index];
+    await openCamera({ audio: false, facingMode: photo.facingMode || 'environment' });
     $('camera-title').textContent = `${index + 1}. ${labels[index]}`;
-    $('camera-instruction').textContent = index === labels.length - 1
-      ? 'Enquadre o associado em frente ao veículo e mantenha a placa visível. Se o veículo for 0 km e ainda não tiver placa, mostre claramente a dianteira do veículo.'
-      : 'Posicione o veículo no enquadramento e toque em “Capturar foto”.';
+    $('camera-instruction').textContent = photo.label.toLowerCase().includes('selfie')
+      ? 'Reproduza o enquadramento mostrado no guia. Mantenha o associado, a frente do veículo e a placa visíveis.'
+      : 'Reproduza o ângulo mostrado no guia e toque em “Capturar foto”.';
     $('capture-photo').hidden = false;
     $('start-recording').hidden = true;
     $('stop-recording').hidden = true;
@@ -156,9 +267,11 @@ async function openVideoCamera() {
   clearMessage();
 
   try {
-    await openCamera({ audio: true });
-    $('camera-title').textContent = 'Vídeo da vistoria';
-    $('camera-instruction').textContent = 'Toque em “Iniciar gravação”, caminhe devagar ao redor do veículo e finalize nesta mesma tela.';
+    await openCamera({ audio: true, facingMode: 'environment' });
+    $('camera-title').textContent = request?.requestType === 'NEW_INSPECTION'
+      ? `${labels.length + 1}. Vídeo da vistoria`
+      : 'Vídeo para atualização de boleto';
+    $('camera-instruction').textContent = inspectionProfile.videoInstruction;
     $('capture-photo').hidden = true;
     $('start-recording').hidden = false;
     $('stop-recording').hidden = true;
@@ -168,7 +281,7 @@ async function openVideoCamera() {
   }
 }
 
-async function openCamera({ audio }) {
+async function openCamera({ audio, facingMode = 'environment' }) {
   if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
     throw new Error('A câmera exige um navegador atualizado e uma conexão HTTPS. Em testes locais, use localhost.');
   }
@@ -177,7 +290,7 @@ async function openCamera({ audio }) {
 
   const constraints = {
     video: {
-      facingMode: { ideal: 'environment' },
+      facingMode: { ideal: facingMode },
       width: { ideal: 1920 },
       height: { ideal: 1080 }
     },
@@ -262,7 +375,7 @@ async function capturePhoto() {
   updateCaptureSummary();
 }
 
-$('record-video').addEventListener('click', openVideoCamera);
+$('record-video').addEventListener('click', showVideoGuide);
 $('start-recording').addEventListener('click', startVideoRecording);
 $('stop-recording').addEventListener('click', stopVideoRecording);
 $('cancel-camera').addEventListener('click', cancelCameraCapture);
@@ -524,6 +637,7 @@ $('upload-form').addEventListener('submit', async (event) => {
 
 function showComplete(data) {
   request = data;
+  hideGuidePage();
   closeCameraModal();
   $('guideline-card').hidden = true;
   $('upload-card').hidden = true;
