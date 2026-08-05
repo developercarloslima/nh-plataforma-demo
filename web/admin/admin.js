@@ -108,16 +108,13 @@ function coverageBadge(status) {
 }
 
 function parseMoney(value) {
-  const text = String(value ?? '').trim();
-  if (!text) throw new Error('Informe um valor válido.');
-  const normalized = text.includes(',') ? text.replace(/\./g, '').replace(',', '.') : text;
-  const number = Number(normalized);
+  const number = window.NHMoney?.parse(value);
   if (!Number.isFinite(number) || number < 0) throw new Error('Informe um valor válido.');
   return number;
 }
 
 function moneyInput(value) {
-  return Number(value || 0).toFixed(2).replace('.', ',');
+  return window.NHMoney?.format(Number(value || 0)) || '0,00';
 }
 
 function emptyRow(columns, text) {

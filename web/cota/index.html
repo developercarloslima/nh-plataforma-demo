@@ -67,7 +67,7 @@
         </label>
         <label>Modelo do veículo *<input id="model" required placeholder="Ex.: Hyundai HB20 Comfort"></label>
         <label>Ano de fabricação *<input id="manufactureYear" required type="number" min="1950"></label>
-        <label>Valor FIPE *<input id="fipeValue" required inputmode="decimal" placeholder="Ex.: 65.000,00"></label>
+        <label>Valor FIPE *<input id="fipeValue" data-money required inputmode="decimal" maxlength="18" placeholder="Ex.: 65.000,00"></label>
 
         <fieldset class="vehicle-selector span-2">
           <legend>Categoria do veículo *</legend>
@@ -190,6 +190,7 @@
   <footer><img src="./favicon-nh.png" alt="NH"><span id="footer-label">Novo Horizonte Proteção Veicular • Sistema interno de cotações</span></footer>
   <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
-  <script src="./app.js?v=20260805-guided-capture" defer></script>
+  <script src="/shared/money-input.js?v=20260805-brl-mask"></script>
+  <script src="./app.js?v=20260805-brl-mask" defer></script>
 </body>
 </html>

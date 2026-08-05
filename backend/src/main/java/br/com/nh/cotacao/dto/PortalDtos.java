@@ -15,6 +15,7 @@ public final class PortalDtos {
             boolean active,
             String source,
             OffsetDateTime createdAt,
+            OffsetDateTime lastPortalLoginAt,
             long quoteCount,
             long inspectionCount
     ) {}

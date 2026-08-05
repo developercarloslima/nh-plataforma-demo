@@ -134,8 +134,8 @@ public class InspectionRequest {
                 quotation.getWhatsapp(),
                 quotation.getPlate(),
                 InspectionVehicleType.fromCategoryCode(quotation.getCategoryCode()),
-                null,
-                Quotation.SELF_SERVICE_CONSULTANT_NAME,
+                quotation.getConsultant(),
+                quotation.getConsultantName(),
                 quotation
         );
     }

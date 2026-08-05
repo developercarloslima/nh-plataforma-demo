@@ -136,6 +136,39 @@ class QuotationTest {
         assertNull(quotation.getPlate());
     }
 
+
+    @Test
+    void shouldAssignSelfServiceQuoteAndInspectionToConsultant() {
+        Consultant consultant = Consultant.create("Jose Consultor", "TEST");
+        Quotation quotation = Quotation.createSelfService(
+                "NH-2026-PUBLICA001",
+                consultant,
+                "Cliente Público",
+                "52998224725",
+                "82999999999",
+                "ABC1D23",
+                "Veículo teste",
+                2025,
+                false,
+                new BigDecimal("50000.00"),
+                "CAR_NATIONAL",
+                Region.NATIONAL,
+                "CAR_ECONOMICO",
+                "Plano Econômico",
+                new BigDecimal("100.00"),
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                null
+        );
+
+        InspectionRequest inspection = InspectionRequest.createForSelfServiceQuote("token-publico", quotation);
+
+        assertEquals(consultant.getId(), quotation.getConsultant().getId());
+        assertEquals(consultant.getName(), quotation.getConsultantName());
+        assertEquals(consultant.getId(), inspection.getConsultant().getId());
+        assertEquals(consultant.getName(), inspection.getConsultantName());
+    }
+
     private Quotation quotationWithBaseValue(String baseValue) {
         Consultant consultant = Consultant.create("Consultor", "TEST");
         return Quotation.createForConsultant(

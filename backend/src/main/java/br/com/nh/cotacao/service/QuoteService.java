@@ -116,8 +116,11 @@ public class QuoteService {
                 request.fipeValue(), request.selectedOptionalCodes()
         );
 
+        Consultant assignedConsultant = consultantService.findMostRecentPortalConsultant().orElse(null);
+
         Quotation quotation = Quotation.createSelfService(
                 buildQuoteNumber(),
+                assignedConsultant,
                 request.customerName(),
                 cpf,
                 whatsapp,

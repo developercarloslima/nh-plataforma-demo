@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -40,6 +41,19 @@ public class ConsultantService {
     @Transactional(readOnly = true)
     public List<ConsultantResponse> all() {
         return repository.findAllByOrderByNameAsc().stream().map(this::toResponse).toList();
+    }
+
+
+    @Transactional
+    public ConsultantResponse registerPortalLogin(UUID id) {
+        Consultant consultant = findActive(id);
+        consultant.registerPortalLogin();
+        return toResponse(repository.save(consultant));
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<Consultant> findMostRecentPortalConsultant() {
+        return repository.findFirstByActiveTrueAndLastPortalLoginAtIsNotNullOrderByLastPortalLoginAtDesc();
     }
 
     @Transactional
@@ -111,7 +125,8 @@ public class ConsultantService {
     private ConsultantResponse toResponse(Consultant consultant) {
         return new ConsultantResponse(
                 consultant.getId(), consultant.getName(), consultant.isActive(), consultant.getSource(),
-                consultant.getCreatedAt(), quotationRepository.countByConsultantId(consultant.getId()),
+                consultant.getCreatedAt(), consultant.getLastPortalLoginAt(),
+                quotationRepository.countByConsultantId(consultant.getId()),
                 inspectionRepository.countByConsultantId(consultant.getId())
         );
     }

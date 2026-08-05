@@ -31,6 +31,9 @@ public class Consultant {
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
+    @Column(name = "last_portal_login_at")
+    private OffsetDateTime lastPortalLoginAt;
+
     protected Consultant() {}
 
     public static Consultant create(String name, String source) {
@@ -58,6 +61,12 @@ public class Consultant {
         this.updatedAt = OffsetDateTime.now();
     }
 
+    public void registerPortalLogin() {
+        OffsetDateTime now = OffsetDateTime.now();
+        this.lastPortalLoginAt = now;
+        this.updatedAt = now;
+    }
+
     public static String normalize(String value) {
         String withoutAccents = Normalizer.normalize(value == null ? "" : value, Normalizer.Form.NFD)
                 .replaceAll("\\p{M}+", "");
@@ -83,4 +92,5 @@ public class Consultant {
     public String getSource() { return source; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
+    public OffsetDateTime getLastPortalLoginAt() { return lastPortalLoginAt; }
 }

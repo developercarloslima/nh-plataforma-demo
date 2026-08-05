@@ -11,4 +11,5 @@ public interface ConsultantRepository extends JpaRepository<Consultant, UUID> {
     List<Consultant> findByActiveTrueOrderByNameAsc();
     List<Consultant> findAllByOrderByNameAsc();
     Optional<Consultant> findByNormalizedName(String normalizedName);
+    Optional<Consultant> findFirstByActiveTrueAndLastPortalLoginAtIsNotNullOrderByLastPortalLoginAtDesc();
 }

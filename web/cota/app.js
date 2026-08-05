@@ -28,12 +28,7 @@ function quoteApiPath(suffix = '') {
 }
 
 function parseMoney(value) {
-  const raw = String(value ?? '').trim().replace(/R\$|\s/g, '');
-  if (!raw) return NaN;
-  if (raw.includes(',')) return Number(raw.replace(/\./g, '').replace(',', '.'));
-  const dotCount = (raw.match(/\./g) || []).length;
-  if (dotCount === 1 && /^\d+\.\d{1,2}$/.test(raw)) return Number(raw);
-  return Number(raw.replace(/\./g, ''));
+  return window.NHMoney?.parse(value) ?? NaN;
 }
 
 function escapeHtml(value) {
@@ -172,6 +167,7 @@ async function restoreSession() {
     Object.entries(saved.form || {}).forEach(([id, value]) => {
       if (id !== 'consultantName' && id !== 'zeroKm' && $(id) && value != null) $(id).value = value;
     });
+    window.NHMoney?.refresh($('fipeValue'));
     syncZeroKmOptions();
 
     if (saved.quoteId) {

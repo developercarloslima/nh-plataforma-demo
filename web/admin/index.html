@@ -233,9 +233,9 @@
     <input id="price-id" type="hidden">
     <div class="form-grid">
       <label class="span-2">Plano<select id="price-plan" required></select></label>
-      <label>Valor FIPE mínimo<input id="price-min" inputmode="decimal" required></label>
-      <label>Valor FIPE máximo<input id="price-max" inputmode="decimal" required></label>
-      <label class="span-2">Mensalidade<input id="price-monthly" inputmode="decimal" required></label>
+      <label>Valor FIPE mínimo<input id="price-min" data-money inputmode="decimal" maxlength="18" required></label>
+      <label>Valor FIPE máximo<input id="price-max" data-money inputmode="decimal" maxlength="18" required></label>
+      <label class="span-2">Mensalidade<input id="price-monthly" data-money inputmode="decimal" maxlength="18" required></label>
     </div>
     <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="price-dialog">Cancelar</button><button class="primary" type="submit">Salvar faixa</button></div>
   </form>
@@ -251,7 +251,7 @@
       <label>Classificação<select id="coverage-status" required><option value="INCLUDED">Incluído</option><option value="NOT_INCLUDED">Não incluído</option><option value="OPTIONAL">Serviço opcional</option></select></label>
       <label>Ordem de exibição<input id="coverage-order" type="number" min="0" value="100" required></label>
       <label class="span-2">Condições ou limites<textarea id="coverage-detail" maxlength="240" rows="4"></textarea></label>
-      <label class="span-2">Mensalidade do opcional<input id="coverage-price" inputmode="decimal" placeholder="0,00"></label>
+      <label class="span-2">Mensalidade do opcional<input id="coverage-price" data-money inputmode="decimal" maxlength="18" placeholder="0,00"></label>
     </div>
     <p class="helper">O valor mensal é obrigatório somente quando a classificação for “Serviço opcional”.</p>
     <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="coverage-dialog">Cancelar</button><button class="primary" type="submit">Salvar cobertura</button></div>
@@ -298,6 +298,7 @@
 
 <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
-<script src="/admin/admin.js?v=20260804-analyst-notification"></script>
+<script src="/shared/money-input.js?v=20260805-brl-mask"></script>
+<script src="/admin/admin.js?v=20260805-brl-mask"></script>
 </body>
 </html>

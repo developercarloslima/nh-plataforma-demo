@@ -180,6 +180,7 @@ public class Quotation {
 
     public static Quotation createSelfService(
             String quoteNumber,
+            Consultant consultant,
             String customerName,
             String customerCpf,
             String whatsapp,
@@ -200,8 +201,8 @@ public class Quotation {
         return createBase(
                 quoteNumber,
                 QuoteOrigin.SELF_SERVICE,
-                null,
-                SELF_SERVICE_CONSULTANT_NAME,
+                consultant,
+                consultant == null ? SELF_SERVICE_CONSULTANT_NAME : consultant.getName(),
                 customerName,
                 customerCpf,
                 whatsapp,

@@ -28,4 +28,9 @@ public class ConsultantController {
     public ConsultantResponse create(@Valid @RequestBody CreateConsultantRequest request) {
         return service.create(request.name(), "CREATED_IN_PORTAL");
     }
+
+    @PostMapping("/{id}/portal-login")
+    public ConsultantResponse registerPortalLogin(@PathVariable UUID id) {
+        return service.registerPortalLogin(id);
+    }
 }
