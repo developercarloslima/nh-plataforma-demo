@@ -2,6 +2,7 @@ package br.com.nh.cotacao.dto;
 
 import br.com.nh.cotacao.entity.CoverageStatus;
 import br.com.nh.cotacao.entity.InspectionRequestStatus;
+import br.com.nh.cotacao.entity.MotorcycleOrigin;
 import br.com.nh.cotacao.entity.QuoteOrigin;
 import br.com.nh.cotacao.entity.QuoteStatus;
 import br.com.nh.cotacao.entity.Region;
@@ -22,6 +23,7 @@ public final class AdminDtos {
             String planName,
             String category,
             String region,
+            MotorcycleOrigin motorcycleOrigin,
             BigDecimal minValue,
             BigDecimal maxValue,
             BigDecimal monthlyPrice
@@ -38,13 +40,12 @@ public final class AdminDtos {
 
     public record PlanAdminResponse(
             Long id,
-            String code,
             String name,
             String subtitle,
             Long categoryId,
             String category,
-            String categoryCode,
             Region region,
+            MotorcycleOrigin motorcycleOrigin,
             Integer displayOrder,
             boolean active,
             BigDecimal extraAbove,
@@ -57,11 +58,11 @@ public final class AdminDtos {
     ) {}
 
     public record CreatePlanRequest(
-            @Size(max = 80) String code,
             @NotBlank @Size(max = 120) String name,
             @Size(max = 180) String subtitle,
             @NotNull Long categoryId,
-            @NotNull Region region,
+            Region region,
+            MotorcycleOrigin motorcycleOrigin,
             @NotNull @Min(0) Integer displayOrder,
             @NotNull Boolean active,
             @DecimalMin("0.00") BigDecimal extraAbove,
@@ -74,11 +75,11 @@ public final class AdminDtos {
     ) {}
 
     public record UpdatePlanRequest(
-            @NotBlank @Size(max = 80) String code,
             @NotBlank @Size(max = 120) String name,
             @Size(max = 180) String subtitle,
             @NotNull Long categoryId,
-            @NotNull Region region,
+            Region region,
+            MotorcycleOrigin motorcycleOrigin,
             @NotNull @Min(0) Integer displayOrder,
             @NotNull Boolean active,
             @DecimalMin("0.00") BigDecimal extraAbove,
@@ -96,8 +97,7 @@ public final class AdminDtos {
             String planName,
             String category,
             String region,
-            Long coverageId,
-            String coverageCode,
+            MotorcycleOrigin motorcycleOrigin,
             String coverageName,
             CoverageStatus status,
             String detail,
@@ -106,7 +106,6 @@ public final class AdminDtos {
     ) {}
 
     public record CreateCoverageRequest(
-            @Size(max = 80) String coverageCode,
             @NotBlank @Size(max = 180) String coverageName,
             @NotNull CoverageStatus status,
             @Size(max = 240) String detail,
@@ -116,7 +115,6 @@ public final class AdminDtos {
 
     public record UpdateCoverageRequest(
             @NotNull Long planId,
-            @NotBlank @Size(max = 80) String coverageCode,
             @NotBlank @Size(max = 180) String coverageName,
             @NotNull CoverageStatus status,
             @Size(max = 240) String detail,
@@ -165,6 +163,7 @@ public final class AdminDtos {
             BigDecimal fipeValue,
             String categoryCode,
             Region region,
+            MotorcycleOrigin motorcycleOrigin,
             String selectedPlanName,
             BigDecimal monthlyValue,
             BigDecimal oneTimeFee,

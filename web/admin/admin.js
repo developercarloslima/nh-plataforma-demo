@@ -17,6 +17,7 @@ let settings = {};
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const date = value => value ? new Date(value).toLocaleString('pt-BR') : '—';
 const REGION_LABELS = Object.freeze({ NATIONAL: 'Nacional', NORTHEAST: 'Nordeste', CAPITAL: 'Capital' });
+const MOTORCYCLE_ORIGIN_LABELS = Object.freeze({ NORTHEAST: 'Demais cidades do Nordeste', CAPITAL: 'Capital' });
 const QUOTE_STATUS_LABELS = Object.freeze({
   CREATED: ['Pendente', 'warn'], UNDER_REVIEW: ['Em análise', 'warn'], ACCEPTED: ['Aceita', 'ok'],
   DECLINED: ['Recusada', 'off'], CANCELLED: ['Cancelada', 'off']
@@ -31,6 +32,7 @@ const AUDIT_TYPE_LABELS = Object.freeze({
 });
 
 const regionLabel = value => REGION_LABELS[value] || value || '—';
+const motorcycleOriginLabel = value => MOTORCYCLE_ORIGIN_LABELS[value] || 'Não se aplica';
 const quoteOriginLabel = value => value === 'SELF_SERVICE' ? 'Cliente pelo site' : 'Consultor';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
@@ -345,7 +347,9 @@ function openQuoteAnalysis(id) {
   $('quote-detail-grid').innerHTML = detailItems([
     ['Cliente', item.customerName], ['Origem', quoteOriginLabel(item.origin)], ['Responsável', item.consultantName], ['CPF', item.maskedCpf || '—'], ['WhatsApp', formatPhone(item.whatsapp) || '—'],
     ['Placa', item.plate], ['Modelo', item.model], ['Ano', item.manufactureYear], ['Veículo 0 km', item.zeroKm ? 'Sim' : 'Não'],
-    ['Valor FIPE', brl.format(item.fipeValue)], ['Plano', item.selectedPlanName], ['Total mensal', brl.format(item.monthlyValue)],
+    ['Valor FIPE', brl.format(item.fipeValue)], ['Abrangência', regionLabel(item.region)],
+    ['Origem da moto', item.motorcycleOrigin ? motorcycleOriginLabel(item.motorcycleOrigin) : 'Não se aplica'],
+    ['Plano', item.selectedPlanName], ['Total mensal', brl.format(item.monthlyValue)],
     ['Taxa única', brl.format(item.oneTimeFee || 0)], ['Emitida em', date(item.createdAt)], ['Válida até', date(item.validUntil)],
     ['Última análise', date(item.reviewedAt)]
   ]);
@@ -397,14 +401,14 @@ function linkButtons(items) {
 
 function renderPlans() {
   $('plans-body').innerHTML = plans.map(item => `<tr>
-    <td><strong>${esc(item.name)}</strong><small class="table-code">${esc(item.code)}</small></td><td>${esc(item.category)}</td><td>${esc(regionLabel(item.region))}</td>
-    <td>${esc(item.subtitle || '—')}</td><td>${item.displayOrder}</td><td>${statusBadge(item.active ? 'Ativo' : 'Inativo', item.active ? 'ok' : 'off')}</td>
+    <td><strong class="catalog-name">${esc(item.name)}</strong></td><td>${esc(item.category)}</td><td>${esc(regionLabel(item.region))}</td>
+    <td>${esc(motorcycleOriginLabel(item.motorcycleOrigin))}</td><td>${esc(item.subtitle || '—')}</td><td>${item.displayOrder}</td><td>${statusBadge(item.active ? 'Ativo' : 'Inativo', item.active ? 'ok' : 'off')}</td>
     <td><div class="row-actions">
       <button class="secondary small-button" data-plan-edit="${item.id}" type="button">Editar tudo</button>
       <button class="outline small-button" data-plan-toggle="${item.id}" type="button">${item.active ? 'Desativar' : 'Ativar'}</button>
       <button class="danger small-button" data-plan-delete="${item.id}" type="button">Excluir</button>
     </div></td>
-  </tr>`).join('') || emptyRow(7, 'Nenhum plano cadastrado.');
+  </tr>`).join('') || emptyRow(8, 'Nenhum plano cadastrado.');
   document.querySelectorAll('[data-plan-edit]').forEach(button => button.addEventListener('click', () => openPlanModal(Number(button.dataset.planEdit))));
   document.querySelectorAll('[data-plan-toggle]').forEach(button => button.addEventListener('click', () => togglePlan(Number(button.dataset.planToggle))));
   document.querySelectorAll('[data-plan-delete]').forEach(button => button.addEventListener('click', () => deletePlan(Number(button.dataset.planDelete))));
@@ -413,11 +417,12 @@ function renderPlans() {
 function openPlanModal(id = null) {
   const item = plans.find(value => value.id === id);
   $('plan-id').value = item?.id || '';
-  $('plan-code').value = item?.code || '';
   $('plan-name').value = item?.name || '';
   $('plan-category').value = item?.categoryId || categories[0]?.id || '';
-  $('plan-region').value = item?.region || 'NATIONAL';
+  $('plan-region').value = 'NATIONAL';
+  $('plan-motorcycle-origin').value = item?.motorcycleOrigin || 'NORTHEAST';
   $('plan-subtitle').value = item?.subtitle || '';
+  syncPlanMotorcycleOrigin();
   $('plan-order').value = item?.displayOrder ?? 100;
   $('plan-active').value = String(item?.active ?? true);
   setOptionalMoney('plan-extra-above', item?.extraAbove);
@@ -431,6 +436,15 @@ function openPlanModal(id = null) {
   openDialog('plan-dialog');
 }
 
+
+function syncPlanMotorcycleOrigin() {
+  const categoryId = Number($('plan-category').value);
+  const category = categories.find(item => Number(item.id) === categoryId);
+  const motorcycle = Boolean(category?.code?.startsWith('MOTORCYCLE'));
+  $('plan-motorcycle-origin-field').hidden = !motorcycle;
+  $('plan-motorcycle-origin').required = motorcycle;
+  if (!motorcycle) $('plan-motorcycle-origin').value = 'NORTHEAST';
+}
 
 async function togglePlan(id) {
   const item = plans.find(value => value.id === id);
@@ -447,8 +461,9 @@ async function togglePlan(id) {
     await api(`/api/admin/catalog/plans/${id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        code: item.code, name: item.name, subtitle: item.subtitle || '', categoryId: item.categoryId,
-        region: item.region, displayOrder: item.displayOrder, active: !item.active,
+        name: item.name, subtitle: item.subtitle || '', categoryId: item.categoryId,
+        region: 'NATIONAL', motorcycleOrigin: item.motorcycleOrigin || null,
+        displayOrder: item.displayOrder, active: !item.active,
         extraAbove: item.extraAbove, extraStep: item.extraStep, extraIncrement: item.extraIncrement,
         extraBasePrice: item.extraBasePrice, trackerRequiredAbove: item.trackerRequiredAbove,
         trackerInstallationFee: item.trackerInstallationFee, trackerMonthlyFee: item.trackerMonthlyFee
@@ -482,10 +497,10 @@ function renderPrices() {
   const selectedPlan = $('price-plan-filter').value;
   const filtered = prices.filter(item => {
     if (selectedPlan && String(item.planId) !== selectedPlan) return false;
-    return `${item.planName} ${item.category} ${item.region} ${regionLabel(item.region)}`.toLowerCase().includes(filter);
+    return `${item.planName} ${item.category} ${item.region} ${regionLabel(item.region)} ${item.motorcycleOrigin || ''} ${motorcycleOriginLabel(item.motorcycleOrigin)}`.toLowerCase().includes(filter);
   });
   $('prices-body').innerHTML = filtered.map(item => `<tr>
-    <td><strong>${esc(item.planName)}</strong></td><td>${esc(item.category)}</td><td>${esc(regionLabel(item.region))}</td>
+    <td><strong class="catalog-name">${esc(item.planName)}</strong></td><td>${esc(item.category)}</td><td>${esc(regionLabel(item.region))}<small class="table-code">${esc(motorcycleOriginLabel(item.motorcycleOrigin))}</small></td>
     <td>${brl.format(item.minValue)} a ${brl.format(item.maxValue)}</td><td><strong>${brl.format(item.monthlyPrice)}</strong></td>
     <td><div class="row-actions"><button class="secondary small-button" data-price-edit="${item.id}" type="button">Editar</button><button class="danger small-button" data-price-delete="${item.id}" type="button">Excluir</button></div></td>
   </tr>`).join('') || emptyRow(6, 'Nenhuma faixa de valor encontrada.');
@@ -528,11 +543,11 @@ function renderCoverages() {
   const filtered = coverages.filter(item => {
     if (planId && String(item.planId) !== planId) return false;
     if (status && item.status !== status) return false;
-    return `${item.coverageCode || ''} ${item.coverageName} ${item.detail || ''} ${item.planName}`.toLowerCase().includes(text);
+    return `${item.coverageName} ${item.detail || ''} ${item.planName}`.toLowerCase().includes(text);
   });
   $('coverages-body').innerHTML = filtered.map(item => `<tr>
-    <td><strong>${esc(item.planName)}</strong><small class="table-code">${esc(regionLabel(item.region))}</small></td>
-    <td><strong>${esc(item.coverageName)}</strong><small class="table-code">${esc(item.coverageCode)}</small></td><td>${coverageBadge(item.status)}</td><td>${esc(item.detail || '—')}</td>
+    <td><strong class="catalog-name">${esc(item.planName)}</strong><small class="table-code">${esc(regionLabel(item.region))} · ${esc(motorcycleOriginLabel(item.motorcycleOrigin))}</small></td>
+    <td><strong class="catalog-name">${esc(item.coverageName)}</strong></td><td>${coverageBadge(item.status)}</td><td>${esc(item.detail || '—')}</td>
     <td>${item.status === 'OPTIONAL' ? brl.format(item.monthlyPrice || 0) : '—'}</td><td>${item.sortOrder}</td>
     <td><div class="row-actions"><button class="secondary small-button" data-coverage-edit="${item.id}" type="button">Editar</button><button class="danger small-button" data-coverage-delete="${item.id}" type="button">Excluir</button></div></td>
   </tr>`).join('') || emptyRow(7, 'Nenhuma cobertura encontrada.');
@@ -545,7 +560,6 @@ function openCoverageModal(id = null) {
   $('coverage-id').value = item?.id || '';
   $('coverage-plan').value = item?.planId || plans[0]?.id || '';
   $('coverage-plan').disabled = false;
-  $('coverage-code').value = item?.coverageCode || '';
   $('coverage-name').value = item?.coverageName || '';
   $('coverage-status').value = item?.status || 'INCLUDED';
   $('coverage-order').value = item?.sortOrder ?? 100;
@@ -592,21 +606,144 @@ function openSettingsModal() {
   openDialog('settings-dialog');
 }
 
+const AUDIT_FIELD_LABELS = Object.freeze({
+  plano: 'Plano', nome: 'Nome', categoria: 'Categoria', abrangência: 'Abrangência', origemMoto: 'Origem da moto',
+  subtítulo: 'Subtítulo', ordem: 'Ordem de exibição', ativo: 'Situação', mínimo: 'Valor FIPE mínimo', máximo: 'Valor FIPE máximo',
+  mensal: 'Mensalidade', extraAcima: 'Aplicar adicional acima de', extraIntervalo: 'Intervalo do adicional',
+  extraAcréscimo: 'Acréscimo por intervalo', extraBase: 'Mensalidade-base', rastreadorAcima: 'Rastreador obrigatório acima de',
+  rastreadorInstalação: 'Instalação do rastreador', rastreadorMensal: 'Mensalidade do rastreador', status: 'Status',
+  detalhe: 'Detalhe', observação: 'Observação', origem: 'Origem', 'e-mail': 'E-mail', whatsapp: 'WhatsApp',
+  faixas: 'Faixas de preço', coberturas: 'Coberturas'
+});
+
+const AUDIT_VALUE_LABELS = Object.freeze({
+  NATIONAL: 'Nacional', NORTHEAST: 'Demais cidades do Nordeste', CAPITAL: 'Capital',
+  INCLUDED: 'Incluído', NOT_INCLUDED: 'Não incluído', OPTIONAL: 'Serviço opcional',
+  CREATED: 'Pendente', UNDER_REVIEW: 'Em análise', ACCEPTED: 'Aceita', DECLINED: 'Recusada',
+  COMPLETED: 'Material enviado', APPROVED: 'Aprovada', REJECTED: 'Recusada', CANCELLED: 'Cancelada', EXPIRED: 'Expirada',
+  CREATED_IN_PORTAL: 'Criado pelo portal', IMPORTED: 'Importado', SELF_SERVICE: 'Cliente pelo site', CONSULTANT: 'Consultor'
+});
+
+const AUDIT_MONEY_FIELDS = new Set([
+  'mínimo', 'máximo', 'mensal', 'extraAcima', 'extraIntervalo', 'extraAcréscimo', 'extraBase',
+  'rastreadorAcima', 'rastreadorInstalação', 'rastreadorMensal'
+]);
+
+function parseAuditText(value) {
+  if (value == null || String(value).trim() === '' || String(value).trim() === '—') return { entries: [], raw: '' };
+  const raw = String(value).trim();
+  const entries = raw.split(';').map(part => part.trim()).filter(Boolean).map(part => {
+    const separator = part.indexOf('=');
+    if (separator < 0) return { key: '', value: part };
+    return { key: part.slice(0, separator).trim(), value: part.slice(separator + 1).trim() };
+  });
+  return { entries, raw };
+}
+
+function normalizedAuditValue(value) {
+  const text = String(value ?? '').trim();
+  if (/^-?\d+(?:[.,]\d+)?$/.test(text)) return String(Number(text.replace(',', '.')));
+  return text.toLowerCase();
+}
+
+function auditValuesEqual(left, right) {
+  return normalizedAuditValue(left) === normalizedAuditValue(right);
+}
+
+function auditFieldLabel(key) {
+  return AUDIT_FIELD_LABELS[key] || key.replace(/([a-zá-ú])([A-Z])/g, '$1 $2').replace(/^./, char => char.toUpperCase());
+}
+
+function auditValueLabel(key, value) {
+  const text = String(value ?? '').trim();
+  if (!text || text === '—' || text.toLowerCase() === 'null') return 'Não informado';
+  if (AUDIT_MONEY_FIELDS.has(key) && /^-?\d+(?:[.,]\d+)?$/.test(text)) return brl.format(Number(text.replace(',', '.')));
+  if (key === 'ativo') return text.toLowerCase() === 'true' ? 'Ativo' : text.toLowerCase() === 'false' ? 'Inativo' : text;
+  if (key === 'whatsapp') return formatPhone(text) || text;
+  return AUDIT_VALUE_LABELS[text] || text;
+}
+
+function auditChangeRows(item) {
+  const hasNumericValues = item.oldText == null && item.newText == null && (item.oldValue != null || item.newValue != null);
+  if (hasNumericValues) {
+    const previous = item.oldValue == null ? 'Não havia valor' : brl.format(Number(item.oldValue));
+    const next = item.newValue == null ? 'Valor removido' : brl.format(Number(item.newValue));
+    return `<div class="audit-change-row"><span class="audit-field-label">Valor</span><div class="audit-change-values"><span class="audit-before">${esc(previous)}</span><span class="audit-arrow" aria-hidden="true">→</span><span class="audit-after">${esc(next)}</span></div></div>`;
+  }
+
+  const oldText = item.oldText ?? null;
+  const newText = item.newText ?? null;
+  const before = parseAuditText(oldText);
+  const after = parseAuditText(newText);
+
+  if (!before.entries.length && !after.entries.length) return '';
+
+  const beforeMap = new Map(before.entries.filter(entry => entry.key).map(entry => [entry.key, entry.value]));
+  const afterMap = new Map(after.entries.filter(entry => entry.key).map(entry => [entry.key, entry.value]));
+  const hasStructuredData = beforeMap.size || afterMap.size;
+
+  if (!hasStructuredData) {
+    const previous = before.raw ? auditValueLabel('', before.raw) : 'Não havia dados';
+    const next = after.raw ? auditValueLabel('', after.raw) : 'Registro removido';
+    return `<div class="audit-change-row"><span class="audit-field-label">Alteração</span><div class="audit-change-values"><span class="audit-before">${esc(previous)}</span><span class="audit-arrow" aria-hidden="true">→</span><span class="audit-after">${esc(next)}</span></div></div>`;
+  }
+
+  const keys = [...new Set([...beforeMap.keys(), ...afterMap.keys()])];
+  const changedKeys = beforeMap.size && afterMap.size
+    ? keys.filter(key => !auditValuesEqual(beforeMap.get(key), afterMap.get(key)))
+    : keys;
+
+  if (!changedKeys.length) {
+    return '<div class="audit-no-change">O registro foi salvo sem alteração visível nos dados.</div>';
+  }
+
+  return changedKeys.map(key => {
+    const hasBefore = beforeMap.has(key);
+    const hasAfter = afterMap.has(key);
+    const previous = hasBefore ? auditValueLabel(key, beforeMap.get(key)) : 'Não havia dados';
+    const next = hasAfter ? auditValueLabel(key, afterMap.get(key)) : 'Removido';
+    const values = hasBefore && hasAfter
+      ? `<span class="audit-before">${esc(previous)}</span><span class="audit-arrow" aria-hidden="true">→</span><span class="audit-after">${esc(next)}</span>`
+      : hasAfter
+        ? `<span class="audit-after audit-single-value">${esc(next)}</span>`
+        : `<span class="audit-before audit-single-value">${esc(previous)}</span>`;
+    return `<div class="audit-change-row"><span class="audit-field-label">${esc(auditFieldLabel(key))}</span><div class="audit-change-values">${values}</div></div>`;
+  }).join('');
+}
+
+function auditActionKind(description = '') {
+  const value = description.toLowerCase();
+  if (value.includes('exclu') || value.includes('recus') || value.includes('cancel')) return 'danger';
+  if (value.includes('criad') || value.includes('cadastr') || value.includes('aprov')) return 'success';
+  return 'update';
+}
+
 function renderAudit() {
   const filter = $('audit-filter').value.trim().toLowerCase();
-  $('audit-body').innerHTML = auditEntries.filter(item => {
-    return `${item.itemType} ${item.description} ${item.changedBy} ${item.itemKey || ''}`.toLowerCase().includes(filter);
-  }).map(item => {
-    const oldValue = item.oldText ?? (item.oldValue == null ? '—' : brl.format(item.oldValue));
-    const newValue = item.newText ?? (item.newValue == null ? '—' : brl.format(item.newValue));
-    return `<tr><td>${date(item.changedAt)}</td><td>${esc(AUDIT_TYPE_LABELS[item.itemType] || item.itemType)}</td>
-      <td>${esc(item.description)}</td><td>${esc(item.itemKey || item.itemId || '—')}</td>
-      <td class="audit-text">${esc(oldValue)}</td><td class="audit-text">${esc(newValue)}</td><td>${esc(item.changedBy)}</td></tr>`;
-  }).join('') || emptyRow(7, 'Nenhum registro de auditoria encontrado.');
+  const filtered = auditEntries.filter(item => {
+    return `${item.itemType} ${item.description} ${item.changedBy} ${item.itemKey || ''} ${item.oldText || ''} ${item.newText || ''}`.toLowerCase().includes(filter);
+  });
+
+  $('audit-list').innerHTML = filtered.map(item => {
+    const typeLabel = AUDIT_TYPE_LABELS[item.itemType] || item.itemType || 'Alteração';
+    const administrator = item.changedBy || 'Sistema';
+    const changes = auditChangeRows(item);
+    const kind = auditActionKind(item.description);
+    return `<article class="audit-card audit-card-${kind}">
+      <div class="audit-card-head">
+        <div class="audit-card-title">
+          <span class="audit-type-badge">${esc(typeLabel)}</span>
+          <div><h3>${esc(item.description || 'Alteração administrativa')}</h3><time datetime="${esc(item.changedAt || '')}">${esc(date(item.changedAt))}</time></div>
+        </div>
+        <div class="audit-admin"><span>Responsável</span><strong>${esc(administrator)}</strong></div>
+      </div>
+      ${changes ? `<details class="audit-details"><summary>Ver detalhes da alteração</summary><div class="audit-change-list">${changes}</div></details>` : ''}
+    </article>`;
+  }).join('') || '<div class="audit-empty">Nenhum registro de auditoria encontrado.</div>';
 }
 
 function populatePlanSelects() {
-  const options = plans.map(item => `<option value="${item.id}">${esc(item.name)} — ${esc(regionLabel(item.region))}</option>`).join('');
+  const options = plans.map(item => `<option value="${item.id}">${esc(item.name)} — ${esc(regionLabel(item.region))}${item.motorcycleOrigin ? ` · ${esc(motorcycleOriginLabel(item.motorcycleOrigin))}` : ''}</option>`).join('');
   const allOptions = `<option value="">Todos os planos</option>${options}`;
   const currentPriceFilter = $('price-plan-filter').value;
   const currentCoverageFilter = $('coverage-plan-filter').value;
@@ -697,12 +834,16 @@ $('consultant-form').addEventListener('submit', async event => {
   } catch (error) { message(error.message); }
 });
 
+
+$('plan-category').addEventListener('change', syncPlanMotorcycleOrigin);
+
 $('plan-form').addEventListener('submit', async event => {
   event.preventDefault();
   const id = $('plan-id').value;
   const payload = {
-    code: $('plan-code').value.trim(), name: $('plan-name').value.trim(), subtitle: $('plan-subtitle').value.trim(),
-    categoryId: Number($('plan-category').value), region: $('plan-region').value,
+    name: $('plan-name').value.trim(), subtitle: $('plan-subtitle').value.trim(),
+    categoryId: Number($('plan-category').value), region: 'NATIONAL',
+    motorcycleOrigin: $('plan-motorcycle-origin-field').hidden ? null : $('plan-motorcycle-origin').value,
     displayOrder: Number($('plan-order').value), active: $('plan-active').value === 'true',
     extraAbove: optionalMoney('plan-extra-above'), extraStep: optionalMoney('plan-extra-step'),
     extraIncrement: optionalMoney('plan-extra-increment'), extraBasePrice: optionalMoney('plan-extra-base-price'),
@@ -752,7 +893,7 @@ $('coverage-form').addEventListener('submit', async event => {
   const id = $('coverage-id').value;
   const status = $('coverage-status').value;
   const base = {
-    coverageCode: $('coverage-code').value.trim(), coverageName: $('coverage-name').value.trim(), status,
+    coverageName: $('coverage-name').value.trim(), status,
     detail: $('coverage-detail').value.trim(),
     monthlyPrice: status === 'OPTIONAL' ? parseMoney($('coverage-price').value) : null,
     sortOrder: Number($('coverage-order').value)

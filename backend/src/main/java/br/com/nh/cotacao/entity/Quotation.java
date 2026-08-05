@@ -64,6 +64,10 @@ public class Quotation {
     @Column(nullable = false, length = 20)
     private Region region;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "motorcycle_origin", length = 20)
+    private MotorcycleOrigin motorcycleOrigin;
+
     @Column(name = "selected_plan_code", nullable = false, length = 80)
     private String selectedPlanCode;
 
@@ -146,6 +150,7 @@ public class Quotation {
             BigDecimal fipeValue,
             String categoryCode,
             Region region,
+            MotorcycleOrigin motorcycleOrigin,
             String selectedPlanCode,
             String selectedPlanName,
             BigDecimal baseMonthlyValue,
@@ -169,6 +174,7 @@ public class Quotation {
                 fipeValue,
                 categoryCode,
                 region,
+                motorcycleOrigin,
                 selectedPlanCode,
                 selectedPlanName,
                 baseMonthlyValue,
@@ -191,6 +197,7 @@ public class Quotation {
             BigDecimal fipeValue,
             String categoryCode,
             Region region,
+            MotorcycleOrigin motorcycleOrigin,
             String selectedPlanCode,
             String selectedPlanName,
             BigDecimal baseMonthlyValue,
@@ -213,6 +220,7 @@ public class Quotation {
                 fipeValue,
                 categoryCode,
                 region,
+                motorcycleOrigin,
                 selectedPlanCode,
                 selectedPlanName,
                 baseMonthlyValue,
@@ -237,6 +245,7 @@ public class Quotation {
             BigDecimal fipeValue,
             String categoryCode,
             Region region,
+            MotorcycleOrigin motorcycleOrigin,
             String selectedPlanCode,
             String selectedPlanName,
             BigDecimal baseMonthlyValue,
@@ -259,7 +268,8 @@ public class Quotation {
         q.zeroKm = zeroKm;
         q.fipeValue = fipeValue;
         q.categoryCode = categoryCode;
-        q.region = region;
+        q.region = Region.NATIONAL;
+        q.motorcycleOrigin = motorcycleOrigin;
         q.selectedPlanCode = selectedPlanCode;
         q.selectedPlanName = selectedPlanName;
         q.baseMonthlyValue = baseMonthlyValue;
@@ -410,6 +420,7 @@ public class Quotation {
     public BigDecimal getFipeValue() { return fipeValue; }
     public String getCategoryCode() { return categoryCode; }
     public Region getRegion() { return region; }
+    public MotorcycleOrigin getMotorcycleOrigin() { return motorcycleOrigin; }
     public String getSelectedPlanCode() { return selectedPlanCode; }
     public String getSelectedPlanName() { return selectedPlanName; }
     public BigDecimal getBaseMonthlyValue() { return baseMonthlyValue; }

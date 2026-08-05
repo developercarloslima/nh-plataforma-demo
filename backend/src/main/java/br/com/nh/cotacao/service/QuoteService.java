@@ -52,8 +52,11 @@ public class QuoteService {
 
     @Transactional(readOnly = true)
     public OptionsResponse options(OptionsRequest request) {
+        MotorcycleOrigin motorcycleOrigin = validateMotorcycleOrigin(
+                request.categoryCode(), request.effectiveMotorcycleOrigin()
+        );
         List<PlanOption> options = planRepository
-                .findByCategory_CodeAndRegionAndActiveTrueOrderByDisplayOrder(request.categoryCode(), request.region())
+                .findAvailable(request.categoryCode(), Region.NATIONAL, motorcycleOrigin)
                 .stream()
                 .map(plan -> toPlanOption(plan, request.fipeValue()))
                 .flatMap(java.util.Optional::stream)
@@ -63,15 +66,20 @@ public class QuoteService {
             throw new IllegalArgumentException("Nenhum plano possui faixa de preço para os dados informados.");
         }
 
-        return new OptionsResponse(request.categoryCode(), request.region(), request.fipeValue(), options);
+        return new OptionsResponse(
+                request.categoryCode(), Region.NATIONAL, motorcycleOrigin, request.fipeValue(), options
+        );
     }
 
     @Transactional
     public QuoteResponse create(CreateQuoteRequest request) {
         validateYear(request.manufactureYear());
         String plate = validateAndNormalizePlate(request.plate(), request.zeroKm());
+        MotorcycleOrigin motorcycleOrigin = validateMotorcycleOrigin(
+                request.categoryCode(), request.effectiveMotorcycleOrigin()
+        );
         PlanSelection selection = resolvePlan(
-                request.selectedPlanCode(), request.categoryCode(), request.region(),
+                request.selectedPlanCode(), request.categoryCode(), motorcycleOrigin,
                 request.fipeValue(), request.selectedOptionalCodes()
         );
         Consultant consultant = consultantService.findActive(request.consultantId());
@@ -87,7 +95,8 @@ public class QuoteService {
                 request.zeroKm(),
                 request.fipeValue(),
                 request.categoryCode(),
-                request.region(),
+                Region.NATIONAL,
+                motorcycleOrigin,
                 selection.plan().getCode(),
                 selection.plan().getName(),
                 selection.pricing().tableMonthlyValue(),
@@ -111,8 +120,11 @@ public class QuoteService {
         }
         String plate = validateAndNormalizePlate(request.plate(), request.zeroKm());
 
+        MotorcycleOrigin motorcycleOrigin = validateMotorcycleOrigin(
+                request.categoryCode(), request.effectiveMotorcycleOrigin()
+        );
         PlanSelection selection = resolvePlan(
-                request.selectedPlanCode(), request.categoryCode(), request.region(),
+                request.selectedPlanCode(), request.categoryCode(), motorcycleOrigin,
                 request.fipeValue(), request.selectedOptionalCodes()
         );
 
@@ -130,7 +142,8 @@ public class QuoteService {
                 request.zeroKm(),
                 request.fipeValue(),
                 request.categoryCode(),
-                request.region(),
+                Region.NATIONAL,
+                motorcycleOrigin,
                 selection.plan().getCode(),
                 selection.plan().getName(),
                 selection.pricing().tableMonthlyValue(),
@@ -145,15 +158,17 @@ public class QuoteService {
     private PlanSelection resolvePlan(
             String selectedPlanCode,
             String categoryCode,
-            Region region,
+            MotorcycleOrigin motorcycleOrigin,
             BigDecimal fipeValue,
             List<String> selectedOptionalCodes
     ) {
         Plan selectedPlan = planRepository.findByCodeAndActiveTrue(selectedPlanCode)
                 .orElseThrow(() -> new IllegalArgumentException("Plano selecionado não encontrado."));
 
-        if (!selectedPlan.getCategory().getCode().equals(categoryCode) || selectedPlan.getRegion() != region) {
-            throw new IllegalArgumentException("O plano selecionado não pertence à categoria/região informada.");
+        if (!selectedPlan.getCategory().getCode().equals(categoryCode)
+                || selectedPlan.getRegion() != Region.NATIONAL
+                || selectedPlan.getMotorcycleOrigin() != motorcycleOrigin) {
+            throw new IllegalArgumentException("O plano selecionado não pertence à categoria ou origem da moto informada.");
         }
 
         PricingService.PricingResult pricing = pricingService.calculateBreakdown(selectedPlan, fipeValue)
@@ -307,6 +322,7 @@ public class QuoteService {
                 quotation.getFipeValue(),
                 quotation.getCategoryCode(),
                 quotation.getRegion(),
+                quotation.getMotorcycleOrigin(),
                 quotation.getSelectedPlanCode(),
                 quotation.getSelectedPlanName(),
                 quotation.getBaseMonthlyValue(),
@@ -412,6 +428,17 @@ public class QuoteService {
         return quotation.getPlate() == null || quotation.getPlate().isBlank()
                 ? "Veículo 0 km — sem placa"
                 : quotation.getPlate();
+    }
+
+    private MotorcycleOrigin validateMotorcycleOrigin(String categoryCode, MotorcycleOrigin motorcycleOrigin) {
+        boolean motorcycle = categoryCode != null && categoryCode.startsWith("MOTORCYCLE");
+        if (motorcycle && motorcycleOrigin == null) {
+            throw new IllegalArgumentException("Informe a origem da moto para aplicar a tabela correta.");
+        }
+        if (!motorcycle && motorcycleOrigin != null) {
+            throw new IllegalArgumentException("A origem da moto só pode ser informada para motocicletas.");
+        }
+        return motorcycle ? motorcycleOrigin : null;
     }
 
     private void validateYear(Integer year) {

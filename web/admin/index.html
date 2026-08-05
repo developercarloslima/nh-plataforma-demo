@@ -135,7 +135,7 @@
       <button id="new-plan-button" class="primary" type="button">+ Novo plano</button>
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Código / plano</th><th>Categoria</th><th>Região</th><th>Subtítulo</th><th>Ordem</th><th>Status</th><th>Ações</th></tr></thead>
+      <thead><tr><th>Código / plano</th><th>Categoria</th><th>Abrangência</th><th>Origem da moto</th><th>Subtítulo</th><th>Ordem</th><th>Status</th><th>Ações</th></tr></thead>
       <tbody id="plans-body"></tbody>
     </table></div>
   </section>
@@ -146,11 +146,11 @@
       <button id="new-price-button" class="primary" type="button">+ Nova faixa de valor</button>
     </div>
     <div class="filter-grid">
-      <label>Pesquisar<input id="price-filter" placeholder="Plano, categoria ou região"></label>
+      <label>Pesquisar<input id="price-filter" placeholder="Plano, categoria ou origem da moto"></label>
       <label>Plano<select id="price-plan-filter"><option value="">Todos os planos</option></select></label>
     </div>
     <div class="table-wrap" style="margin-top:16px"><table>
-      <thead><tr><th>Plano</th><th>Categoria</th><th>Região</th><th>Faixa FIPE</th><th>Mensalidade</th><th>Ações</th></tr></thead>
+      <thead><tr><th>Plano</th><th>Categoria</th><th>Abrangência / origem</th><th>Faixa FIPE</th><th>Mensalidade</th><th>Ações</th></tr></thead>
       <tbody id="prices-body"></tbody>
     </table></div>
   </section>
@@ -186,10 +186,7 @@
       <div><h2>Auditoria completa</h2><p>Histórico completo das ações administrativas, incluindo catálogo, consultores, análises e configurações.</p></div>
       <input id="audit-filter" placeholder="Filtrar por tipo, item ou administrador" style="max-width:360px">
     </div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Data</th><th>Tipo</th><th>Ação</th><th>Identificador</th><th>Antes</th><th>Depois</th><th>Administrador</th></tr></thead>
-      <tbody id="audit-body"></tbody>
-    </table></div>
+    <div id="audit-list" class="audit-list" aria-live="polite"></div>
   </section>
 </main>
 
@@ -216,11 +213,11 @@
     <div class="dialog-head"><div><span class="eyebrow" style="color:#070c40">PLANO OU PACOTE</span><h2 id="plan-dialog-title">Novo plano</h2></div><button class="dialog-close" type="button" data-close-dialog="plan-dialog">×</button></div>
     <input id="plan-id" type="hidden">
     <div class="form-grid">
-      <label>Código interno<input id="plan-code" maxlength="80" placeholder="Ex.: CAR_COMPLETO"></label>
       <label>Nome<input id="plan-name" maxlength="120" required></label>
       <label>Categoria<select id="plan-category" required></select></label>
-      <label>Região<select id="plan-region" required><option value="NATIONAL">Nacional</option><option value="NORTHEAST">Nordeste</option><option value="CAPITAL">Capital</option></select></label>
-      <label class="span-2">Subtítulo<input id="plan-subtitle" maxlength="180"></label>
+      <label>Abrangência<select id="plan-region" required disabled><option value="NATIONAL">Nacional</option></select><small>Todos os planos e pacotes possuem abrangência nacional.</small></label>
+      <label id="plan-motorcycle-origin-field" hidden>Origem da moto<select id="plan-motorcycle-origin"><option value="NORTHEAST">Demais cidades do Nordeste</option><option value="CAPITAL">Capital</option></select><small>Define somente a tabela comercial da motocicleta.</small></label>
+      <label id="plan-subtitle-field" class="span-2">Subtítulo<input id="plan-subtitle" maxlength="180"></label>
       <label>Ordem de exibição<input id="plan-order" type="number" min="0" value="100" required></label>
       <label>Status<select id="plan-active"><option value="true">Ativo</option><option value="false">Inativo</option></select></label>
 
@@ -266,7 +263,6 @@
     <input id="coverage-id" type="hidden">
     <div class="form-grid">
       <label class="span-2">Plano<select id="coverage-plan" required></select></label>
-      <label>Código interno<input id="coverage-code" maxlength="80" placeholder="Ex.: THIRD_PARTY"></label>
       <label>Nome<input id="coverage-name" maxlength="180" required></label>
       <label>Classificação<select id="coverage-status" required><option value="INCLUDED">Incluído</option><option value="NOT_INCLUDED">Não incluído</option><option value="OPTIONAL">Serviço opcional</option></select></label>
       <label>Ordem de exibição<input id="coverage-order" type="number" min="0" value="100" required></label>

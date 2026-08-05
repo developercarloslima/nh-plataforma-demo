@@ -45,7 +45,11 @@ function categoryCode() {
 }
 
 function effectiveRegion() {
-  return state.vehicleType.startsWith('MOTORCYCLE') ? $('region').value : 'NATIONAL';
+  return 'NATIONAL';
+}
+
+function effectiveMotorcycleOrigin() {
+  return state.vehicleType.startsWith('MOTORCYCLE') ? $('region').value : null;
 }
 
 function isZeroKm() {
@@ -215,7 +219,7 @@ function renderPlans() {
     <article class="plan-card ${plan.code === state.selectedPlanCode ? 'selected' : ''}" data-code="${plan.code}">
       ${plan.name.toLowerCase().includes('completo') ? '<span class="recommended">MAIS COMPLETO</span>' : ''}
       <div class="plan-card-head">
-        <h3>${escapeHtml(plan.name)}</h3><p>${escapeHtml(plan.subtitle || '')}</p><strong>${brl.format(plan.monthlyValue)}</strong><span>valor mensal${Number(plan.mandatoryMonthlyFee || 0) > 0 ? ' com rastreador obrigatório' : ''}</span>
+        <h3>${escapeHtml(plan.name)}</h3><p>${escapeHtml(plan.subtitle || '')}</p><span class="national-scope-badge">🌎 Abrangência nacional</span><strong>${brl.format(plan.monthlyValue)}</strong><span>valor mensal${Number(plan.mandatoryMonthlyFee || 0) > 0 ? ' com rastreador obrigatório' : ''}</span>
         ${Number(plan.oneTimeFee || 0) > 0 ? `<small class="mandatory-fee-note">Taxa única de instalação: ${brl.format(plan.oneTimeFee)}</small>` : ''}
       </div>
       <label class="choose-plan"><input type="radio" name="plan" value="${plan.code}" ${plan.code === state.selectedPlanCode ? 'checked' : ''}>Escolher este plano</label>
@@ -336,6 +340,7 @@ function formPayload() {
     fipeValue: parseMoney($('fipeValue').value),
     categoryCode: categoryCode(),
     region: effectiveRegion(),
+    motorcycleOrigin: effectiveMotorcycleOrigin(),
     selectedPlanCode: state.selectedPlanCode,
     selectedOptionalCodes: [...state.selectedOptionalCodes]
   };
@@ -367,6 +372,8 @@ function renderQuote(quote, scroll = true) {
     <div><span>Cliente</span><strong>${escapeHtml(quote.customerName)}</strong></div>
     <div><span>Veículo</span><strong>${escapeHtml(quote.model)} • ${escapeHtml(quote.plate || '0 km — sem placa')}</strong></div>
     <div><span>FIPE</span><strong>${brl.format(quote.fipeValue)}</strong></div>
+    <div><span>Abrangência</span><strong>Nacional</strong></div>
+    ${quote.motorcycleOrigin ? `<div><span>Origem da moto</span><strong>${quote.motorcycleOrigin === 'CAPITAL' ? 'Capital' : 'Demais cidades do Nordeste'}</strong></div>` : ''}
     <div><span>Veículo 0 km</span><strong>${quote.zeroKm ? 'Sim' : 'Não'}</strong></div>
     <div><span>Valor da tabela</span><strong>${brl.format(baseValue)}</strong></div>
     ${mandatoryValue > 0 ? `<div><span>Acréscimo obrigatório</span><strong>${brl.format(mandatoryValue)}</strong></div>` : ''}
@@ -770,7 +777,12 @@ $('quote-form').addEventListener('submit', async event => {
     if (!fipeValue || fipeValue <= 0) throw new Error('Informe um valor FIPE válido.');
     const result = await api(quoteApiPath('/options'), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ categoryCode: categoryCode(), region: effectiveRegion(), fipeValue })
+      body: JSON.stringify({
+        categoryCode: categoryCode(),
+        region: effectiveRegion(),
+        motorcycleOrigin: effectiveMotorcycleOrigin(),
+        fipeValue
+      })
     });
     state.plans = result.plans;
     state.selectedPlanCode = result.plans[0]?.code || '';

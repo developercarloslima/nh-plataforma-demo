@@ -109,7 +109,7 @@ public class AdminActivityService {
                 item.getConsultant() == null ? null : item.getConsultant().getId(),
                 item.getConsultantName(), item.getCustomerName(), maskCpf(item.getCustomerCpf()), item.getWhatsapp(),
                 item.getPlate(), item.getModel(), item.getManufactureYear(), item.isZeroKm(), item.getFipeValue(),
-                item.getCategoryCode(), item.getRegion(), item.getSelectedPlanName(), item.getMonthlyValue(), item.getOneTimeFee(),
+                item.getCategoryCode(), item.getRegion(), item.getMotorcycleOrigin(), item.getSelectedPlanName(), item.getMonthlyValue(), item.getOneTimeFee(),
                 item.getStatus(), item.getCreatedAt(), item.getValidUntil(), expired, item.getDecidedAt(), item.getAdminNote(),
                 item.getReviewedAt(), pdfUrl, item.getDriveFolderUrl(), item.getDrivePdfUrl(), inspectionUrl,
                 whatsappUrl(whatsapp, message), emailUrl(email, subject, message)

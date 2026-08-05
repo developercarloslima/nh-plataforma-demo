@@ -30,6 +30,10 @@ public class Plan {
     @Column(nullable = false, length = 20)
     private Region region;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "motorcycle_origin", length = 20)
+    private MotorcycleOrigin motorcycleOrigin;
+
     @Column(name = "display_order", nullable = false)
     private Integer displayOrder;
 
@@ -70,6 +74,7 @@ public class Plan {
             String subtitle,
             VehicleCategory category,
             Region region,
+            MotorcycleOrigin motorcycleOrigin,
             Integer displayOrder,
             Boolean active,
             BigDecimal extraAbove,
@@ -82,7 +87,7 @@ public class Plan {
     ) {
         Plan plan = new Plan();
         plan.updateAdmin(
-                code, name, subtitle, category, region, displayOrder, active,
+                code, name, subtitle, category, region, motorcycleOrigin, displayOrder, active,
                 extraAbove, extraStep, extraIncrement, extraBasePrice,
                 trackerRequiredAbove, trackerInstallationFee, trackerMonthlyFee
         );
@@ -95,6 +100,7 @@ public class Plan {
     public String getSubtitle() { return subtitle; }
     public VehicleCategory getCategory() { return category; }
     public Region getRegion() { return region; }
+    public MotorcycleOrigin getMotorcycleOrigin() { return motorcycleOrigin; }
     public Integer getDisplayOrder() { return displayOrder; }
     public Boolean getActive() { return active; }
     public BigDecimal getExtraAbove() { return extraAbove; }
@@ -112,6 +118,7 @@ public class Plan {
             String subtitle,
             VehicleCategory category,
             Region region,
+            MotorcycleOrigin motorcycleOrigin,
             Integer displayOrder,
             Boolean active,
             BigDecimal extraAbove,
@@ -126,12 +133,22 @@ public class Plan {
         this.name = requireText(name, "Nome do plano");
         this.subtitle = cleanOptional(subtitle);
         if (category == null) throw new IllegalArgumentException("Categoria do plano é obrigatória.");
-        if (region == null) throw new IllegalArgumentException("Região do plano é obrigatória.");
+        if (region != null && region != Region.NATIONAL) {
+            throw new IllegalArgumentException("Todos os planos e pacotes devem possuir abrangência nacional.");
+        }
+        boolean motorcycle = category.getCode() != null && category.getCode().startsWith("MOTORCYCLE");
+        if (motorcycle && motorcycleOrigin == null) {
+            throw new IllegalArgumentException("Informe a origem da moto para aplicar a tabela correta.");
+        }
+        if (!motorcycle && motorcycleOrigin != null) {
+            throw new IllegalArgumentException("A origem da moto só pode ser usada em categorias de motocicletas.");
+        }
         if (displayOrder == null || displayOrder < 0) {
             throw new IllegalArgumentException("A ordem do plano deve ser zero ou maior.");
         }
         this.category = category;
-        this.region = region;
+        this.region = Region.NATIONAL;
+        this.motorcycleOrigin = motorcycle ? motorcycleOrigin : null;
         this.displayOrder = displayOrder;
         this.active = active == null || active;
 

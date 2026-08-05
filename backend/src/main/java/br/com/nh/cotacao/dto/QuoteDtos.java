@@ -1,6 +1,7 @@
 package br.com.nh.cotacao.dto;
 
 import br.com.nh.cotacao.entity.CoverageStatus;
+import br.com.nh.cotacao.entity.MotorcycleOrigin;
 import br.com.nh.cotacao.entity.QuoteOrigin;
 import br.com.nh.cotacao.entity.QuoteStatus;
 import br.com.nh.cotacao.entity.Region;
@@ -17,9 +18,16 @@ public final class QuoteDtos {
 
     public record OptionsRequest(
             @NotBlank String categoryCode,
-            @NotNull Region region,
+            Region region,
+            MotorcycleOrigin motorcycleOrigin,
             @NotNull @DecimalMin("0.01") BigDecimal fipeValue
     ) {
+        public MotorcycleOrigin effectiveMotorcycleOrigin() {
+            if (motorcycleOrigin != null) return motorcycleOrigin;
+            if (region == Region.NORTHEAST) return MotorcycleOrigin.NORTHEAST;
+            if (region == Region.CAPITAL) return MotorcycleOrigin.CAPITAL;
+            return null;
+        }
     }
 
     public record CoverageOption(
@@ -47,6 +55,7 @@ public final class QuoteDtos {
     public record OptionsResponse(
             String categoryCode,
             Region region,
+            MotorcycleOrigin motorcycleOrigin,
             BigDecimal fipeValue,
             List<PlanOption> plans
     ) {
@@ -62,12 +71,20 @@ public final class QuoteDtos {
             @NotNull Boolean zeroKm,
             @NotNull @DecimalMin("0.01") BigDecimal fipeValue,
             @NotBlank String categoryCode,
-            @NotNull Region region,
+            Region region,
+            MotorcycleOrigin motorcycleOrigin,
             @NotBlank String selectedPlanCode,
             @Size(max = 20) List<@NotBlank String> selectedOptionalCodes
     ) {
         public CreateQuoteRequest {
             selectedOptionalCodes = selectedOptionalCodes == null ? List.of() : List.copyOf(selectedOptionalCodes);
+        }
+
+        public MotorcycleOrigin effectiveMotorcycleOrigin() {
+            if (motorcycleOrigin != null) return motorcycleOrigin;
+            if (region == Region.NORTHEAST) return MotorcycleOrigin.NORTHEAST;
+            if (region == Region.CAPITAL) return MotorcycleOrigin.CAPITAL;
+            return null;
         }
     }
 
@@ -81,12 +98,20 @@ public final class QuoteDtos {
             @NotNull Boolean zeroKm,
             @NotNull @DecimalMin("0.01") BigDecimal fipeValue,
             @NotBlank String categoryCode,
-            @NotNull Region region,
+            Region region,
+            MotorcycleOrigin motorcycleOrigin,
             @NotBlank String selectedPlanCode,
             @Size(max = 20) List<@NotBlank String> selectedOptionalCodes
     ) {
         public CreatePublicQuoteRequest {
             selectedOptionalCodes = selectedOptionalCodes == null ? List.of() : List.copyOf(selectedOptionalCodes);
+        }
+
+        public MotorcycleOrigin effectiveMotorcycleOrigin() {
+            if (motorcycleOrigin != null) return motorcycleOrigin;
+            if (region == Region.NORTHEAST) return MotorcycleOrigin.NORTHEAST;
+            if (region == Region.CAPITAL) return MotorcycleOrigin.CAPITAL;
+            return null;
         }
     }
 
@@ -123,6 +148,7 @@ public final class QuoteDtos {
             BigDecimal fipeValue,
             String categoryCode,
             Region region,
+            MotorcycleOrigin motorcycleOrigin,
             String selectedPlanCode,
             String selectedPlanName,
             BigDecimal baseMonthlyValue,
