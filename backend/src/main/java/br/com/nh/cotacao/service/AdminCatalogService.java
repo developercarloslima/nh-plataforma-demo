@@ -97,9 +97,11 @@ public class AdminCatalogService {
     @Transactional
     public PlanAdminResponse createPlan(CreatePlanRequest request, String username) {
         VehicleCategory category = findCategory(request.categoryId());
-        String code = uniquePlanCode(category.getCode(), request.region(), request.name());
+        String code = requestedPlanCode(request.code(), category.getCode(), request.region(), request.name(), null);
         Plan plan = planRepository.save(Plan.create(
-                code, request.name(), request.subtitle(), category, request.region(), request.displayOrder(), request.active()
+                code, request.name(), request.subtitle(), category, request.region(), request.displayOrder(), request.active(),
+                request.extraAbove(), request.extraStep(), request.extraIncrement(), request.extraBasePrice(),
+                request.trackerRequiredAbove(), request.trackerInstallationFee(), request.trackerMonthlyFee()
         ));
         auditRepository.save(CatalogChangeAudit.createText(
                 "PLAN", plan.getId(), "Plano criado — " + plan.getName(), null, planSummary(plan), username
@@ -111,9 +113,12 @@ public class AdminCatalogService {
     public PlanAdminResponse updatePlan(Long id, UpdatePlanRequest request, String username) {
         Plan plan = findPlan(id);
         VehicleCategory category = findCategory(request.categoryId());
+        String code = requestedPlanCode(request.code(), category.getCode(), request.region(), request.name(), id);
         String old = planSummary(plan);
         plan.updateAdmin(
-                request.name(), request.subtitle(), category, request.region(), request.displayOrder(), request.active()
+                code, request.name(), request.subtitle(), category, request.region(), request.displayOrder(), request.active(),
+                request.extraAbove(), request.extraStep(), request.extraIncrement(), request.extraBasePrice(),
+                request.trackerRequiredAbove(), request.trackerInstallationFee(), request.trackerMonthlyFee()
         );
         planRepository.save(plan);
         auditRepository.save(CatalogChangeAudit.createText(
@@ -179,7 +184,7 @@ public class AdminCatalogService {
     @Transactional
     public CoverageAdminResponse createCoverage(Long planId, CreateCoverageRequest request, String username) {
         Plan plan = findPlan(planId);
-        String code = uniqueCoverageCode(plan.getCode(), request.coverageName());
+        String code = requestedCoverageCode(request.coverageCode(), plan.getCode(), request.coverageName(), null);
         Coverage coverage = coverageRepository.save(Coverage.create(code, request.coverageName()));
         PlanCoverage item = planCoverageRepository.save(PlanCoverage.create(
                 plan, coverage, request.status(), request.detail(), request.monthlyPrice(), request.sortOrder()
@@ -195,19 +200,32 @@ public class AdminCatalogService {
     public CoverageAdminResponse updateCoverage(Long id, UpdateCoverageRequest request, String username) {
         PlanCoverage item = planCoverageRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Cobertura do plano não encontrada."));
+        Plan targetPlan = findPlan(request.planId());
         String old = coverageSummary(item);
         Coverage current = item.getCoverage();
-        if (!current.getName().equals(request.coverageName().trim())) {
-            if (planCoverageRepository.countByCoverage_Id(current.getId()) > 1) {
-                Coverage replacement = coverageRepository.save(Coverage.create(
-                        uniqueCoverageCode(item.getPlan().getCode(), request.coverageName()), request.coverageName()
-                ));
-                item.replaceCoverage(replacement);
-            } else {
-                current.rename(request.coverageName());
-                coverageRepository.save(current);
-            }
+        String requestedName = request.coverageName().trim();
+        String requestedCode = normalizeCode(request.coverageCode(), 80, "Código da cobertura inválido.");
+        boolean metadataChanged = !current.getName().equals(requestedName) || !current.getCode().equals(requestedCode);
+        Coverage selectedCoverage = current;
+
+        if (metadataChanged && planCoverageRepository.countByCoverage_Id(current.getId()) > 1) {
+            String clonedCode = requestedCode.equals(current.getCode())
+                    ? uniqueCoverageCode(targetPlan.getCode(), requestedName)
+                    : requestedCoverageCode(requestedCode, targetPlan.getCode(), requestedName, null);
+            selectedCoverage = coverageRepository.save(Coverage.create(clonedCode, requestedName));
+        } else if (metadataChanged) {
+            requestedCoverageCode(requestedCode, targetPlan.getCode(), requestedName, current.getId());
+            current.updateAdmin(requestedCode, requestedName);
+            selectedCoverage = coverageRepository.save(current);
         }
+
+        if ((!item.getPlan().getId().equals(targetPlan.getId()) || !item.getCoverage().getId().equals(selectedCoverage.getId()))
+                && planCoverageRepository.existsByPlan_IdAndCoverage_Id(targetPlan.getId(), selectedCoverage.getId())) {
+            throw new IllegalArgumentException("Este plano já possui essa cobertura.");
+        }
+
+        item.replacePlan(targetPlan);
+        item.replaceCoverage(selectedCoverage);
         item.update(request.status(), request.detail(), request.monthlyPrice(), request.sortOrder());
         planCoverageRepository.save(item);
         auditRepository.save(CatalogChangeAudit.createText(
@@ -252,9 +270,11 @@ public class AdminCatalogService {
 
     private PlanAdminResponse toPlanResponse(Plan plan) {
         return new PlanAdminResponse(
-                plan.getId(), plan.getName(), plan.getSubtitle(), plan.getCategory().getId(),
+                plan.getId(), plan.getCode(), plan.getName(), plan.getSubtitle(), plan.getCategory().getId(),
                 plan.getCategory().getName(), plan.getCategory().getCode(), plan.getRegion(),
-                plan.getDisplayOrder(), Boolean.TRUE.equals(plan.getActive())
+                plan.getDisplayOrder(), Boolean.TRUE.equals(plan.getActive()),
+                plan.getExtraAbove(), plan.getExtraStep(), plan.getExtraIncrement(), plan.getExtraBasePrice(),
+                plan.getTrackerRequiredAbove(), plan.getTrackerInstallationFee(), plan.getTrackerMonthlyFee()
         );
     }
 
@@ -262,7 +282,7 @@ public class AdminCatalogService {
         return new CoverageAdminResponse(
                 item.getId(), item.getPlan().getId(), item.getPlan().getName(),
                 item.getPlan().getCategory().getName(), item.getPlan().getRegion().name(),
-                item.getCoverage().getId(), item.getCoverage().getName(), item.getStatus(),
+                item.getCoverage().getId(), item.getCoverage().getCode(), item.getCoverage().getName(), item.getStatus(),
                 item.getDetail(), item.getMonthlyPrice(), item.getSortOrder()
         );
     }
@@ -293,16 +313,26 @@ public class AdminCatalogService {
     }
 
     private String planSummary(Plan plan) {
-        return "nome=" + plan.getName()
+        return "código=" + plan.getCode()
+                + "; nome=" + plan.getName()
                 + "; categoria=" + plan.getCategory().getName()
                 + "; região=" + plan.getRegion()
                 + "; subtítulo=" + value(plan.getSubtitle())
                 + "; ordem=" + plan.getDisplayOrder()
-                + "; ativo=" + plan.getActive();
+                + "; ativo=" + plan.getActive()
+                + "; extraAcima=" + value(plan.getExtraAbove())
+                + "; extraIntervalo=" + value(plan.getExtraStep())
+                + "; extraAcréscimo=" + value(plan.getExtraIncrement())
+                + "; extraBase=" + value(plan.getExtraBasePrice())
+                + "; rastreadorAcima=" + value(plan.getTrackerRequiredAbove())
+                + "; rastreadorInstalação=" + value(plan.getTrackerInstallationFee())
+                + "; rastreadorMensal=" + value(plan.getTrackerMonthlyFee());
     }
 
     private String coverageSummary(PlanCoverage item) {
-        return "nome=" + item.getCoverage().getName()
+        return "plano=" + item.getPlan().getName()
+                + "; código=" + item.getCoverage().getCode()
+                + "; nome=" + item.getCoverage().getName()
                 + "; status=" + item.getStatus()
                 + "; detalhe=" + value(item.getDetail())
                 + "; mensal=" + value(item.getMonthlyPrice())
@@ -310,6 +340,26 @@ public class AdminCatalogService {
     }
 
     private String value(Object value) { return value == null ? "—" : value.toString(); }
+
+    private String requestedPlanCode(String requested, String categoryCode, Region region, String name, Long ignoredId) {
+        if (requested == null || requested.isBlank()) {
+            return uniquePlanCode(categoryCode, region, name);
+        }
+        String code = normalizeCode(requested, 80, "Código do plano inválido.");
+        boolean exists = ignoredId == null ? planRepository.existsByCode(code) : planRepository.existsByCodeAndIdNot(code, ignoredId);
+        if (exists) throw new IllegalArgumentException("Já existe um plano com esse código interno.");
+        return code;
+    }
+
+    private String requestedCoverageCode(String requested, String planCode, String coverageName, Long ignoredId) {
+        if (requested == null || requested.isBlank()) {
+            return uniqueCoverageCode(planCode, coverageName);
+        }
+        String code = normalizeCode(requested, 80, "Código da cobertura inválido.");
+        boolean exists = ignoredId == null ? coverageRepository.existsByCode(code) : coverageRepository.existsByCodeAndIdNot(code, ignoredId);
+        if (exists) throw new IllegalArgumentException("Já existe uma cobertura com esse código interno.");
+        return code;
+    }
 
     private String uniquePlanCode(String categoryCode, Region region, String name) {
         String base = normalizeCode(categoryCode + "_" + region.name() + "_" + name, 80, "Código do plano inválido.");

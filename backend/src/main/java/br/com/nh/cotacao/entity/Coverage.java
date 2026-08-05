@@ -20,12 +20,12 @@ public class Coverage {
 
     public static Coverage create(String code, String name) {
         Coverage coverage = new Coverage();
-        coverage.code = requireText(code, "Código da cobertura");
-        coverage.name = requireText(name, "Nome da cobertura");
+        coverage.updateAdmin(code, name);
         return coverage;
     }
 
-    public void rename(String name) {
+    public void updateAdmin(String code, String name) {
+        this.code = requireText(code, "Código da cobertura");
         this.name = requireText(name, "Nome da cobertura");
     }
 

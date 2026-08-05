@@ -5,6 +5,7 @@ import br.com.nh.cotacao.security.PortalPrincipal;
 import br.com.nh.cotacao.service.AdminCatalogService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -12,6 +13,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/admin/catalog")
+@PreAuthorize("hasRole('ADMIN')")
 public class AdminCatalogController {
     private final AdminCatalogService service;
 

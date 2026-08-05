@@ -6,6 +6,8 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.text.NumberFormat;
+import java.util.Locale;
 import java.util.Optional;
 
 @Service
@@ -48,7 +50,7 @@ public class PricingService {
                 ? plan.getTrackerInstallationFee()
                 : BigDecimal.ZERO;
         String description = trackerRequired
-                ? "Rastreador obrigatório para caminhões com FIPE a partir de R$ 150 mil"
+                ? "Rastreador obrigatório para veículos com FIPE a partir de " + formatCurrency(plan.getTrackerRequiredAbove())
                 : null;
 
         return Optional.of(new PricingResult(
@@ -57,6 +59,10 @@ public class PricingService {
                 oneTimeFee.setScale(2, RoundingMode.HALF_UP),
                 description
         ));
+    }
+
+    private String formatCurrency(BigDecimal value) {
+        return NumberFormat.getCurrencyInstance(Locale.forLanguageTag("pt-BR")).format(value);
     }
 
     private Optional<BigDecimal> findTableValue(Plan plan, BigDecimal fipeValue) {

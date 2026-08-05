@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#070c40">
   <title>Painel Administrativo NH</title>
   <link rel="icon" href="/assets/favicon-nh.png">
-  <link rel="stylesheet" href="/shared/portal.css?v=20260804-brand-manual">
+  <link rel="stylesheet" href="/shared/portal.css?v=20260805-admin-full-catalog">
   <link rel="stylesheet" href="/shared/responsive.css?v=20260804-universal">
 </head>
 <body>
@@ -135,7 +135,7 @@
       <button id="new-plan-button" class="primary" type="button">+ Novo plano</button>
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Plano</th><th>Categoria</th><th>Região</th><th>Subtítulo</th><th>Ordem</th><th>Status</th><th>Ações</th></tr></thead>
+      <thead><tr><th>Código / plano</th><th>Categoria</th><th>Região</th><th>Subtítulo</th><th>Ordem</th><th>Status</th><th>Ações</th></tr></thead>
       <tbody id="plans-body"></tbody>
     </table></div>
   </section>
@@ -166,7 +166,7 @@
       <label>Pesquisar<input id="coverage-text-filter" placeholder="Nome ou detalhe"></label>
     </div>
     <div class="table-wrap" style="margin-top:16px"><table>
-      <thead><tr><th>Plano</th><th>Cobertura/serviço</th><th>Classificação</th><th>Detalhe</th><th>Mensalidade</th><th>Ordem</th><th>Ações</th></tr></thead>
+      <thead><tr><th>Plano</th><th>Código / cobertura</th><th>Classificação</th><th>Detalhe</th><th>Mensalidade</th><th>Ordem</th><th>Ações</th></tr></thead>
       <tbody id="coverages-body"></tbody>
     </table></div>
   </section>
@@ -211,18 +211,37 @@
   </form>
 </dialog>
 
-<dialog id="plan-dialog" class="admin-dialog">
+<dialog id="plan-dialog" class="admin-dialog wide-dialog">
   <form id="plan-form" class="dialog-card">
     <div class="dialog-head"><div><span class="eyebrow" style="color:#070c40">PLANO OU PACOTE</span><h2 id="plan-dialog-title">Novo plano</h2></div><button class="dialog-close" type="button" data-close-dialog="plan-dialog">×</button></div>
     <input id="plan-id" type="hidden">
     <div class="form-grid">
-      <label class="span-2">Nome<input id="plan-name" maxlength="120" required></label>
+      <label>Código interno<input id="plan-code" maxlength="80" placeholder="Ex.: CAR_COMPLETO"></label>
+      <label>Nome<input id="plan-name" maxlength="120" required></label>
       <label>Categoria<select id="plan-category" required></select></label>
       <label>Região<select id="plan-region" required><option value="NATIONAL">Nacional</option><option value="NORTHEAST">Nordeste</option><option value="CAPITAL">Capital</option></select></label>
       <label class="span-2">Subtítulo<input id="plan-subtitle" maxlength="180"></label>
       <label>Ordem de exibição<input id="plan-order" type="number" min="0" value="100" required></label>
       <label>Status<select id="plan-active"><option value="true">Ativo</option><option value="false">Inativo</option></select></label>
+
+      <div class="span-2 admin-form-section">
+        <strong>Regra automática para FIPE acima da última faixa</strong>
+        <small>Deixe os quatro campos vazios para desativar. Quando usada, todos precisam ser preenchidos.</small>
+      </div>
+      <label>Aplicar acima de<input id="plan-extra-above" data-money inputmode="decimal" maxlength="18" placeholder="Ex.: 210.000,00"></label>
+      <label>Intervalo de FIPE<input id="plan-extra-step" data-money inputmode="decimal" maxlength="18" placeholder="Ex.: 10.000,00"></label>
+      <label>Acréscimo por intervalo<input id="plan-extra-increment" data-money inputmode="decimal" maxlength="18" placeholder="Ex.: 50,00"></label>
+      <label>Mensalidade base<input id="plan-extra-base-price" data-money inputmode="decimal" maxlength="18" placeholder="Ex.: 447,45"></label>
+
+      <div class="span-2 admin-form-section">
+        <strong>Rastreador obrigatório</strong>
+        <small>Deixe os três campos vazios quando o plano não exigir rastreador por valor FIPE.</small>
+      </div>
+      <label>Obrigatório a partir de<input id="plan-tracker-required-above" data-money inputmode="decimal" maxlength="18" placeholder="Ex.: 150.000,00"></label>
+      <label>Taxa de instalação<input id="plan-tracker-installation-fee" data-money inputmode="decimal" maxlength="18" placeholder="Ex.: 200,00"></label>
+      <label class="span-2">Mensalidade do rastreador<input id="plan-tracker-monthly-fee" data-money inputmode="decimal" maxlength="18" placeholder="Ex.: 20,00"></label>
     </div>
+    <p class="helper">Somente o administrador pode cadastrar, editar, ativar, desativar ou excluir planos e suas regras financeiras.</p>
     <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="plan-dialog">Cancelar</button><button class="primary" type="submit">Salvar plano</button></div>
   </form>
 </dialog>
@@ -247,13 +266,14 @@
     <input id="coverage-id" type="hidden">
     <div class="form-grid">
       <label class="span-2">Plano<select id="coverage-plan" required></select></label>
-      <label class="span-2">Nome<input id="coverage-name" maxlength="180" required></label>
+      <label>Código interno<input id="coverage-code" maxlength="80" placeholder="Ex.: THIRD_PARTY"></label>
+      <label>Nome<input id="coverage-name" maxlength="180" required></label>
       <label>Classificação<select id="coverage-status" required><option value="INCLUDED">Incluído</option><option value="NOT_INCLUDED">Não incluído</option><option value="OPTIONAL">Serviço opcional</option></select></label>
       <label>Ordem de exibição<input id="coverage-order" type="number" min="0" value="100" required></label>
       <label class="span-2">Condições ou limites<textarea id="coverage-detail" maxlength="240" rows="4"></textarea></label>
       <label class="span-2">Mensalidade do opcional<input id="coverage-price" data-money inputmode="decimal" maxlength="18" placeholder="0,00"></label>
     </div>
-    <p class="helper">O valor mensal é obrigatório somente quando a classificação for “Serviço opcional”.</p>
+    <p class="helper">O administrador também pode trocar a cobertura de plano. O valor mensal é obrigatório somente para “Serviço opcional”.</p>
     <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="coverage-dialog">Cancelar</button><button class="primary" type="submit">Salvar cobertura</button></div>
   </form>
 </dialog>
@@ -299,6 +319,6 @@
 <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
 <script src="/shared/money-input.js?v=20260805-brl-mask"></script>
-<script src="/admin/admin.js?v=20260805-brl-mask"></script>
+<script src="/admin/admin.js?v=20260805-admin-full-catalog"></script>
 </body>
 </html>

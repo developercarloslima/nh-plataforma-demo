@@ -193,3 +193,5 @@ input:focus,select:focus,textarea:focus{border-color:var(--navy);box-shadow:0 0 
   }
   .capture-guide-actions button{width:100%}
 }
+
+.admin-form-section{margin-top:6px;padding:13px 14px;border-radius:13px;background:#f4f5fb;border:1px solid var(--line)}.admin-form-section strong{display:block;color:var(--navy);font-size:14px}.admin-form-section small{display:block;margin-top:4px;color:var(--muted);line-height:1.45}.code-value{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;color:#596079;overflow-wrap:anywhere}

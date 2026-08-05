@@ -64,7 +64,6 @@ public class Plan {
     protected Plan() {
     }
 
-
     public static Plan create(
             String code,
             String name,
@@ -72,16 +71,21 @@ public class Plan {
             VehicleCategory category,
             Region region,
             Integer displayOrder,
-            Boolean active
+            Boolean active,
+            BigDecimal extraAbove,
+            BigDecimal extraStep,
+            BigDecimal extraIncrement,
+            BigDecimal extraBasePrice,
+            BigDecimal trackerRequiredAbove,
+            BigDecimal trackerInstallationFee,
+            BigDecimal trackerMonthlyFee
     ) {
         Plan plan = new Plan();
-        plan.code = requireText(code, "Código do plano");
-        plan.name = requireText(name, "Nome do plano");
-        plan.subtitle = cleanOptional(subtitle);
-        plan.category = category;
-        plan.region = region;
-        plan.displayOrder = displayOrder == null ? 100 : Math.max(0, displayOrder);
-        plan.active = active == null || active;
+        plan.updateAdmin(
+                code, name, subtitle, category, region, displayOrder, active,
+                extraAbove, extraStep, extraIncrement, extraBasePrice,
+                trackerRequiredAbove, trackerInstallationFee, trackerMonthlyFee
+        );
         return plan;
     }
 
@@ -103,22 +107,71 @@ public class Plan {
     public List<PlanCoverage> getCoverages() { return coverages; }
 
     public void updateAdmin(
+            String code,
             String name,
             String subtitle,
             VehicleCategory category,
             Region region,
             Integer displayOrder,
-            Boolean active
+            Boolean active,
+            BigDecimal extraAbove,
+            BigDecimal extraStep,
+            BigDecimal extraIncrement,
+            BigDecimal extraBasePrice,
+            BigDecimal trackerRequiredAbove,
+            BigDecimal trackerInstallationFee,
+            BigDecimal trackerMonthlyFee
     ) {
-        if (name != null) this.name = requireText(name, "Nome do plano");
-        if (subtitle != null) this.subtitle = cleanOptional(subtitle);
-        if (category != null) this.category = category;
-        if (region != null) this.region = region;
-        if (displayOrder != null) {
-            if (displayOrder < 0) throw new IllegalArgumentException("A ordem do plano deve ser zero ou maior.");
-            this.displayOrder = displayOrder;
+        this.code = requireText(code, "Código do plano");
+        this.name = requireText(name, "Nome do plano");
+        this.subtitle = cleanOptional(subtitle);
+        if (category == null) throw new IllegalArgumentException("Categoria do plano é obrigatória.");
+        if (region == null) throw new IllegalArgumentException("Região do plano é obrigatória.");
+        if (displayOrder == null || displayOrder < 0) {
+            throw new IllegalArgumentException("A ordem do plano deve ser zero ou maior.");
         }
-        if (active != null) this.active = active;
+        this.category = category;
+        this.region = region;
+        this.displayOrder = displayOrder;
+        this.active = active == null || active;
+
+        validateNonNegative(extraAbove, "Valor FIPE de início do cálculo adicional");
+        validatePositive(extraStep, "Intervalo FIPE do cálculo adicional");
+        validateNonNegative(extraIncrement, "Acréscimo mensal por intervalo");
+        validateNonNegative(extraBasePrice, "Mensalidade base do cálculo adicional");
+        boolean anyExtra = extraAbove != null || extraStep != null || extraIncrement != null || extraBasePrice != null;
+        boolean allExtra = extraAbove != null && extraStep != null && extraIncrement != null && extraBasePrice != null;
+        if (anyExtra && !allExtra) {
+            throw new IllegalArgumentException("Para usar a regra de valores acima da tabela, preencha os quatro campos do cálculo adicional.");
+        }
+        this.extraAbove = extraAbove;
+        this.extraStep = extraStep;
+        this.extraIncrement = extraIncrement;
+        this.extraBasePrice = extraBasePrice;
+
+        validateNonNegative(trackerRequiredAbove, "Valor FIPE para rastreador obrigatório");
+        validateNonNegative(trackerInstallationFee, "Taxa de instalação do rastreador");
+        validateNonNegative(trackerMonthlyFee, "Mensalidade do rastreador");
+        boolean anyTracker = trackerRequiredAbove != null || trackerInstallationFee != null || trackerMonthlyFee != null;
+        boolean allTracker = trackerRequiredAbove != null && trackerInstallationFee != null && trackerMonthlyFee != null;
+        if (anyTracker && !allTracker) {
+            throw new IllegalArgumentException("Para tornar o rastreador obrigatório, preencha o limite FIPE, a instalação e a mensalidade.");
+        }
+        this.trackerRequiredAbove = trackerRequiredAbove;
+        this.trackerInstallationFee = trackerInstallationFee;
+        this.trackerMonthlyFee = trackerMonthlyFee;
+    }
+
+    private static void validateNonNegative(BigDecimal value, String field) {
+        if (value != null && value.signum() < 0) {
+            throw new IllegalArgumentException(field + " não pode ser negativo.");
+        }
+    }
+
+    private static void validatePositive(BigDecimal value, String field) {
+        if (value != null && value.signum() <= 0) {
+            throw new IllegalArgumentException(field + " deve ser maior que zero.");
+        }
     }
 
     private static String requireText(String value, String field) {
@@ -130,4 +183,3 @@ public class Plan {
         return value == null || value.isBlank() ? null : value.trim();
     }
 }
-

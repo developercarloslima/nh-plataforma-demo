@@ -38,6 +38,7 @@ public final class AdminDtos {
 
     public record PlanAdminResponse(
             Long id,
+            String code,
             String name,
             String subtitle,
             Long categoryId,
@@ -45,25 +46,48 @@ public final class AdminDtos {
             String categoryCode,
             Region region,
             Integer displayOrder,
-            boolean active
+            boolean active,
+            BigDecimal extraAbove,
+            BigDecimal extraStep,
+            BigDecimal extraIncrement,
+            BigDecimal extraBasePrice,
+            BigDecimal trackerRequiredAbove,
+            BigDecimal trackerInstallationFee,
+            BigDecimal trackerMonthlyFee
     ) {}
 
     public record CreatePlanRequest(
+            @Size(max = 80) String code,
             @NotBlank @Size(max = 120) String name,
             @Size(max = 180) String subtitle,
             @NotNull Long categoryId,
             @NotNull Region region,
             @NotNull @Min(0) Integer displayOrder,
-            @NotNull Boolean active
+            @NotNull Boolean active,
+            @DecimalMin("0.00") BigDecimal extraAbove,
+            @DecimalMin(value = "0.01") BigDecimal extraStep,
+            @DecimalMin("0.00") BigDecimal extraIncrement,
+            @DecimalMin("0.00") BigDecimal extraBasePrice,
+            @DecimalMin("0.00") BigDecimal trackerRequiredAbove,
+            @DecimalMin("0.00") BigDecimal trackerInstallationFee,
+            @DecimalMin("0.00") BigDecimal trackerMonthlyFee
     ) {}
 
     public record UpdatePlanRequest(
+            @NotBlank @Size(max = 80) String code,
             @NotBlank @Size(max = 120) String name,
             @Size(max = 180) String subtitle,
             @NotNull Long categoryId,
             @NotNull Region region,
             @NotNull @Min(0) Integer displayOrder,
-            @NotNull Boolean active
+            @NotNull Boolean active,
+            @DecimalMin("0.00") BigDecimal extraAbove,
+            @DecimalMin(value = "0.01") BigDecimal extraStep,
+            @DecimalMin("0.00") BigDecimal extraIncrement,
+            @DecimalMin("0.00") BigDecimal extraBasePrice,
+            @DecimalMin("0.00") BigDecimal trackerRequiredAbove,
+            @DecimalMin("0.00") BigDecimal trackerInstallationFee,
+            @DecimalMin("0.00") BigDecimal trackerMonthlyFee
     ) {}
 
     public record CoverageAdminResponse(
@@ -73,6 +97,7 @@ public final class AdminDtos {
             String category,
             String region,
             Long coverageId,
+            String coverageCode,
             String coverageName,
             CoverageStatus status,
             String detail,
@@ -81,6 +106,7 @@ public final class AdminDtos {
     ) {}
 
     public record CreateCoverageRequest(
+            @Size(max = 80) String coverageCode,
             @NotBlank @Size(max = 180) String coverageName,
             @NotNull CoverageStatus status,
             @Size(max = 240) String detail,
@@ -89,6 +115,8 @@ public final class AdminDtos {
     ) {}
 
     public record UpdateCoverageRequest(
+            @NotNull Long planId,
+            @NotBlank @Size(max = 80) String coverageCode,
             @NotBlank @Size(max = 180) String coverageName,
             @NotNull CoverageStatus status,
             @Size(max = 240) String detail,

@@ -50,6 +50,11 @@ public class PlanCoverage {
         return item;
     }
 
+    public void replacePlan(Plan plan) {
+        if (plan == null) throw new IllegalArgumentException("Plano inválido.");
+        this.plan = plan;
+    }
+
     public void replaceCoverage(Coverage coverage) {
         if (coverage == null) throw new IllegalArgumentException("Cobertura inválida.");
         this.coverage = coverage;

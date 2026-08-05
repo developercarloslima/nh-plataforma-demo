@@ -117,6 +117,15 @@ function moneyInput(value) {
   return window.NHMoney?.format(Number(value || 0)) || '0,00';
 }
 
+function optionalMoney(id) {
+  const value = $(id).value.trim();
+  return value ? parseMoney(value) : null;
+}
+
+function setOptionalMoney(id, value) {
+  $(id).value = value == null ? '' : moneyInput(value);
+}
+
 function emptyRow(columns, text) {
   return `<tr><td colspan="${columns}" class="empty-state">${esc(text)}</td></tr>`;
 }
@@ -388,10 +397,10 @@ function linkButtons(items) {
 
 function renderPlans() {
   $('plans-body').innerHTML = plans.map(item => `<tr>
-    <td><strong>${esc(item.name)}</strong></td><td>${esc(item.category)}</td><td>${esc(regionLabel(item.region))}</td>
+    <td><strong>${esc(item.name)}</strong><small class="table-code">${esc(item.code)}</small></td><td>${esc(item.category)}</td><td>${esc(regionLabel(item.region))}</td>
     <td>${esc(item.subtitle || '—')}</td><td>${item.displayOrder}</td><td>${statusBadge(item.active ? 'Ativo' : 'Inativo', item.active ? 'ok' : 'off')}</td>
     <td><div class="row-actions">
-      <button class="secondary small-button" data-plan-edit="${item.id}" type="button">Editar</button>
+      <button class="secondary small-button" data-plan-edit="${item.id}" type="button">Editar tudo</button>
       <button class="outline small-button" data-plan-toggle="${item.id}" type="button">${item.active ? 'Desativar' : 'Ativar'}</button>
       <button class="danger small-button" data-plan-delete="${item.id}" type="button">Excluir</button>
     </div></td>
@@ -404,13 +413,21 @@ function renderPlans() {
 function openPlanModal(id = null) {
   const item = plans.find(value => value.id === id);
   $('plan-id').value = item?.id || '';
+  $('plan-code').value = item?.code || '';
   $('plan-name').value = item?.name || '';
   $('plan-category').value = item?.categoryId || categories[0]?.id || '';
   $('plan-region').value = item?.region || 'NATIONAL';
   $('plan-subtitle').value = item?.subtitle || '';
   $('plan-order').value = item?.displayOrder ?? 100;
   $('plan-active').value = String(item?.active ?? true);
-  $('plan-dialog-title').textContent = item ? 'Editar plano ou pacote' : 'Novo plano ou pacote';
+  setOptionalMoney('plan-extra-above', item?.extraAbove);
+  setOptionalMoney('plan-extra-step', item?.extraStep);
+  setOptionalMoney('plan-extra-increment', item?.extraIncrement);
+  setOptionalMoney('plan-extra-base-price', item?.extraBasePrice);
+  setOptionalMoney('plan-tracker-required-above', item?.trackerRequiredAbove);
+  setOptionalMoney('plan-tracker-installation-fee', item?.trackerInstallationFee);
+  setOptionalMoney('plan-tracker-monthly-fee', item?.trackerMonthlyFee);
+  $('plan-dialog-title').textContent = item ? 'Editar todos os dados do plano' : 'Novo plano ou pacote';
   openDialog('plan-dialog');
 }
 
@@ -430,8 +447,11 @@ async function togglePlan(id) {
     await api(`/api/admin/catalog/plans/${id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: item.name, subtitle: item.subtitle || '', categoryId: item.categoryId,
-        region: item.region, displayOrder: item.displayOrder, active: !item.active
+        code: item.code, name: item.name, subtitle: item.subtitle || '', categoryId: item.categoryId,
+        region: item.region, displayOrder: item.displayOrder, active: !item.active,
+        extraAbove: item.extraAbove, extraStep: item.extraStep, extraIncrement: item.extraIncrement,
+        extraBasePrice: item.extraBasePrice, trackerRequiredAbove: item.trackerRequiredAbove,
+        trackerInstallationFee: item.trackerInstallationFee, trackerMonthlyFee: item.trackerMonthlyFee
       })
     });
     message(item.active ? 'Plano desativado.' : 'Plano ativado.', 'success');
@@ -508,11 +528,11 @@ function renderCoverages() {
   const filtered = coverages.filter(item => {
     if (planId && String(item.planId) !== planId) return false;
     if (status && item.status !== status) return false;
-    return `${item.coverageName} ${item.detail || ''} ${item.planName}`.toLowerCase().includes(text);
+    return `${item.coverageCode || ''} ${item.coverageName} ${item.detail || ''} ${item.planName}`.toLowerCase().includes(text);
   });
   $('coverages-body').innerHTML = filtered.map(item => `<tr>
     <td><strong>${esc(item.planName)}</strong><small class="table-code">${esc(regionLabel(item.region))}</small></td>
-    <td>${esc(item.coverageName)}</td><td>${coverageBadge(item.status)}</td><td>${esc(item.detail || '—')}</td>
+    <td><strong>${esc(item.coverageName)}</strong><small class="table-code">${esc(item.coverageCode)}</small></td><td>${coverageBadge(item.status)}</td><td>${esc(item.detail || '—')}</td>
     <td>${item.status === 'OPTIONAL' ? brl.format(item.monthlyPrice || 0) : '—'}</td><td>${item.sortOrder}</td>
     <td><div class="row-actions"><button class="secondary small-button" data-coverage-edit="${item.id}" type="button">Editar</button><button class="danger small-button" data-coverage-delete="${item.id}" type="button">Excluir</button></div></td>
   </tr>`).join('') || emptyRow(7, 'Nenhuma cobertura encontrada.');
@@ -524,7 +544,8 @@ function openCoverageModal(id = null) {
   const item = coverages.find(value => value.id === id);
   $('coverage-id').value = item?.id || '';
   $('coverage-plan').value = item?.planId || plans[0]?.id || '';
-  $('coverage-plan').disabled = Boolean(item);
+  $('coverage-plan').disabled = false;
+  $('coverage-code').value = item?.coverageCode || '';
   $('coverage-name').value = item?.coverageName || '';
   $('coverage-status').value = item?.status || 'INCLUDED';
   $('coverage-order').value = item?.sortOrder ?? 100;
@@ -680,9 +701,14 @@ $('plan-form').addEventListener('submit', async event => {
   event.preventDefault();
   const id = $('plan-id').value;
   const payload = {
-    name: $('plan-name').value.trim(), subtitle: $('plan-subtitle').value.trim(),
+    code: $('plan-code').value.trim(), name: $('plan-name').value.trim(), subtitle: $('plan-subtitle').value.trim(),
     categoryId: Number($('plan-category').value), region: $('plan-region').value,
-    displayOrder: Number($('plan-order').value), active: $('plan-active').value === 'true'
+    displayOrder: Number($('plan-order').value), active: $('plan-active').value === 'true',
+    extraAbove: optionalMoney('plan-extra-above'), extraStep: optionalMoney('plan-extra-step'),
+    extraIncrement: optionalMoney('plan-extra-increment'), extraBasePrice: optionalMoney('plan-extra-base-price'),
+    trackerRequiredAbove: optionalMoney('plan-tracker-required-above'),
+    trackerInstallationFee: optionalMoney('plan-tracker-installation-fee'),
+    trackerMonthlyFee: optionalMoney('plan-tracker-monthly-fee')
   };
   try {
     const current = id ? plans.find(item => String(item.id) === id) : null;
@@ -725,12 +751,13 @@ $('coverage-form').addEventListener('submit', async event => {
   event.preventDefault();
   const id = $('coverage-id').value;
   const status = $('coverage-status').value;
-  const payload = {
-    coverageName: $('coverage-name').value.trim(), status,
+  const base = {
+    coverageCode: $('coverage-code').value.trim(), coverageName: $('coverage-name').value.trim(), status,
     detail: $('coverage-detail').value.trim(),
     monthlyPrice: status === 'OPTIONAL' ? parseMoney($('coverage-price').value) : null,
     sortOrder: Number($('coverage-order').value)
   };
+  const payload = id ? { ...base, planId: Number($('coverage-plan').value) } : base;
   const path = id ? `/api/admin/catalog/coverages/${id}` : `/api/admin/catalog/plans/${$('coverage-plan').value}/coverages`;
   try {
     await api(path, { method: id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
