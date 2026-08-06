@@ -11,7 +11,7 @@
   <link rel="icon" href="./favicon-nh.png">
   <link rel="stylesheet" href="./styles.css?v=20260804-brand-manual">
   <title>NH Cotação Digital</title>
-  <link rel="stylesheet" href="/shared/responsive.css?v=20260804-universal">
+  <link rel="stylesheet" href="/shared/responsive.css?v=20260806-all-devices-v2">
 </head>
 <body>
   <header class="topbar">
@@ -44,7 +44,7 @@
       <form id="quote-form" class="form-grid">
         <label id="consultant-field">Consultor responsável *<input id="consultantName" required readonly></label>
         <label>Nome do cliente *<input id="customerName" required placeholder="Nome completo"></label>
-        <label id="customer-cpf-field" hidden>CPF *<input id="customerCpf" inputmode="numeric" maxlength="14" placeholder="000.000.000-00"></label>
+        <label id="customer-cpf-field">CPF *<input id="customerCpf" inputmode="numeric" maxlength="14" placeholder="000.000.000-00" required></label>
         <label>WhatsApp do cliente <span id="whatsapp-required"></span><input id="whatsapp" placeholder="(82) 99999-9999"></label>
 
         <fieldset class="zero-km-selector span-2">
@@ -192,6 +192,7 @@
   <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
   <script src="/shared/money-input.js?v=20260805-brl-mask"></script>
-  <script src="./app.js?v=20260805-brl-mask" defer></script>
+  <script src="./app.js?v=20260806-cpf-consultant-v4" defer></script>
+<script src="/shared/responsive.js?v=20260806-all-devices-v2"></script>
 </body>
 </html>

@@ -65,6 +65,7 @@ const CONSULTANT_ASSET_LABELS = {
   SIGNATURE: 'Assinatura',
   VEHICLE_DOCUMENT: 'CRLV do veículo',
   IDENTITY_DOCUMENT: 'RG ou CNH',
+  OTHER_DOCUMENT: 'Documento adicional',
   REPORT: 'Relatório da vistoria'
 };
 
@@ -230,15 +231,111 @@ function inspectionActions(item) {
 
   const requestButton = canCollectFiles
     ? (item.associateInspectionWhatsappUrl
-      ? `<a class="button outline small-button" href="${escapeHtml(item.associateInspectionWhatsappUrl)}" target="_blank" rel="noopener">Pedir para associado enviar fotos</a>`
-      : '<button class="outline small-button" type="button" disabled title="O WhatsApp do associado não está configurado nesta vistoria.">Pedir para associado enviar fotos</button>')
+      ? `<a class="button outline small-button" href="${escapeHtml(item.associateInspectionWhatsappUrl)}" target="_blank" rel="noopener">Enviar mensagem para enviar arquivos</a>`
+      : '<button class="outline small-button" type="button" disabled title="O WhatsApp do associado não está configurado nesta vistoria.">Enviar mensagem para enviar arquivos</button>')
     : '';
 
   const filesButton = item.hasFiles && Number(item.assetCount || 0) > 0
-    ? `<button class="outline small-button" data-view-inspection-files="${item.id}" type="button">Visualizar arquivos enviados (${Number(item.assetCount || 0)})</button>`
-    : '<button class="outline small-button" type="button" disabled title="O botão será liberado após o primeiro arquivo ser armazenado no sistema.">Visualizar arquivos enviados</button>';
+    ? `<button class="outline small-button" data-view-inspection-files="${item.id}" type="button">Ver documentos enviados (${Number(item.assetCount || 0)})</button>`
+    : '';
 
   return `<div class="row-actions inspection-actions">${startButton}${requestButton}${filesButton}</div>`;
+}
+
+function quoteActions(item) {
+  const pdfUrl = window.NH_API?.backend(item.pdfUrl || `/api/quotes/${item.id}/pdf`)
+    || item.pdfUrl
+    || `/api/quotes/${item.id}/pdf`;
+  const review = `<a class="button outline small-button" href="${escapeHtml(pdfUrl)}" target="_blank" rel="noopener">Rever cotação</a>`;
+  const startInspection = item.status === 'ACCEPTED' && !item.inspectionId
+    ? `<button class="secondary small-button" data-start-quote-inspection="${item.id}" type="button">Iniciar vistoria</button>`
+    : '';
+  const redo = item.expired
+    ? `<button class="secondary small-button" data-redo-quote="${item.id}" type="button">Refazer cotação</button>`
+    : '';
+  const remove = `<button class="danger small-button" data-delete-quote="${item.id}" type="button">Excluir</button>`;
+  return `<div class="row-actions quote-actions">${review}${startInspection}${redo}${remove}</div>`;
+}
+
+function findQuote(id) {
+  return (dashboardData?.quotes || []).find(item => item.id === id);
+}
+
+function askCpf(customerName) {
+  const value = window.prompt(`Informe o CPF de ${customerName || 'cliente'} para continuar:`);
+  if (value === null) return null;
+  const digits = value.replace(/\D/g, '');
+  if (digits.length !== 11) {
+    message('Informe um CPF válido com 11 números.');
+    return null;
+  }
+  return value;
+}
+
+async function startQuoteInspection(id, button) {
+  const item = findQuote(id);
+  if (!item || !selectedConsultant?.id) return;
+  const cpf = item.hasCustomerCpf ? null : askCpf(item.customerName);
+  if (!item.hasCustomerCpf && cpf === null) return;
+  button.disabled = true;
+  button.textContent = 'Iniciando...';
+  try {
+    await api(`/api/consultant-dashboard/${encodeURIComponent(selectedConsultant.id)}/quotes/${encodeURIComponent(id)}/inspection`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cpf ? { cpf } : {})
+    });
+    await loadDashboard(selectedConsultant, { silent: true });
+    message('Vistoria iniciada e vinculada ao painel do consultor.', 'success');
+  } catch (error) {
+    message(error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Iniciar vistoria';
+  }
+}
+
+async function redoQuote(id, button) {
+  const item = findQuote(id);
+  if (!item || !selectedConsultant?.id) return;
+  const cpf = item.hasCustomerCpf ? null : askCpf(item.customerName);
+  if (!item.hasCustomerCpf && cpf === null) return;
+  button.disabled = true;
+  button.textContent = 'Refazendo...';
+  try {
+    await api(`/api/consultant-dashboard/${encodeURIComponent(selectedConsultant.id)}/quotes/${encodeURIComponent(id)}/redo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cpf ? { cpf } : {})
+    });
+    await loadDashboard(selectedConsultant, { silent: true });
+    message('Nova cotação criada com a tabela atual. A anterior foi mantida no histórico.', 'success');
+  } catch (error) {
+    message(error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Refazer cotação';
+  }
+}
+
+async function deleteQuote(id, button) {
+  const item = findQuote(id);
+  if (!item || !selectedConsultant?.id) return;
+  const confirmed = window.confirm(`Excluir a cotação ${item.quoteNumber}? A vistoria existente, quando houver, continuará preservada.`);
+  if (!confirmed) return;
+  button.disabled = true;
+  button.textContent = 'Excluindo...';
+  try {
+    await api(`/api/consultant-dashboard/${encodeURIComponent(selectedConsultant.id)}/quotes/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    });
+    await loadDashboard(selectedConsultant, { silent: true });
+    message('Cotação excluída do painel.', 'success');
+  } catch (error) {
+    message(error.message);
+    button.disabled = false;
+    button.textContent = 'Excluir';
+  }
 }
 
 function renderDashboard(data) {
@@ -250,7 +347,8 @@ function renderDashboard(data) {
     <td>${date(item.validUntil)}</td>
     <td>${item.expired ? '<span class="badge off">Expirada</span>' : badge(item.status, QUOTE_STATUS)}</td>
     <td>${badge(item.inspectionStatus, INSPECTION_STATUS)}</td>
-  </tr>`).join('') || empty(7, 'Nenhuma cotação encontrada para este consultor.');
+    <td>${quoteActions(item)}</td>
+  </tr>`).join('') || empty(8, 'Nenhuma cotação encontrada para este consultor.');
 
   $('consultant-inspections-body').innerHTML = (data.inspections || []).map(item => `<tr>
     <td><strong>${escapeHtml(item.associateName)}</strong></td>
@@ -272,6 +370,15 @@ function renderDashboard(data) {
   });
   document.querySelectorAll('[data-download-report]').forEach(button => {
     button.addEventListener('click', () => downloadConsultantReport(button.dataset.downloadReport, button));
+  });
+  document.querySelectorAll('[data-start-quote-inspection]').forEach(button => {
+    button.addEventListener('click', () => startQuoteInspection(button.dataset.startQuoteInspection, button));
+  });
+  document.querySelectorAll('[data-redo-quote]').forEach(button => {
+    button.addEventListener('click', () => redoQuote(button.dataset.redoQuote, button));
+  });
+  document.querySelectorAll('[data-delete-quote]').forEach(button => {
+    button.addEventListener('click', () => deleteQuote(button.dataset.deleteQuote, button));
   });
 }
 

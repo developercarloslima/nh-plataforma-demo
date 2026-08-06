@@ -74,7 +74,10 @@ public class RetratoPdfService {
             for (InspectionAsset asset : request.getAssets()) {
                 if (asset.getAssetType() == InspectionAssetType.REPORT) continue;
 
-                if (asset.getAssetType() == InspectionAssetType.VIDEO) {
+                String contentType = asset.getContentType() == null
+                        ? ""
+                        : asset.getContentType().toLowerCase(java.util.Locale.ROOT);
+                if (asset.getAssetType() == InspectionAssetType.VIDEO || contentType.startsWith("video/")) {
                     Paragraph video = new Paragraph("Vídeo: " + asset.getLabel(), new Font(Font.HELVETICA, 10, Font.BOLD, NAVY));
                     video.add(new Chunk("\nArquivo armazenado no banco de dados por 40 dias.",
                             new Font(Font.HELVETICA, 8, Font.NORMAL, Color.DARK_GRAY)));
@@ -83,9 +86,7 @@ public class RetratoPdfService {
                     continue;
                 }
 
-                boolean documentAsset = asset.getAssetType() == InspectionAssetType.VEHICLE_DOCUMENT
-                        || asset.getAssetType() == InspectionAssetType.IDENTITY_DOCUMENT;
-                if (documentAsset && (asset.getContentType() == null || !asset.getContentType().toLowerCase().startsWith("image/"))) {
+                if (!contentType.startsWith("image/")) {
                     Paragraph documentFile = new Paragraph(asset.getLabel(), new Font(Font.HELVETICA, 10, Font.BOLD, NAVY));
                     documentFile.add(new Chunk("\nDocumento armazenado no banco de dados por 40 dias.",
                             new Font(Font.HELVETICA, 8, Font.NORMAL, Color.DARK_GRAY)));

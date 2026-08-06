@@ -8,6 +8,8 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import jakarta.validation.constraints.Pattern;
+
 public final class ConsultantDashboardDtos {
     private ConsultantDashboardDtos() {}
 
@@ -23,6 +25,8 @@ public final class ConsultantDashboardDtos {
             OffsetDateTime createdAt,
             OffsetDateTime validUntil,
             boolean expired,
+            boolean hasCustomerCpf,
+            String pdfUrl,
             UUID inspectionId,
             InspectionRequestStatus inspectionStatus,
             OffsetDateTime inspectionCompletedAt,
@@ -54,6 +58,15 @@ public final class ConsultantDashboardDtos {
             int assetCount,
             OffsetDateTime filesExpireAt,
             List<InspectionDtos.InspectionAssetResponse> assets
+    ) {}
+
+
+    public record StartInspectionRequest(
+            @Pattern(regexp = "^[0-9.\\-]{11,14}$", message = "CPF inválido") String cpf
+    ) {}
+
+    public record RedoQuoteRequest(
+            @Pattern(regexp = "^[0-9.\\-]{11,14}$", message = "CPF inválido") String cpf
     ) {}
 
     public record ConsultantDashboardResponse(

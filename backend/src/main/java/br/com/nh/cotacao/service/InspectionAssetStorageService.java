@@ -5,6 +5,7 @@ import br.com.nh.cotacao.entity.InspectionAssetStorageKind;
 import br.com.nh.cotacao.entity.InspectionAssetType;
 import br.com.nh.cotacao.entity.InspectionRequest;
 import br.com.nh.cotacao.repository.InspectionAssetRepository;
+import jakarta.persistence.EntityManager;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -29,15 +30,18 @@ import java.util.zip.ZipOutputStream;
 public class InspectionAssetStorageService {
     private final InspectionAssetRepository assetRepository;
     private final JdbcTemplate jdbcTemplate;
+    private final EntityManager entityManager;
     private final int retentionDays;
 
     public InspectionAssetStorageService(
             InspectionAssetRepository assetRepository,
             JdbcTemplate jdbcTemplate,
+            EntityManager entityManager,
             @Value("${app.inspection-storage.retention-days:40}") int retentionDays
     ) {
         this.assetRepository = assetRepository;
         this.jdbcTemplate = jdbcTemplate;
+        this.entityManager = entityManager;
         this.retentionDays = Math.max(1, retentionDays);
     }
 
@@ -70,7 +74,8 @@ public class InspectionAssetStorageService {
                     storedAt.plusDays(retentionDays)
             );
             request.addAsset(asset);
-            assetRepository.saveAndFlush(asset);
+            entityManager.persist(asset);
+            entityManager.flush();
             insertContent(asset.getId(), source, fileSize);
             return asset;
         } catch (IllegalArgumentException exception) {
@@ -106,7 +111,8 @@ public class InspectionAssetStorageService {
                 storedAt.plusDays(retentionDays)
         );
         request.addAsset(asset);
-        assetRepository.saveAndFlush(asset);
+        entityManager.persist(asset);
+        entityManager.flush();
         insertContent(asset.getId(), new ByteArrayInputStream(bytes), bytes.length);
         return asset;
     }

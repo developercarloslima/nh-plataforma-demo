@@ -332,6 +332,7 @@ function updateSelectionSummary() {
 function formPayload() {
   const payload = {
     customerName: $('customerName').value.trim(),
+    cpf: $('customerCpf').value,
     whatsapp: $('whatsapp').value,
     plate: isZeroKm() ? '' : $('plate').value.trim().toUpperCase(),
     model: $('model').value.trim(),
@@ -344,8 +345,7 @@ function formPayload() {
     selectedPlanCode: state.selectedPlanCode,
     selectedOptionalCodes: [...state.selectedOptionalCodes]
   };
-  if (isSelfService) payload.cpf = $('customerCpf').value;
-  else payload.consultantId = selectedConsultant.id;
+  if (!isSelfService) payload.consultantId = selectedConsultant.id;
   return payload;
 }
 
@@ -919,6 +919,8 @@ function formatWhatsapp(value) {
 function configurePageMode() {
   if (!isSelfService) {
     $('consultantName').value = selectedConsultant.name;
+    $('customer-cpf-field').hidden = false;
+    $('customerCpf').required = true;
     return;
   }
 

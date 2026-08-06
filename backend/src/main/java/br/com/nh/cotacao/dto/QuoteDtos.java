@@ -64,6 +64,7 @@ public final class QuoteDtos {
     public record CreateQuoteRequest(
             @NotNull UUID consultantId,
             @NotBlank @Size(max = 120) String customerName,
+            @NotBlank @Pattern(regexp = "^[0-9.\\-]{11,14}$", message = "CPF inválido") String cpf,
             @Size(max = 30) String whatsapp,
             @Size(max = 10) String plate,
             @NotBlank @Size(max = 120) String model,

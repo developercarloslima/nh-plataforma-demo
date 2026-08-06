@@ -46,12 +46,23 @@ public class InspectionResumableUploadService {
     private static final long MAX_PHOTO_BYTES = 12L * 1024 * 1024;
     private static final long MAX_VIDEO_BYTES = 220L * 1024 * 1024;
     private static final long MAX_SIGNATURE_BYTES = 3L * 1024 * 1024;
-    private static final long MAX_DOCUMENT_BYTES = 18L * 1024 * 1024;
+    private static final long MAX_DOCUMENT_BYTES = 30L * 1024 * 1024;
     private static final long MAX_CHUNK_BYTES = 6L * 1024 * 1024;
     private static final int MAX_CHUNKS = 512;
     private static final Set<String> PHOTO_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
     private static final Set<String> VIDEO_TYPES = Set.of("video/mp4", "video/quicktime", "video/webm", "video/3gpp");
-    private static final Set<String> DOCUMENT_TYPES = Set.of("application/pdf", "image/jpeg", "image/png", "image/webp");
+    private static final Set<String> DOCUMENT_TYPES = Set.of(
+            "application/pdf",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.oasis.opendocument.text",
+            "application/rtf",
+            "text/rtf",
+            "text/plain",
+            "image/jpeg",
+            "image/png",
+            "image/webp"
+    );
     private static final Duration STALE_UPLOAD_AGE = Duration.ofDays(2);
     private static final Duration CLEANUP_INTERVAL = Duration.ofHours(1);
 
@@ -171,7 +182,6 @@ public class InspectionResumableUploadService {
                         sortOrder,
                         assembledFile
                 );
-                repository.saveAndFlush(current);
                 entityManager.flush();
 
                 if (!storageService.contentExists(stored.getId())) {
@@ -230,7 +240,7 @@ public class InspectionResumableUploadService {
             throw new IllegalArgumentException("Ainda falta enviar o vídeo da vistoria.");
         }
 
-        repository.saveAndFlush(request);
+        repository.flush();
         request.getAssets().stream()
                 .filter(asset -> asset.getAssetType() != InspectionAssetType.REPORT)
                 .forEach(asset -> {
@@ -251,7 +261,7 @@ public class InspectionResumableUploadService {
                 reportBytes
         );
         request.complete();
-        repository.saveAndFlush(request);
+        repository.flush();
         deleteInspectionUploadsQuietly(token);
         return completedUploadResponse(request);
     }
@@ -369,6 +379,22 @@ public class InspectionResumableUploadService {
                 }
                 validateDocument(totalSize, contentType, "RG ou CNH do associado");
             }
+            case OTHER_DOCUMENT -> {
+                if (sortOrder < 100 || sortOrder > 199) {
+                    throw new IllegalArgumentException("A posição do arquivo adicional é inválida.");
+                }
+                if (VIDEO_TYPES.contains(contentType)) {
+                    if (totalSize > MAX_VIDEO_BYTES) {
+                        throw new IllegalArgumentException("Cada vídeo adicional deve possuir no máximo 220 MB.");
+                    }
+                } else if (PHOTO_TYPES.contains(contentType)) {
+                    if (totalSize > MAX_PHOTO_BYTES) {
+                        throw new IllegalArgumentException("Cada foto adicional deve possuir no máximo 12 MB.");
+                    }
+                } else {
+                    validateDocument(totalSize, contentType, "o arquivo adicional");
+                }
+            }
             case REPORT -> throw new IllegalArgumentException("O relatório é gerado automaticamente pelo sistema.");
         }
 
@@ -380,6 +406,7 @@ public class InspectionResumableUploadService {
                 case SIGNATURE -> "Assinatura do associado";
                 case VEHICLE_DOCUMENT -> "CRLV do veículo";
                 case IDENTITY_DOCUMENT -> "RG ou CNH do associado";
+                case OTHER_DOCUMENT -> "Arquivo adicional";
                 case REPORT -> "Relatório da vistoria";
             };
         }
@@ -391,10 +418,10 @@ public class InspectionResumableUploadService {
 
     private void validateDocument(long totalSize, String contentType, String documentName) {
         if (totalSize > MAX_DOCUMENT_BYTES) {
-            throw new IllegalArgumentException(documentName + " deve possuir no máximo 18 MB.");
+            throw new IllegalArgumentException(documentName + " deve possuir no máximo 30 MB.");
         }
         if (!DOCUMENT_TYPES.contains(contentType)) {
-            throw new IllegalArgumentException("Envie " + documentName + " em PDF, JPG, PNG ou WebP.");
+            throw new IllegalArgumentException("Envie " + documentName + " em PDF, DOC, DOCX, ODT, RTF, TXT, JPG, PNG ou WebP.");
         }
     }
 
@@ -512,6 +539,7 @@ public class InspectionResumableUploadService {
             case SIGNATURE -> "assinatura-associado";
             case VEHICLE_DOCUMENT -> "crlv-veiculo";
             case IDENTITY_DOCUMENT -> "rg-cnh-associado";
+            case OTHER_DOCUMENT -> slug(label);
             case REPORT -> "relatorio-retrato-nh";
         };
         return String.format(Locale.ROOT, "%02d-%s%s", sortOrder, base, extension(contentType));
@@ -519,6 +547,7 @@ public class InspectionResumableUploadService {
 
     private String extension(String contentType) {
         return switch (contentType) {
+            case "image/jpeg" -> ".jpg";
             case "image/png" -> ".png";
             case "image/webp" -> ".webp";
             case "video/quicktime" -> ".mov";
@@ -526,7 +555,12 @@ public class InspectionResumableUploadService {
             case "video/3gpp" -> ".3gp";
             case "video/mp4" -> ".mp4";
             case "application/pdf" -> ".pdf";
-            default -> ".jpg";
+            case "application/msword" -> ".doc";
+            case "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> ".docx";
+            case "application/vnd.oasis.opendocument.text" -> ".odt";
+            case "application/rtf", "text/rtf" -> ".rtf";
+            case "text/plain" -> ".txt";
+            default -> ".bin";
         };
     }
 

@@ -6,5 +6,6 @@ public enum InspectionAssetType {
     SIGNATURE,
     VEHICLE_DOCUMENT,
     IDENTITY_DOCUMENT,
+    OTHER_DOCUMENT,
     REPORT
 }

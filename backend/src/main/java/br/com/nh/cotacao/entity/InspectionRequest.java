@@ -194,6 +194,13 @@ public class InspectionRequest {
                 && OffsetDateTime.now().isAfter(expiresAt);
     }
 
+
+    public void assignConsultant(Consultant consultant) {
+        if (consultant == null) throw new IllegalArgumentException("Informe o consultor responsável.");
+        this.consultant = consultant;
+        this.consultantName = consultant.getName();
+    }
+
     public void registerFolder(String id, String url) {
         this.driveFolderId = id;
         this.driveFolderUrl = url;

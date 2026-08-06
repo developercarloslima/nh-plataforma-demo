@@ -107,6 +107,7 @@ const ASSET_LABELS = {
   SIGNATURE: 'Assinatura',
   VEHICLE_DOCUMENT: 'CRLV do veículo',
   IDENTITY_DOCUMENT: 'RG ou CNH',
+  OTHER_DOCUMENT: 'Documento adicional',
   REPORT: 'Relatório da vistoria'
 };
 
@@ -168,7 +169,7 @@ function render() {
         : null;
       const filesAvailable = hasFiles(item);
       const statusActions = filesAvailable
-        ? `<button class="outline small-button" data-analyze="${item.id}" type="button">Ver arquivos</button>`
+        ? `<button class="outline small-button" data-analyze="${item.id}" type="button">Ver documentos enviados</button>`
         : '';
       const pendingActions = filesAvailable
         ? ''

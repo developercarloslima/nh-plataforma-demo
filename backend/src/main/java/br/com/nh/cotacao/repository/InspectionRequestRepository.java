@@ -34,6 +34,9 @@ public interface InspectionRequestRepository extends JpaRepository<InspectionReq
     @EntityGraph(attributePaths = {"assets", "consultant", "quotation"})
     List<InspectionRequest> findAllByConsultant_IdOrderByCreatedAtDesc(UUID consultantId);
 
+    @EntityGraph(attributePaths = {"assets", "consultant", "quotation"})
+    List<InspectionRequest> findAllByConsultantNameIgnoreCaseOrderByCreatedAtDesc(String consultantName);
+
     @Override
     @EntityGraph(attributePaths = {"assets", "consultant", "quotation"})
     Optional<InspectionRequest> findById(UUID id);

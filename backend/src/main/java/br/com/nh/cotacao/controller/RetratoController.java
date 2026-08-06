@@ -45,11 +45,13 @@ public class RetratoController {
             @RequestParam(value = "residenceAddress", required = false) String residenceAddress,
             @RequestParam(value = "signature", required = false) MultipartFile signature,
             @RequestParam(value = "vehicleDocument", required = false) MultipartFile vehicleDocument,
-            @RequestParam(value = "identityDocument", required = false) MultipartFile identityDocument
+            @RequestParam(value = "identityDocument", required = false) MultipartFile identityDocument,
+            @RequestParam(value = "additionalFiles", required = false) List<MultipartFile> additionalFiles,
+            @RequestParam(value = "additionalLabels", required = false) List<String> additionalLabels
     ) {
         return service.upload(
                 token, photos, labels, video, residenceAddress, signature,
-                vehicleDocument, identityDocument
+                vehicleDocument, identityDocument, additionalFiles, additionalLabels
         );
     }
 

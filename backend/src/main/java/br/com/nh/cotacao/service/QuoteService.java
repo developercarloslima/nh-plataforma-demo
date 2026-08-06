@@ -74,6 +74,7 @@ public class QuoteService {
     @Transactional
     public QuoteResponse create(CreateQuoteRequest request) {
         validateYear(request.manufactureYear());
+        String cpf = normalizeAndValidateCpf(request.cpf());
         String plate = validateAndNormalizePlate(request.plate(), request.zeroKm());
         MotorcycleOrigin motorcycleOrigin = validateMotorcycleOrigin(
                 request.categoryCode(), request.effectiveMotorcycleOrigin()
@@ -88,6 +89,7 @@ public class QuoteService {
                 buildQuoteNumber(),
                 consultant,
                 request.customerName(),
+                cpf,
                 normalizePhone(request.whatsapp()),
                 plate,
                 request.model(),
@@ -111,8 +113,7 @@ public class QuoteService {
     @Transactional
     public QuoteResponse createPublic(CreatePublicQuoteRequest request) {
         validateYear(request.manufactureYear());
-        String cpf = normalizeCpf(request.cpf());
-        if (!validCpf(cpf)) throw new IllegalArgumentException("Informe um CPF válido.");
+        String cpf = normalizeAndValidateCpf(request.cpf());
 
         String whatsapp = normalizePhone(request.whatsapp());
         if (whatsapp == null || whatsapp.length() < 10 || whatsapp.length() > 13) {
@@ -153,6 +154,77 @@ public class QuoteService {
         );
         applyCatalogSnapshot(quotation, selection.plan(), selection.optionals());
         return toResponse(quotationRepository.save(quotation));
+    }
+
+    /**
+     * Gera uma nova cotação a partir de uma cotação vencida, recalculando o plano e os
+     * opcionais com a tabela atualmente ativa. A cotação anterior é preservada no histórico.
+     */
+    @Transactional
+    public Quotation recreateForConsultant(Quotation source, Consultant consultant, String requestedCpf) {
+        if (source == null) throw new IllegalArgumentException("Cotação não encontrada.");
+        if (consultant == null) throw new IllegalArgumentException("Informe o consultor responsável.");
+
+        boolean expired = (source.getStatus() == QuoteStatus.CREATED
+                || source.getStatus() == QuoteStatus.UNDER_REVIEW)
+                && OffsetDateTime.now().isAfter(source.getValidUntil());
+        if (!expired) {
+            throw new IllegalArgumentException("Somente uma cotação vencida pode ser refeita.");
+        }
+
+        String cpf = hasValidCpf(source.getCustomerCpf())
+                ? normalizeCpf(source.getCustomerCpf())
+                : normalizeAndValidateCpf(requestedCpf);
+
+        List<String> optionalCodes = source.getSelectedOptionals().stream()
+                .map(QuotationOptionalCoverage::getCoverageCode)
+                .toList();
+        PlanSelection selection = resolvePlan(
+                source.getSelectedPlanCode(),
+                source.getCategoryCode(),
+                source.getMotorcycleOrigin(),
+                source.getFipeValue(),
+                optionalCodes
+        );
+
+        Quotation recreated = Quotation.createForConsultant(
+                buildQuoteNumber(),
+                consultant,
+                source.getCustomerName(),
+                cpf,
+                normalizePhone(source.getWhatsapp()),
+                validateAndNormalizePlate(source.getPlate(), source.isZeroKm()),
+                source.getModel(),
+                source.getManufactureYear(),
+                source.isZeroKm(),
+                source.getFipeValue(),
+                source.getCategoryCode(),
+                Region.NATIONAL,
+                source.getMotorcycleOrigin(),
+                selection.plan().getCode(),
+                selection.plan().getName(),
+                selection.pricing().tableMonthlyValue(),
+                selection.pricing().mandatoryMonthlyFee(),
+                selection.pricing().oneTimeFee(),
+                selection.pricing().mandatoryFeeDescription()
+        );
+        applyCatalogSnapshot(recreated, selection.plan(), selection.optionals());
+        return quotationRepository.save(recreated);
+    }
+
+    public boolean hasValidCustomerCpf(Quotation quotation) {
+        return quotation != null && hasValidCpf(quotation.getCustomerCpf());
+    }
+
+    @Transactional
+    public String ensureCustomerCpf(Quotation quotation, String requestedCpf) {
+        if (quotation == null) throw new IllegalArgumentException("Cotação não encontrada.");
+        if (hasValidCpf(quotation.getCustomerCpf())) return normalizeCpf(quotation.getCustomerCpf());
+
+        String cpf = normalizeAndValidateCpf(requestedCpf);
+        quotation.registerCustomerCpf(cpf);
+        quotationRepository.flush();
+        return cpf;
     }
 
     private PlanSelection resolvePlan(
@@ -504,6 +576,16 @@ public class QuoteService {
 
     private static String normalizeCpf(String cpf) {
         return cpf == null ? "" : cpf.replaceAll("\\D", "");
+    }
+
+    private static String normalizeAndValidateCpf(String cpf) {
+        String normalized = normalizeCpf(cpf);
+        if (!validCpf(normalized)) throw new IllegalArgumentException("Informe um CPF válido.");
+        return normalized;
+    }
+
+    private static boolean hasValidCpf(String cpf) {
+        return validCpf(normalizeCpf(cpf));
     }
 
     private static String maskCpf(String cpf) {

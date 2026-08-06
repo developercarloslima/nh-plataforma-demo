@@ -142,6 +142,7 @@ public class Quotation {
             String quoteNumber,
             Consultant consultant,
             String customerName,
+            String customerCpf,
             String whatsapp,
             String plate,
             String model,
@@ -165,7 +166,7 @@ public class Quotation {
                 consultant,
                 consultant.getName(),
                 customerName,
-                null,
+                customerCpf,
                 whatsapp,
                 plate,
                 model,
@@ -337,6 +338,19 @@ public class Quotation {
                 monthlyPrice
         ));
         monthlyValue = monthlyValue.add(monthlyPrice);
+    }
+
+
+    public void assignConsultant(Consultant consultant) {
+        if (consultant == null) throw new IllegalArgumentException("Informe o consultor responsável.");
+        this.consultant = consultant;
+        this.consultantName = consultant.getName();
+    }
+
+    public void registerCustomerCpf(String cpf) {
+        String digits = cpf == null ? "" : cpf.replaceAll("\\D", "");
+        if (digits.length() != 11) throw new IllegalArgumentException("Informe um CPF válido.");
+        this.customerCpf = digits;
     }
 
     public void registerDriveFolder(String folderId, String folderUrl) {

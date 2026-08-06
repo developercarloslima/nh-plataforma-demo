@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#070c40">
   <title>Retrato NH | Vistoria Digital</title>
   <link rel="icon" href="/assets/favicon-nh.png">
-  <link rel="stylesheet" href="/shared/portal.css?v=20260806-database-api-v5">
-  <link rel="stylesheet" href="/shared/responsive.css?v=20260805-guide-page">
+  <link rel="stylesheet" href="/shared/portal.css?v=20260806-database-api-v6">
+  <link rel="stylesheet" href="/shared/responsive.css?v=20260806-all-devices-v2">
 </head>
 <body>
 <header class="portal-header">
@@ -101,14 +101,14 @@
           <label class="document-upload-card" for="vehicle-document">
             <span>CRLV do veículo *</span>
             <small>Envie uma foto nítida ou o arquivo PDF do documento.</small>
-            <input id="vehicle-document" type="file" accept="image/jpeg,image/png,image/webp,application/pdf">
+            <input id="vehicle-document" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.doc,.docx,.odt,.rtf,.txt">
             <strong id="vehicle-document-status">Documento pendente.</strong>
           </label>
 
           <label class="document-upload-card" for="identity-document">
             <span>RG ou CNH do associado *</span>
             <small>Envie uma foto nítida ou o arquivo PDF do documento oficial.</small>
-            <input id="identity-document" type="file" accept="image/jpeg,image/png,image/webp,application/pdf">
+            <input id="identity-document" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.doc,.docx,.odt,.rtf,.txt">
             <strong id="identity-document-status">Documento pendente.</strong>
           </label>
         </div>
@@ -123,6 +123,19 @@
           <canvas id="signature-pad" width="900" height="260" tabindex="0" aria-label="Área para assinatura do associado"></canvas>
           <p id="signature-status" class="capture-status">Assinatura pendente.</p>
         </div>
+      </section>
+
+      <section class="registration-fields additional-documents-section">
+        <span class="eyebrow" style="color:#070c40">ARQUIVOS ADICIONAIS</span>
+        <h3>Fotos, vídeos e documentos complementares</h3>
+        <p class="muted">Opcional. Envie outros arquivos que ajudem na análise do Retrato NH.</p>
+        <label class="document-upload-card" for="additional-files">
+          <span>Selecionar arquivos adicionais</span>
+          <small>Fotos, vídeos, PDF, DOC, DOCX, ODT, RTF ou TXT. É possível selecionar vários arquivos.</small>
+          <input id="additional-files" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm,video/3gpp,application/pdf,.doc,.docx,.odt,.rtf,.txt">
+          <strong id="additional-files-status">Envio opcional.</strong>
+        </label>
+        <div id="additional-files-list" class="additional-files-list"></div>
       </section>
 
       <p id="capture-summary" class="capture-summary" aria-live="polite">Fotos e vídeo pendentes.</p>
@@ -220,6 +233,7 @@
 </section>
 
 <script src="/shared/config.js?v=20260804-current-origin"></script>
-<script src="/retrato/retrato.js?v=20260806-database-api-v5"></script>
+<script src="/retrato/retrato.js?v=20260806-database-api-v6"></script>
+<script src="/shared/responsive.js?v=20260806-all-devices-v2"></script>
 </body>
 </html>

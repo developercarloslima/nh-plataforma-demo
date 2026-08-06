@@ -354,6 +354,16 @@ code,
   max-width: none;
 }
 
+.table-wrap table th,
+.table-wrap table thead th,
+table.responsive-table th,
+table.responsive-table thead th {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
+  hyphens: none;
+}
+
 .table-wrap::after {
   content: "";
   display: block;
@@ -1396,5 +1406,687 @@ code,
 
   .floating-social a {
     font-size: 1.12rem !important;
+  }
+}
+
+/* =========================================================
+   RESPONSIVIDADE UNIVERSAL V2 — PAINÉIS E FLUXOS OPERACIONAIS
+   ========================================================= */
+
+:where(input, select, textarea, button, .button) {
+  min-inline-size: 0;
+}
+
+:where(input, select, textarea) {
+  max-inline-size: 100%;
+}
+
+input[type="file"] {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+select {
+  width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+option {
+  max-width: 100%;
+}
+
+fieldset {
+  max-width: 100%;
+  min-inline-size: 0;
+}
+
+iframe,
+embed,
+object {
+  width: 100%;
+  max-width: 100%;
+}
+
+.admin-tabs,
+.steps,
+.hero-steps {
+  scroll-padding-inline: var(--responsive-gutter);
+}
+
+.dialog-card,
+.inspection-modal,
+.cotacao-modal__box,
+.camera-panel {
+  scrollbar-width: thin;
+}
+
+.inspection-media-body,
+.inspection-media-card,
+.document-upload-card,
+.additional-file-row,
+.communication-summary,
+.detail-grid > div {
+  min-width: 0;
+}
+
+.inspection-media-body :where(strong, small, a),
+.document-upload-card :where(strong, small),
+.additional-file-row :where(strong, small),
+.communication-summary :where(strong, span, small),
+.detail-grid :where(strong, span) {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Converte tabelas operacionais em cartões legíveis no celular. */
+@media (max-width: 920px) {
+  .table-wrap:has(table.responsive-table) {
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    scrollbar-gutter: auto;
+  }
+
+  .table-wrap:has(table.responsive-table)::after {
+    display: none;
+  }
+
+  table.responsive-table {
+    display: block;
+    width: 100%;
+    min-width: 0 !important;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  table.responsive-table thead {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0 0 0 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+  }
+
+  table.responsive-table tbody {
+    display: grid;
+    width: 100%;
+    gap: 13px;
+  }
+
+  table.responsive-table tbody tr {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 7px 22px rgba(7, 12, 64, .06);
+  }
+
+  table.responsive-table tbody tr[hidden] {
+    display: none !important;
+  }
+
+  table.responsive-table tbody td {
+    display: grid;
+    grid-template-columns: minmax(88px, 36%) minmax(0, 1fr);
+    align-items: start;
+    gap: 10px;
+    width: 100%;
+    min-width: 0;
+    padding: 11px 13px;
+    border: 0;
+    border-bottom: 1px solid #eaedf3;
+    text-align: left;
+    white-space: normal;
+  }
+
+  table.responsive-table tbody td:last-child {
+    border-bottom: 0;
+  }
+
+  table.responsive-table tbody td::before {
+    content: attr(data-label);
+    min-width: 0;
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 900;
+    line-height: 1.3;
+    letter-spacing: .055em;
+    text-transform: uppercase;
+  }
+
+  table.responsive-table tbody td[data-full-row="true"] {
+    display: block;
+    padding: 22px 15px;
+    text-align: center;
+  }
+
+  table.responsive-table tbody td[data-full-row="true"]::before {
+    display: none;
+  }
+
+  table.responsive-table tbody td > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  table.responsive-table tbody td :where(input, select, textarea) {
+    width: 100%;
+    min-width: 0 !important;
+  }
+
+  table.responsive-table .catalog-name {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  table.responsive-table .row-actions,
+  table.responsive-table .inline-edit,
+  table.responsive-table .status-with-action {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    width: 100%;
+    min-width: 0;
+  }
+
+  table.responsive-table .row-actions > *,
+  table.responsive-table .inline-edit > *,
+  table.responsive-table .status-with-action > * {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    white-space: normal;
+  }
+
+  .admin-tabs {
+    margin-inline: calc(0px - var(--responsive-gutter));
+    padding-inline: var(--responsive-gutter);
+  }
+
+  .kpi strong {
+    font-size: clamp(1.65rem, 10vw, 2.2rem);
+  }
+
+  .inspection-media-section {
+    padding: 14px;
+  }
+
+  .inspection-media-preview,
+  .inspection-media-preview img,
+  .inspection-media-preview video {
+    min-height: 0;
+    height: auto;
+    max-height: 62dvh;
+  }
+
+  .inspection-media-placeholder {
+    min-height: 150px;
+    display: grid;
+    place-items: center;
+  }
+
+  .inspection-media-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .inspection-media-actions > * {
+    width: 100%;
+    min-width: 0 !important;
+  }
+
+  .capture-guide-figure img,
+  .inspection-guide-grid img {
+    max-height: 58dvh;
+  }
+}
+
+@media (max-width: 430px) {
+  .portal-header {
+    padding-right: max(10px, env(safe-area-inset-right, 0px));
+    padding-left: max(10px, env(safe-area-inset-left, 0px));
+  }
+
+  .portal-brand {
+    gap: 8px;
+  }
+
+  .portal-brand span {
+    max-width: min(48vw, 165px);
+  }
+
+  .header-actions {
+    gap: 5px;
+  }
+
+  .header-actions a,
+  .header-actions button {
+    min-height: 40px;
+    padding: 8px 9px;
+  }
+
+  .dialog-head,
+  .camera-panel-head,
+  .inspection-media-head {
+    gap: 10px;
+  }
+
+  .dialog-close,
+  .camera-close,
+  .modal-close {
+    flex: 0 0 42px;
+  }
+
+  .capture-preview,
+  .camera-live-frame {
+    min-height: 200px;
+  }
+
+  .review-photo {
+    grid-template-columns: 86px minmax(0, 1fr);
+  }
+
+  .review-photo img {
+    width: 86px;
+    height: 82px;
+  }
+}
+
+@media (max-width: 350px) {
+  :root {
+    --responsive-gutter: 10px;
+  }
+
+  .portal-brand span {
+    display: none;
+  }
+
+  .portal-header {
+    flex-wrap: nowrap;
+  }
+
+  .header-actions {
+    margin-left: auto;
+  }
+
+  .header-actions a,
+  .header-actions button {
+    font-size: .72rem;
+  }
+
+  .hero-panel,
+  .card,
+  .tool-card,
+  .login-card,
+  .dialog-card,
+  .communication-card,
+  .inspection-modal,
+  .camera-panel {
+    padding-right: 13px;
+    padding-left: 13px;
+  }
+
+  table.responsive-table tbody td {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  table.responsive-table tbody td::before {
+    font-size: 9px;
+  }
+
+  .benefits-grid,
+  .benefits-grid-expanded {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Tablets em modo retrato: duas colunas sem comprimir o conteúdo. */
+@media (min-width: 701px) and (max-width: 900px) {
+  .kpi-grid,
+  .overview-grid,
+  .detail-grid,
+  .inspection-media-grid,
+  .document-upload-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .table-wrap {
+    box-shadow: inset -14px 0 18px -20px rgba(7, 12, 64, .55);
+  }
+}
+
+/* Celulares em paisagem: preserva controles e permite rolagem interna. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .portal-header,
+  .topbar {
+    min-height: 56px;
+  }
+
+  .dialog-card,
+  .inspection-modal,
+  .cotacao-modal__box,
+  .camera-panel {
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+
+  .dialog-actions,
+  .camera-controls,
+  .modal-actions {
+    padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* =========================================================
+   HEADER INSTITUCIONAL — faixa intermediária (tablet/notebook)
+   Evita sobreposição, scroll horizontal e menus espremidos.
+   ========================================================= */
+@media (min-width: 761px) and (max-width: 1240px) {
+  .site-header {
+    overflow-x: clip;
+  }
+
+  .nav-wrapper {
+    min-height: 82px;
+    gap: 12px;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+  }
+
+  .brand {
+    order: 1;
+    margin-right: auto;
+    gap: 10px;
+  }
+
+  .brand-symbol {
+    width: 58px;
+  }
+
+  .brand-name strong {
+    font-size: clamp(1.05rem, 1.7vw, 1.22rem);
+    line-height: .92;
+  }
+
+  .brand-name small {
+    font-size: clamp(.56rem, .9vw, .66rem);
+    line-height: 1;
+  }
+
+  .header-phone {
+    order: 2;
+    min-height: 46px;
+    padding-inline: 16px;
+    font-size: .76rem;
+    white-space: nowrap;
+  }
+
+  .header-phone span {
+    white-space: nowrap;
+  }
+
+  .main-menu {
+    display: none !important;
+  }
+
+  .main-menu.open {
+    position: fixed !important;
+    inset: 84px 20px auto 20px !important;
+    width: auto !important;
+    max-width: calc(100vw - 40px) !important;
+    max-height: calc(100dvh - 110px) !important;
+    overflow-y: auto !important;
+    display: grid !important;
+    gap: 8px !important;
+    padding: 16px !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    border-radius: 18px !important;
+    background: rgba(7, 12, 64, 0.98) !important;
+    box-shadow: 0 24px 60px rgba(7, 12, 64, 0.24) !important;
+    overscroll-behavior: contain;
+    z-index: 120;
+  }
+
+  .main-menu.open a {
+    padding: 12px 10px;
+  }
+
+  .main-menu.open a::after {
+    display: none;
+  }
+
+  .header-cta {
+    order: 3;
+    min-height: 46px;
+    padding-inline: 16px;
+    font-size: .78rem;
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .header-collaborator {
+    display: none !important;
+  }
+
+  .menu-toggle {
+    order: 4;
+    display: grid !important;
+    flex: 0 0 46px;
+    width: 46px;
+    height: 46px;
+    align-content: center;
+    justify-content: center;
+  }
+
+  .menu-toggle.active span:nth-child(1) {
+    transform: translateY(7px) rotate(45deg);
+  }
+
+  .menu-toggle.active span:nth-child(2) {
+    opacity: 0;
+  }
+
+  .menu-toggle.active span:nth-child(3) {
+    transform: translateY(-7px) rotate(-45deg);
+  }
+}
+
+@media (min-width: 761px) and (max-width: 980px) {
+  .nav-wrapper {
+    gap: 10px;
+  }
+
+  .brand-symbol {
+    width: 52px;
+  }
+
+  .brand-name strong {
+    font-size: 1rem;
+  }
+
+  .brand-name small {
+    font-size: .56rem;
+  }
+
+  .header-phone {
+    min-height: 44px;
+    padding-inline: 12px;
+    font-size: .7rem;
+  }
+
+  .header-cta {
+    min-height: 44px;
+    padding-inline: 14px;
+    font-size: .74rem;
+  }
+}
+
+
+/* =========================================================
+   PAINEL DO CONSULTOR — tabelas viram cartões mais cedo
+   para evitar grade espremida em larguras intermediárias.
+   ========================================================= */
+@media (max-width: 1400px) {
+  #activity-dashboard .section-head {
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  #activity-dashboard .section-head > div {
+    min-width: 0;
+  }
+
+  #activity-dashboard #refresh-dashboard {
+    align-self: flex-start;
+  }
+
+  #activity-dashboard .consultant-dashboard-wrap {
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    scrollbar-gutter: auto;
+  }
+
+  #activity-dashboard .consultant-dashboard-wrap::after {
+    display: none;
+  }
+
+  #activity-dashboard table.consultant-dashboard-table {
+    display: block;
+    width: 100%;
+    min-width: 0 !important;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  #activity-dashboard table.consultant-dashboard-table thead {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0 0 0 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+  }
+
+  #activity-dashboard table.consultant-dashboard-table tbody {
+    display: grid;
+    width: 100%;
+    gap: 16px;
+  }
+
+  #activity-dashboard table.consultant-dashboard-table tbody tr {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: 0 8px 24px rgba(7, 12, 64, .06);
+  }
+
+  #activity-dashboard table.consultant-dashboard-table tbody tr[hidden] {
+    display: none !important;
+  }
+
+  #activity-dashboard table.consultant-dashboard-table tbody td {
+    display: grid;
+    grid-template-columns: minmax(120px, 30%) minmax(0, 1fr);
+    align-items: start;
+    gap: 12px;
+    width: 100%;
+    min-width: 0;
+    padding: 12px 14px;
+    border: 0;
+    border-bottom: 1px solid #eaedf3;
+    text-align: left;
+    white-space: normal;
+  }
+
+  #activity-dashboard table.consultant-dashboard-table tbody td:last-child {
+    border-bottom: 0;
+  }
+
+  #activity-dashboard table.consultant-dashboard-table tbody td::before {
+    content: attr(data-label);
+    min-width: 0;
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 900;
+    line-height: 1.3;
+    letter-spacing: .055em;
+    text-transform: uppercase;
+  }
+
+  #activity-dashboard table.consultant-dashboard-table tbody td[data-full-row="true"] {
+    display: block;
+    padding: 22px 15px;
+    text-align: center;
+  }
+
+  #activity-dashboard table.consultant-dashboard-table tbody td[data-full-row="true"]::before {
+    display: none;
+  }
+
+  #activity-dashboard table.consultant-dashboard-table tbody td > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  #activity-dashboard table.consultant-dashboard-table .row-actions,
+  #activity-dashboard table.consultant-dashboard-table .inline-edit,
+  #activity-dashboard table.consultant-dashboard-table .status-with-action {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  #activity-dashboard table.consultant-dashboard-table .row-actions > *,
+  #activity-dashboard table.consultant-dashboard-table .inline-edit > *,
+  #activity-dashboard table.consultant-dashboard-table .status-with-action > * {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    text-align: center;
+  }
+
+  #activity-dashboard table.consultant-dashboard-table .table-code {
+    white-space: normal;
+    word-break: break-word;
+  }
+}
+
+@media (max-width: 980px) {
+  #activity-dashboard .section-head {
+    flex-direction: column;
+  }
+
+  #activity-dashboard #refresh-dashboard {
+    width: 100%;
+  }
+}
+
+@media (max-width: 560px) {
+  #activity-dashboard table.consultant-dashboard-table tbody td {
+    grid-template-columns: minmax(92px, 38%) minmax(0, 1fr);
+    padding: 11px 12px;
   }
 }

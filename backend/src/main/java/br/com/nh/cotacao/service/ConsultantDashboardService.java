@@ -2,6 +2,7 @@ package br.com.nh.cotacao.service;
 
 import br.com.nh.cotacao.dto.ConsultantDashboardDtos.*;
 import br.com.nh.cotacao.dto.InspectionDtos.InspectionResponse;
+import br.com.nh.cotacao.entity.Consultant;
 import br.com.nh.cotacao.entity.InspectionRequest;
 import br.com.nh.cotacao.entity.InspectionRequestStatus;
 import br.com.nh.cotacao.entity.Quotation;
@@ -16,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -29,26 +31,34 @@ public class ConsultantDashboardService {
     private final InspectionRequestRepository inspectionRepository;
     private final RetratoService retratoService;
     private final InspectionAssetStorageService storageService;
+    private final QuoteService quoteService;
 
     public ConsultantDashboardService(
             ConsultantService consultantService,
             QuotationRepository quotationRepository,
             InspectionRequestRepository inspectionRepository,
             RetratoService retratoService,
-            InspectionAssetStorageService storageService
+            InspectionAssetStorageService storageService,
+            QuoteService quoteService
     ) {
         this.consultantService = consultantService;
         this.quotationRepository = quotationRepository;
         this.inspectionRepository = inspectionRepository;
         this.retratoService = retratoService;
         this.storageService = storageService;
+        this.quoteService = quoteService;
     }
 
     @Transactional
     public ConsultantDashboardResponse dashboard(UUID consultantId) {
-        var consultant = consultantService.findActive(consultantId);
-        List<Quotation> quoteEntities = quotationRepository.findAllByConsultant_IdOrderByCreatedAtDesc(consultantId);
-        List<InspectionRequest> inspections = new ArrayList<>(inspectionRepository.findAllByConsultant_IdOrderByCreatedAtDesc(consultantId));
+        Consultant consultant = consultantService.findActive(consultantId);
+        List<Quotation> quoteEntities = findConsultantQuotes(consultant);
+        List<InspectionRequest> inspections = new ArrayList<>(findConsultantInspections(consultant));
+
+        // Corrige automaticamente registros históricos que possuem apenas o nome do consultor.
+        quoteEntities.forEach(item -> repairOwnership(item, consultant));
+        inspections.forEach(item -> repairOwnership(item, consultant));
+
         Map<UUID, InspectionRequest> inspectionsByQuote = inspections.stream()
                 .filter(item -> item.getQuotation() != null)
                 .collect(Collectors.toMap(
@@ -57,8 +67,12 @@ public class ConsultantDashboardService {
                         (left, right) -> left.getCreatedAt().isAfter(right.getCreatedAt()) ? left : right
                 ));
 
+        // Cotações antigas sem CPF permanecem visíveis. A vistoria será criada quando o
+        // consultor informar o CPF pelo botão "Iniciar vistoria".
         for (Quotation quotation : quoteEntities) {
-            if (quotation.getStatus() == QuoteStatus.ACCEPTED && !inspectionsByQuote.containsKey(quotation.getId())) {
+            if (quotation.getStatus() == QuoteStatus.ACCEPTED
+                    && hasStoredCpf(quotation)
+                    && !inspectionsByQuote.containsKey(quotation.getId())) {
                 InspectionResponse created = retratoService.ensureForQuotation(quotation);
                 InspectionRequest createdInspection = inspectionRepository.findById(created.id())
                         .orElseThrow(() -> new IllegalStateException("A vistoria foi criada, mas não pôde ser carregada."));
@@ -72,7 +86,6 @@ public class ConsultantDashboardService {
         List<ConsultantQuoteSummary> quotes = quoteEntities.stream()
                 .map(item -> toQuote(item, inspectionsByQuote.get(item.getId())))
                 .toList();
-
         List<ConsultantInspectionSummary> inspectionItems = inspections.stream()
                 .map(this::toInspection)
                 .toList();
@@ -81,17 +94,99 @@ public class ConsultantDashboardService {
     }
 
     @Transactional
-    public ConsultantInspectionSummary ensureInspection(UUID consultantId, UUID quoteId) {
-        var consultant = consultantService.findActive(consultantId);
-        Quotation quotation = quotationRepository.findById(quoteId)
-                .orElseThrow(() -> new IllegalArgumentException("Cotação não encontrada."));
-        if (quotation.getConsultant() == null || !consultant.getId().equals(quotation.getConsultant().getId())) {
-            throw new IllegalArgumentException("Esta cotação não pertence ao consultor selecionado.");
-        }
+    public ConsultantInspectionSummary ensureInspection(UUID consultantId, UUID quoteId, String requestedCpf) {
+        Consultant consultant = consultantService.findActive(consultantId);
+        Quotation quotation = findOwnedQuotation(consultant, quoteId);
+        repairOwnership(quotation, consultant);
+        quoteService.ensureCustomerCpf(quotation, requestedCpf);
+
         InspectionResponse created = retratoService.ensureForQuotation(quotation);
         InspectionRequest inspection = inspectionRepository.findById(created.id())
                 .orElseThrow(() -> new IllegalStateException("A vistoria foi criada, mas não pôde ser carregada."));
+        repairOwnership(inspection, consultant);
         return toInspection(inspection);
+    }
+
+    @Transactional
+    public ConsultantQuoteSummary redoQuote(UUID consultantId, UUID quoteId, String requestedCpf) {
+        Consultant consultant = consultantService.findActive(consultantId);
+        Quotation source = findOwnedQuotation(consultant, quoteId);
+        repairOwnership(source, consultant);
+        Quotation recreated = quoteService.recreateForConsultant(source, consultant, requestedCpf);
+        return toQuote(recreated, null);
+    }
+
+    @Transactional
+    public void deleteQuote(UUID consultantId, UUID quoteId) {
+        Consultant consultant = consultantService.findActive(consultantId);
+        Quotation quotation = findOwnedQuotation(consultant, quoteId);
+        quotationRepository.delete(quotation);
+        quotationRepository.flush();
+    }
+
+    private List<Quotation> findConsultantQuotes(Consultant consultant) {
+        Map<UUID, Quotation> merged = new LinkedHashMap<>();
+        quotationRepository.findAllByConsultant_IdOrderByCreatedAtDesc(consultant.getId())
+                .forEach(item -> merged.put(item.getId(), item));
+        quotationRepository.findAllByConsultantNameIgnoreCaseOrderByCreatedAtDesc(consultant.getName())
+                .forEach(item -> merged.putIfAbsent(item.getId(), item));
+        return merged.values().stream()
+                .filter(item -> belongsTo(item, consultant))
+                .sorted(Comparator.comparing(Quotation::getCreatedAt).reversed())
+                .toList();
+    }
+
+    private List<InspectionRequest> findConsultantInspections(Consultant consultant) {
+        Map<UUID, InspectionRequest> merged = new LinkedHashMap<>();
+        inspectionRepository.findAllByConsultant_IdOrderByCreatedAtDesc(consultant.getId())
+                .forEach(item -> merged.put(item.getId(), item));
+        inspectionRepository.findAllByConsultantNameIgnoreCaseOrderByCreatedAtDesc(consultant.getName())
+                .forEach(item -> merged.putIfAbsent(item.getId(), item));
+        return merged.values().stream()
+                .filter(item -> belongsTo(item, consultant))
+                .sorted(Comparator.comparing(InspectionRequest::getCreatedAt).reversed())
+                .toList();
+    }
+
+    private Quotation findOwnedQuotation(Consultant consultant, UUID quoteId) {
+        Quotation quotation = quotationRepository.findById(quoteId)
+                .orElseThrow(() -> new IllegalArgumentException("Cotação não encontrada."));
+        if (!belongsTo(quotation, consultant)) {
+            throw new IllegalArgumentException("Esta cotação não pertence ao consultor selecionado.");
+        }
+        return quotation;
+    }
+
+    private boolean belongsTo(Quotation quotation, Consultant consultant) {
+        if (quotation.getConsultant() != null
+                && consultant.getId().equals(quotation.getConsultant().getId())) return true;
+        return sameConsultantName(quotation.getConsultantName(), consultant);
+    }
+
+    private boolean belongsTo(InspectionRequest inspection, Consultant consultant) {
+        if (inspection.getConsultant() != null
+                && consultant.getId().equals(inspection.getConsultant().getId())) return true;
+        return sameConsultantName(inspection.getConsultantName(), consultant);
+    }
+
+    private boolean sameConsultantName(String activityName, Consultant consultant) {
+        return Consultant.normalize(activityName).equals(consultant.getNormalizedName());
+    }
+
+    private void repairOwnership(Quotation quotation, Consultant consultant) {
+        if (quotation.getConsultant() == null && sameConsultantName(quotation.getConsultantName(), consultant)) {
+            quotation.assignConsultant(consultant);
+        }
+    }
+
+    private void repairOwnership(InspectionRequest inspection, Consultant consultant) {
+        if (inspection.getConsultant() == null && sameConsultantName(inspection.getConsultantName(), consultant)) {
+            inspection.assignConsultant(consultant);
+        }
+    }
+
+    private boolean hasStoredCpf(Quotation quotation) {
+        return quoteService.hasValidCustomerCpf(quotation);
     }
 
     private ConsultantQuoteSummary toQuote(Quotation item, InspectionRequest inspection) {
@@ -105,6 +200,8 @@ public class ConsultantDashboardService {
                 item.getId(), item.getQuoteNumber(), item.getCustomerName(), item.getPlate(), item.isZeroKm(),
                 item.getModel(), item.getSelectedPlanName(), item.getStatus(), item.getCreatedAt(), item.getValidUntil(),
                 expired,
+                hasStoredCpf(item),
+                "/api/quotes/" + item.getId() + "/pdf",
                 inspection == null ? null : inspection.getId(),
                 inspectionStatus,
                 inspectionCompletedAt,
@@ -121,7 +218,8 @@ public class ConsultantDashboardService {
         InspectionRequest inspection = inspectionRepository.findById(inspectionId)
                 .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
         inspection.markCompletionMessageSent();
-        return toInspection(inspectionRepository.save(inspection));
+        inspectionRepository.flush();
+        return toInspection(inspection);
     }
 
     private ConsultantInspectionSummary toInspection(InspectionRequest item) {

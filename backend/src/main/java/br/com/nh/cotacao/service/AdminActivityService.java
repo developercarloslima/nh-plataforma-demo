@@ -73,7 +73,8 @@ public class AdminActivityService {
         InspectionRequest inspection = inspectionRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
         inspection.markDecisionMessageSent();
-        return toInspection(inspectionRepository.save(inspection));
+        inspectionRepository.flush();
+        return toInspection(inspection);
     }
 
     @Transactional
@@ -82,7 +83,7 @@ public class AdminActivityService {
                 .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
         String old = inspectionAnalysisSummary(inspection);
         inspection.adminReview(request.status(), request.adminNote());
-        inspectionRepository.save(inspection);
+        inspectionRepository.flush();
         auditRepository.save(CatalogChangeAudit.createText(
                 "INSPECTION_STATUS", null, id.toString(), "Retrato NH de " + inspection.getAssociateName() + " analisado",
                 old, inspectionAnalysisSummary(inspection), username

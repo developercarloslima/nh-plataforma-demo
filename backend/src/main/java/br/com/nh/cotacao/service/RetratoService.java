@@ -20,10 +20,21 @@ public class RetratoService {
     private static final long MAX_PHOTO_BYTES = 12L * 1024 * 1024;
     private static final long MAX_VIDEO_BYTES = 220L * 1024 * 1024;
     private static final long MAX_SIGNATURE_BYTES = 3L * 1024 * 1024;
-    private static final long MAX_DOCUMENT_BYTES = 18L * 1024 * 1024;
+    private static final long MAX_DOCUMENT_BYTES = 30L * 1024 * 1024;
     private static final Set<String> PHOTO_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
     private static final Set<String> VIDEO_TYPES = Set.of("video/mp4", "video/quicktime", "video/webm", "video/3gpp");
-    private static final Set<String> DOCUMENT_TYPES = Set.of("application/pdf", "image/jpeg", "image/png", "image/webp");
+    private static final Set<String> DOCUMENT_TYPES = Set.of(
+            "application/pdf",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.oasis.opendocument.text",
+            "application/rtf",
+            "text/rtf",
+            "text/plain",
+            "image/jpeg",
+            "image/png",
+            "image/webp"
+    );
 
     private final InspectionRequestRepository repository;
     private final ConsultantService consultantService;
@@ -112,7 +123,9 @@ public class RetratoService {
             String residenceAddress,
             MultipartFile signature,
             MultipartFile vehicleDocument,
-            MultipartFile identityDocument
+            MultipartFile identityDocument,
+            List<MultipartFile> additionalFiles,
+            List<String> additionalLabels
     ) {
         InspectionRequest request = findByToken(token);
         if (request.getStatus() != InspectionRequestStatus.WAITING_FILES
@@ -157,6 +170,13 @@ public class RetratoService {
             );
         }
         safePhotos.forEach(this::validatePhoto);
+        List<MultipartFile> safeAdditionalFiles = additionalFiles == null ? List.of() : additionalFiles.stream()
+                .filter(file -> file != null && !file.isEmpty())
+                .toList();
+        if (safeAdditionalFiles.size() > 20) {
+            throw new IllegalArgumentException("Envie no máximo 20 arquivos adicionais por vistoria.");
+        }
+        safeAdditionalFiles.forEach(this::validateAdditionalFile);
 
         int order = 1;
         for (MultipartFile photo : safePhotos) {
@@ -193,13 +213,34 @@ public class RetratoService {
                     identityDocument, identityDocumentOrder);
         }
 
-        repository.saveAndFlush(request);
+        for (int index = 0; index < safeAdditionalFiles.size(); index++) {
+            MultipartFile additionalFile = safeAdditionalFiles.get(index);
+            int additionalOrder = 100 + index;
+            String additionalLabel = labelAt(additionalLabels, index, "Arquivo adicional " + (index + 1));
+            String fileName = String.format(
+                    Locale.ROOT,
+                    "%03d-%s%s",
+                    additionalOrder,
+                    slug(additionalLabel),
+                    extension(additionalFile.getContentType(), ".bin")
+            );
+            storeMultipart(
+                    request,
+                    InspectionAssetType.OTHER_DOCUMENT,
+                    additionalLabel,
+                    fileName,
+                    additionalFile,
+                    additionalOrder
+            );
+        }
+
+        repository.flush();
         byte[] reportBytes = pdfService.generate(request);
         int reportOrder = newInspection ? requiredPhotoCount + 5 : 2;
         storageService.storeBytes(request, InspectionAssetType.REPORT, "Relatório da vistoria",
                 "relatorio-retrato-nh.pdf", "application/pdf", reportOrder, reportBytes);
         request.complete();
-        repository.saveAndFlush(request);
+        repository.flush();
 
         return new InspectionUploadResponse(toResponse(request), null, null, false, "Arquivos armazenados no painel de análise.");
     }
@@ -248,7 +289,8 @@ public class RetratoService {
         if (request.getWhatsapp() != null && !request.getWhatsapp().isBlank()) {
             String message = "Olá, " + request.getAssociateName() + "! Acesse o link abaixo para realizar "
                     + (request.getRequestType() == InspectionRequestType.NEW_INSPECTION
-                    ? "a vistoria digital completa" : "o vídeo para atualização de boleto")
+                    ? "a vistoria digital completa e enviar as fotos, o vídeo e os documentos"
+                    : "o vídeo e, se necessário, os arquivos para atualização de boleto")
                     + " do veículo " + vehiclePlateLabel(request) + ":\n" + publicUrl;
             whatsappUrl = "https://wa.me/55" + normalizeBrazilPhone(request.getWhatsapp())
                     + "?text=" + URLEncoder.encode(message, StandardCharsets.UTF_8);
@@ -344,11 +386,24 @@ public class RetratoService {
 
     private void validateDocument(MultipartFile file, String label) {
         if (file.getSize() > MAX_DOCUMENT_BYTES) {
-            throw new IllegalArgumentException(label + " deve possuir no máximo 18 MB.");
+            throw new IllegalArgumentException(label + " deve possuir no máximo 30 MB.");
         }
         if (!DOCUMENT_TYPES.contains(cleanType(file.getContentType()))) {
-            throw new IllegalArgumentException("Envie " + label + " em PDF, JPG, PNG ou WebP.");
+            throw new IllegalArgumentException("Envie " + label + " em PDF, DOC, DOCX, ODT, RTF, TXT, JPG, PNG ou WebP.");
         }
+    }
+
+    private void validateAdditionalFile(MultipartFile file) {
+        String type = cleanType(file.getContentType());
+        if (VIDEO_TYPES.contains(type)) {
+            validateVideo(file);
+            return;
+        }
+        if (PHOTO_TYPES.contains(type)) {
+            validatePhoto(file);
+            return;
+        }
+        validateDocument(file, "o arquivo adicional");
     }
 
     private byte[] bytes(MultipartFile file) {
@@ -369,6 +424,7 @@ public class RetratoService {
 
     private String extension(String type, String fallback) {
         return switch (cleanType(type)) {
+            case "image/jpeg" -> ".jpg";
             case "image/png" -> ".png";
             case "image/webp" -> ".webp";
             case "video/quicktime" -> ".mov";
@@ -376,6 +432,11 @@ public class RetratoService {
             case "video/3gpp" -> ".3gp";
             case "video/mp4" -> ".mp4";
             case "application/pdf" -> ".pdf";
+            case "application/msword" -> ".doc";
+            case "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> ".docx";
+            case "application/vnd.oasis.opendocument.text" -> ".odt";
+            case "application/rtf", "text/rtf" -> ".rtf";
+            case "text/plain" -> ".txt";
             default -> fallback;
         };
     }
