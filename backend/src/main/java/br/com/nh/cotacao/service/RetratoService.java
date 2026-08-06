@@ -10,8 +10,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.*;
 
 @Service
@@ -253,11 +251,8 @@ public class RetratoService {
             MultipartFile file,
             int sortOrder
     ) {
-        Path temporary = null;
-        try {
-            temporary = Files.createTempFile("nh-inspection-", ".upload");
-            file.transferTo(temporary);
-            storageService.store(
+        try (var input = file.getInputStream()) {
+            storageService.storeStream(
                     request,
                     type,
                     label,
@@ -265,16 +260,12 @@ public class RetratoService {
                     cleanType(file.getContentType()),
                     file.getSize(),
                     sortOrder,
-                    temporary
+                    input
             );
         } catch (RuntimeException exception) {
             throw exception;
         } catch (Exception exception) {
-            throw new IllegalStateException("Não foi possível armazenar um dos arquivos da vistoria.", exception);
-        } finally {
-            if (temporary != null) {
-                try { Files.deleteIfExists(temporary); } catch (Exception ignored) {}
-            }
+            throw new IllegalStateException("Não foi possível armazenar um dos arquivos da vistoria no PostgreSQL.", exception);
         }
     }
 

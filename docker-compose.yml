@@ -51,9 +51,6 @@ services:
       GOOGLE_DRIVE_TEAM_EMAILS: ${GOOGLE_DRIVE_TEAM_EMAILS:-}
       INSPECTION_RETENTION_DAYS: ${INSPECTION_RETENTION_DAYS:-40}
       INSPECTION_CLEANUP_CRON: ${INSPECTION_CLEANUP_CRON:-0 15 * * * *}
-      INSPECTION_UPLOAD_TEMP_DIR: /var/lib/nh/uploads
-    volumes:
-      - nh_inspection_uploads:/var/lib/nh/uploads
     depends_on:
       database:
         condition: service_healthy
@@ -89,4 +86,3 @@ services:
 
 volumes:
   nh_local_data:
-  nh_inspection_uploads:

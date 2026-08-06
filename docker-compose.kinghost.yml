@@ -47,11 +47,8 @@ services:
       WHATSAPP_TEMPLATE_LANGUAGE: ${WHATSAPP_TEMPLATE_LANGUAGE:-pt_BR}
       INSPECTION_RETENTION_DAYS: ${INSPECTION_RETENTION_DAYS:-40}
       INSPECTION_CLEANUP_CRON: ${INSPECTION_CLEANUP_CRON:-0 15 * * * *}
-      INSPECTION_UPLOAD_TEMP_DIR: /var/lib/nh/uploads
       JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=70.0 -Dfile.encoding=UTF-8 -Duser.timezone=America/Maceio
       TZ: America/Maceio
-    volumes:
-      - nh_inspection_uploads:/var/lib/nh/uploads
     depends_on:
       database:
         condition: service_healthy
@@ -119,4 +116,3 @@ volumes:
   nh_postgres_data:
   caddy_data:
   caddy_config:
-  nh_inspection_uploads:

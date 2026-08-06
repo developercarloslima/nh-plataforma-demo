@@ -224,3 +224,384 @@ input:focus,select:focus,textarea:focus{border-color:var(--navy);box-shadow:0 0 
 .inspection-media-section{margin-top:18px;padding:18px;border:1px solid var(--line);border-radius:18px;background:#f8f9fd}.inspection-media-section[hidden]{display:none!important}.inspection-media-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:14px}.inspection-media-head h3{margin:0;color:var(--navy)}.inspection-media-head p{margin:4px 0 0;color:var(--muted);font-size:13px}.inspection-media-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}.inspection-media-card{display:flex;flex-direction:column;min-width:0;overflow:hidden;border:1px solid #dfe3ee;border-radius:15px;background:#fff}.inspection-media-preview{display:grid;place-items:center;min-height:150px;background:#eef1f7}.inspection-media-preview img,.inspection-media-preview video{display:block;width:100%;height:190px;object-fit:contain;background:#111}.inspection-media-placeholder{padding:26px 14px;text-align:center;color:var(--navy);font-weight:900}.inspection-media-body{display:grid;gap:5px;padding:12px}.inspection-media-body strong{color:var(--navy);font-size:13px;line-height:1.35}.inspection-media-body small{color:var(--muted);overflow-wrap:anywhere}.inspection-media-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:5px}.inspection-media-actions button{flex:1;min-width:90px}.inspection-media-card.expired{opacity:.72}.inspection-media-expired{padding:10px;border-radius:10px;background:#fff2f2;color:#9b3333;font-size:12px;font-weight:800}.inspection-media-loading{color:var(--muted);font-size:12px;font-weight:800}
 @media(max-width:900px){.inspection-media-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:620px){.inspection-media-head{display:grid}.inspection-media-head button{width:100%}.inspection-media-grid{grid-template-columns:1fr}.inspection-media-preview img,.inspection-media-preview video{height:230px}}
 .additional-documents-section{margin-top:18px}.additional-files-list{display:grid;gap:8px;margin-top:12px}.additional-file-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 12px;border:1px solid rgba(7,12,64,.14);border-radius:12px;background:#fff}.additional-file-row div{min-width:0}.additional-file-row strong,.additional-file-row small{display:block;overflow-wrap:anywhere}.additional-file-row small{margin-top:3px;color:var(--muted)}.additional-file-row button{flex:0 0 auto;padding:8px 10px}@media(max-width:680px){.additional-file-row{align-items:stretch;flex-direction:column}.additional-file-row button{width:100%}}
+
+
+/* =========================================================
+   IDENTIDADE VISUAL NH — BOTÕES DOS PORTAIS INTERNOS
+   Azul-marinho, amarelo institucional e branco.
+   ========================================================= */
+button,
+.button {
+  min-height: 44px;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  font-family: "League Spartan", Inter, system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: .015em;
+  line-height: 1.1;
+  box-shadow: 0 7px 18px rgba(7, 12, 64, .10);
+  transition: transform .18s ease, box-shadow .18s ease, background-color .18s ease, color .18s ease, border-color .18s ease;
+}
+
+button:not(:disabled):hover,
+.button:not([aria-disabled="true"]):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 11px 24px rgba(7, 12, 64, .16);
+}
+
+button:not(:disabled):active,
+.button:not([aria-disabled="true"]):active {
+  transform: translateY(0);
+  box-shadow: 0 5px 12px rgba(7, 12, 64, .12);
+}
+
+button:focus-visible,
+.button:focus-visible {
+  outline: 3px solid rgba(240, 240, 0, .58);
+  outline-offset: 3px;
+}
+
+.primary {
+  border-color: var(--yellow);
+  background: var(--yellow);
+  color: var(--navy);
+  box-shadow: 0 8px 20px rgba(240, 240, 0, .25), 0 5px 14px rgba(7, 12, 64, .10);
+}
+
+.primary:not(:disabled):hover {
+  border-color: var(--navy);
+  background: var(--yellow);
+  color: var(--navy);
+}
+
+.secondary {
+  border-color: var(--navy);
+  background: var(--navy);
+  color: var(--yellow);
+}
+
+.secondary:not(:disabled):hover {
+  border-color: var(--yellow);
+  background: #0b125a;
+  color: var(--yellow);
+}
+
+.outline {
+  border-color: var(--navy);
+  background: var(--white);
+  color: var(--navy);
+  box-shadow: 0 6px 16px rgba(7, 12, 64, .07);
+}
+
+.outline:not(:disabled):hover {
+  border-color: var(--yellow);
+  background: rgba(240, 240, 0, .16);
+  color: var(--navy);
+}
+
+.danger {
+  border-color: #b93838;
+  background: #fff;
+  color: #9f2525;
+}
+
+.danger:not(:disabled):hover {
+  border-color: #9f2525;
+  background: #fff0f0;
+  color: #861d1d;
+}
+
+.small-button {
+  min-height: 38px;
+  padding: 9px 13px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.dialog-close {
+  min-height: 38px;
+  border: 2px solid transparent;
+  box-shadow: none;
+}
+
+.dialog-close:not(:disabled):hover {
+  border-color: var(--yellow);
+  background: var(--navy);
+  color: var(--yellow);
+}
+
+.header-actions a,
+.header-actions button {
+  min-height: 40px;
+  border: 1px solid rgba(240, 240, 0, .72);
+  color: #fff;
+  box-shadow: none;
+}
+
+.header-actions a:hover,
+.header-actions button:not(:disabled):hover {
+  border-color: var(--yellow);
+  background: var(--yellow);
+  color: var(--navy);
+}
+
+.admin-tabs button {
+  min-height: 42px;
+  border: 1px solid rgba(7, 12, 64, .18);
+  background: #fff;
+  color: var(--navy);
+  box-shadow: 0 5px 14px rgba(7, 12, 64, .06);
+}
+
+.admin-tabs button:hover {
+  border-color: var(--yellow);
+  background: rgba(240, 240, 0, .14);
+}
+
+.admin-tabs button.active {
+  border-color: var(--yellow);
+  background: var(--navy);
+  color: var(--yellow);
+  box-shadow: inset 0 -3px 0 var(--yellow), 0 8px 18px rgba(7, 12, 64, .15);
+}
+
+/* =========================================================
+   ADMIN — STATUS MAIS LEGÍVEIS EM VISÃO GERAL, COTAÇÕES
+   E RETRATO NH.
+   ========================================================= */
+.admin-page .badge {
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 12px;
+  border: 1px solid rgba(7, 12, 64, .08);
+  font-family: "League Spartan", Inter, system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: .01em;
+  text-align: center;
+  white-space: nowrap;
+  box-shadow: 0 4px 10px rgba(7, 12, 64, .06);
+}
+
+.admin-page .badge.ok {
+  border-color: #9ed6b8;
+  background: #e4f7ec;
+  color: #0e653d;
+}
+
+.admin-page .badge.warn {
+  border-color: #ead36c;
+  background: #fff4bd;
+  color: #6f5300;
+}
+
+.admin-page .badge.off {
+  border-color: #efb5b5;
+  background: #ffebeb;
+  color: #922b2b;
+}
+
+.admin-page #tab-overview .status-summary {
+  gap: 3px;
+}
+
+.admin-page #tab-overview .status-summary > div {
+  min-height: 48px;
+  gap: 14px;
+  padding: 9px 0;
+}
+
+.admin-page #tab-overview .status-summary > div > span {
+  min-width: 0;
+}
+
+.admin-page #tab-overview .status-summary .badge {
+  font-size: 15px;
+  padding: 8px 13px;
+}
+
+.admin-page #tab-overview .status-summary strong {
+  min-width: 34px;
+  font-family: "League Spartan", Inter, system-ui, sans-serif;
+  font-size: 22px;
+  font-weight: 900;
+  text-align: right;
+}
+
+.admin-page #tab-quotes .badge,
+.admin-page #tab-inspections .badge,
+.admin-page #tab-activities .badge {
+  font-size: 14px;
+  padding: 7px 11px;
+}
+
+@media (max-width: 520px) {
+  .admin-page .badge {
+    max-width: 100%;
+    font-size: 13px;
+    white-space: normal;
+  }
+
+  .admin-page #tab-overview .status-summary .badge {
+    font-size: 14px;
+  }
+}
+
+/* =========================================================
+   PAINEL DO CONSULTOR — status e ações com leitura reforçada
+   sem perder a adaptação para cartões em telas menores.
+   ========================================================= */
+#activity-dashboard .badge {
+  min-width: 132px;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 14px;
+  border: 1px solid rgba(7, 12, 64, .08);
+  font-family: "League Spartan", Inter, system-ui, sans-serif;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1.08;
+  letter-spacing: .012em;
+  text-align: center;
+  white-space: normal;
+  box-shadow: 0 5px 13px rgba(7, 12, 64, .07);
+}
+
+#activity-dashboard .badge.warn {
+  border-color: #ead36c;
+  background: #fff1b8;
+  color: #705300;
+}
+
+#activity-dashboard .badge.ok {
+  border-color: #9ed6b8;
+  background: #e4f7ec;
+  color: #0e653d;
+}
+
+#activity-dashboard .badge.off {
+  border-color: #efb5b5;
+  background: #ffebeb;
+  color: #922b2b;
+}
+
+#activity-dashboard .small-button {
+  min-height: 42px;
+  padding: 10px 14px;
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.12;
+}
+
+#activity-dashboard .inspection-actions,
+#activity-dashboard .quote-actions {
+  gap: 8px;
+}
+
+/* =========================================================
+   EDIÇÃO SEGURA DA COTAÇÃO
+   ========================================================= */
+.quote-edit-dialog {
+  width: min(760px, calc(100% - 28px));
+}
+
+.quote-edit-dialog .dialog-head p {
+  max-width: 590px;
+  margin: 7px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.quote-edit-locked-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 4px 0 20px;
+}
+
+.quote-edit-locked-grid > div {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid #dfe3ee;
+  border-radius: 13px;
+  background: #f7f8fc;
+}
+
+.quote-edit-locked-grid span {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+
+.quote-edit-locked-grid strong {
+  display: block;
+  color: var(--navy);
+  font-size: 14px;
+  line-height: 1.32;
+  overflow-wrap: anywhere;
+}
+
+.quote-edit-fields {
+  margin-top: 0;
+}
+
+.quote-edit-protection {
+  margin-top: 18px;
+  padding: 14px 15px;
+  border: 1px solid #e7d35f;
+  border-radius: 13px;
+  background: #fff9d9;
+  color: #574400;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.quote-edit-protection strong {
+  color: var(--navy);
+}
+
+@media (max-width: 760px) {
+  #activity-dashboard .badge {
+    min-width: 0;
+    width: fit-content;
+    max-width: 100%;
+    min-height: 36px;
+    padding: 8px 12px;
+    font-size: 15px;
+  }
+
+  #activity-dashboard .small-button {
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  .quote-edit-locked-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .quote-edit-dialog .dialog-card {
+    padding: 19px 15px;
+  }
+
+  .quote-edit-locked-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .quote-edit-dialog .dialog-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .quote-edit-dialog .dialog-actions button {
+    width: 100%;
+  }
+}

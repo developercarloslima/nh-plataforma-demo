@@ -201,14 +201,42 @@ public class InspectionRequest {
         this.consultantName = consultant.getName();
     }
 
+    /** Sincroniza os dados cadastrais vindos da cotação sem alterar o conteúdo da vistoria. */
+    public void updateAssociateData(String associateName, String cpf, String whatsapp, String plate) {
+        if (associateName == null || associateName.isBlank()) {
+            throw new IllegalArgumentException("Informe o nome do associado.");
+        }
+        String cleanName = associateName.trim().replaceAll("\\s+", " ");
+        if (cleanName.length() > 140) {
+            throw new IllegalArgumentException("O nome do associado deve possuir no máximo 140 caracteres.");
+        }
+        String cpfDigits = cpf == null ? "" : cpf.replaceAll("\\D", "");
+        if (cpfDigits.length() != 11) {
+            throw new IllegalArgumentException("Informe um CPF válido antes de atualizar a vistoria.");
+        }
+        String phoneDigits = whatsapp == null ? "" : whatsapp.replaceAll("\\D", "");
+        if (!phoneDigits.isBlank() && (phoneDigits.length() < 10 || phoneDigits.length() > 13)) {
+            throw new IllegalArgumentException("Informe um WhatsApp válido com DDD.");
+        }
+        this.associateName = cleanName;
+        this.cpf = cpfDigits;
+        this.whatsapp = phoneDigits.isBlank() ? null : phoneDigits;
+        this.plate = normalizePlate(plate);
+    }
+
     public void registerFolder(String id, String url) {
         this.driveFolderId = id;
         this.driveFolderUrl = url;
     }
 
     public void addAsset(InspectionAsset asset) {
+        if (asset == null) throw new IllegalArgumentException("Informe o arquivo da vistoria.");
         assets.add(asset);
         markUploadStarted();
+    }
+
+    public void removeAsset(InspectionAsset asset) {
+        if (asset != null) assets.remove(asset);
     }
 
     public void markUploadStarted() {

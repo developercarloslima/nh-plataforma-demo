@@ -10,36 +10,14 @@ import br.com.nh.cotacao.entity.InspectionRequest;
 import br.com.nh.cotacao.entity.InspectionRequestStatus;
 import br.com.nh.cotacao.entity.InspectionRequestType;
 import br.com.nh.cotacao.repository.InspectionRequestRepository;
-import jakarta.persistence.EntityManager;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.BufferedOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
-import java.security.MessageDigest;
-import java.time.Duration;
-import java.time.OffsetDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.Comparator;
-import java.util.HexFormat;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Stream;
 
 @Service
 public class InspectionResumableUploadService {
@@ -63,32 +41,22 @@ public class InspectionResumableUploadService {
             "image/png",
             "image/webp"
     );
-    private static final Duration STALE_UPLOAD_AGE = Duration.ofDays(2);
-    private static final Duration CLEANUP_INTERVAL = Duration.ofHours(1);
 
     private final InspectionRequestRepository repository;
     private final InspectionAssetStorageService storageService;
     private final RetratoPdfService pdfService;
     private final RetratoService retratoService;
-    private final EntityManager entityManager;
-    private final Path uploadRoot;
-    private final Map<String, Object> uploadLocks = new ConcurrentHashMap<>();
-    private final AtomicLong lastCleanupAt = new AtomicLong(0);
 
     public InspectionResumableUploadService(
             InspectionRequestRepository repository,
             InspectionAssetStorageService storageService,
             RetratoPdfService pdfService,
-            RetratoService retratoService,
-            EntityManager entityManager,
-            @Value("${app.inspection-upload.temp-dir:/tmp/nh-inspection-uploads}") String uploadTempDir
+            RetratoService retratoService
     ) {
         this.repository = repository;
         this.storageService = storageService;
         this.pdfService = pdfService;
         this.retratoService = retratoService;
-        this.entityManager = entityManager;
-        this.uploadRoot = Path.of(uploadTempDir).toAbsolutePath().normalize();
     }
 
     @Transactional(readOnly = true)
@@ -101,21 +69,20 @@ public class InspectionResumableUploadService {
     ) {
         InspectionRequest request = findByToken(token);
         Optional<InspectionAsset> storedAsset = findAsset(request, assetType, sortOrder);
-        if (storedAsset.isPresent() && storageService.contentExists(storedAsset.get().getId())) {
+        if (storedAsset.isPresent() && storageService.isAvailable(storedAsset.get())) {
             return new ChunkUploadStatusResponse(true, List.of(), retratoService.toResponse(request));
         }
         validateRequestAvailable(request);
-        if (totalChunks < 1 || totalChunks > MAX_CHUNKS) {
-            throw new IllegalArgumentException("Quantidade de partes do arquivo inválida.");
-        }
-        Path directory = uploadDirectory(token, sanitizeUploadId(uploadId));
-        List<Integer> received = new ArrayList<>();
-        for (int index = 0; index < totalChunks; index++) {
-            if (Files.isRegularFile(directory.resolve(String.format(Locale.ROOT, "%06d.part", index)))) {
-                received.add(index);
-            }
-        }
-        return new ChunkUploadStatusResponse(false, List.copyOf(received), retratoService.toResponse(request));
+        validateUploadIdentity(uploadId, totalChunks);
+
+        InspectionAssetStorageService.ChunkUploadStatus status = storageService.chunkStatus(
+                request.getId(), assetType, sortOrder, uploadId, totalChunks
+        );
+        return new ChunkUploadStatusResponse(
+                status.complete(),
+                status.receivedChunks(),
+                retratoService.toResponse(request)
+        );
     }
 
     @Transactional
@@ -131,76 +98,52 @@ public class InspectionResumableUploadService {
             String contentType,
             MultipartFile chunk
     ) {
-        cleanupStaleUploadsIfNeeded();
-        InspectionRequest request = findByToken(token);
-        Optional<InspectionAsset> existing = findAsset(request, assetType, sortOrder);
-        if (existing.isPresent() && storageService.contentExists(existing.get().getId())) {
-            return completedChunkResponse(request, assetType, sortOrder, totalChunks);
-        }
-        validateRequestAvailable(request);
+        // O bloqueio pessimista funciona entre processos/contêineres e impede
+        // duas requisições de alterarem ou finalizarem o mesmo slot ao mesmo tempo.
+        InspectionRequest current = repository.findByPublicTokenForUpdate(token)
+                .orElseThrow(() -> new IllegalArgumentException("Link de vistoria inválido."));
+        validateRequestAvailable(current);
         String cleanType = cleanType(contentType);
-        String cleanLabel = validateAssetMetadata(request, assetType, sortOrder, label, totalSize, cleanType);
+        String cleanLabel = validateAssetMetadata(current, assetType, sortOrder, label, totalSize, cleanType);
         validateChunk(uploadId, chunkIndex, totalChunks, chunk);
-
-        String safeUploadId = sanitizeUploadId(uploadId);
-        Path uploadDirectory = uploadDirectory(token, safeUploadId);
-        persistChunk(uploadDirectory, chunkIndex, chunk);
-        int receivedChunks = countReceivedChunks(uploadDirectory, totalChunks);
-
-        if (receivedChunks < totalChunks) {
-            return new ChunkUploadResponse(
-                    false,
-                    receivedChunks,
-                    totalChunks,
-                    assetType,
-                    sortOrder,
-                    retratoService.toResponse(request)
-            );
+        byte[] chunkBytes = readChunk(chunk);
+        Optional<InspectionAsset> currentAsset = findAsset(current, assetType, sortOrder);
+        if (currentAsset.isPresent() && storageService.isAvailable(currentAsset.get())) {
+            return completedChunkResponse(current, assetType, sortOrder, totalChunks);
         }
 
-        String lockKey = request.getId() + ":" + assetType + ":" + sortOrder;
-        Object lock = uploadLocks.computeIfAbsent(lockKey, ignored -> new Object());
-        try {
-            synchronized (lock) {
-                InspectionRequest current = findByToken(token);
-                validateRequestAvailable(current);
-                Optional<InspectionAsset> currentAsset = findAsset(current, assetType, sortOrder);
-                if (currentAsset.isPresent() && storageService.contentExists(currentAsset.get().getId())) {
-                    deleteDirectoryQuietly(uploadDirectory);
-                    return completedChunkResponse(current, assetType, sortOrder, totalChunks);
-                }
+        String fileName = buildFileName(assetType, sortOrder, cleanLabel, cleanType);
+        InspectionAssetStorageService.ChunkStoreResult result = storageService.storeChunk(
+                current,
+                assetType,
+                cleanLabel,
+                fileName,
+                cleanType,
+                totalSize,
+                sortOrder,
+                uploadId,
+                chunkIndex,
+                totalChunks,
+                chunkBytes
+        );
+        current.markUploadStarted();
+        repository.flush();
 
-                Path assembledFile = assemble(uploadDirectory, totalChunks, totalSize);
-                String fileName = buildFileName(assetType, sortOrder, cleanLabel, cleanType);
-                InspectionAsset stored = storageService.store(
-                        current,
-                        assetType,
-                        cleanLabel,
-                        fileName,
-                        cleanType,
-                        totalSize,
-                        sortOrder,
-                        assembledFile
-                );
-                entityManager.flush();
-
-                if (!storageService.contentExists(stored.getId())) {
-                    throw new IllegalStateException("O arquivo chegou ao servidor, mas o conteúdo não foi confirmado no banco de dados.");
-                }
-
-                entityManager.clear();
-                InspectionRequest confirmed = findByToken(token);
-                Optional<InspectionAsset> confirmedAsset = findAsset(confirmed, assetType, sortOrder);
-                if (confirmedAsset.isEmpty() || !storageService.contentExists(confirmedAsset.get().getId())) {
-                    throw new IllegalStateException("O arquivo não pôde ser confirmado no banco de dados.");
-                }
-
-                deleteDirectoryQuietly(uploadDirectory);
-                return completedChunkResponse(confirmed, assetType, sortOrder, totalChunks);
+        if (result.complete()) {
+            if (result.asset() == null || !storageService.isAvailable(result.asset())) {
+                throw new IllegalStateException("O arquivo chegou à API, mas não foi confirmado no PostgreSQL.");
             }
-        } finally {
-            uploadLocks.remove(lockKey, lock);
+            return completedChunkResponse(current, assetType, sortOrder, totalChunks);
         }
+
+        return new ChunkUploadResponse(
+                false,
+                result.receivedChunks(),
+                totalChunks,
+                assetType,
+                sortOrder,
+                retratoService.toResponse(current)
+        );
     }
 
     @Transactional
@@ -217,53 +160,62 @@ public class InspectionResumableUploadService {
         if (newInspection) {
             request.registerResidenceAddress(residenceAddress);
             for (int order = 1; order <= requiredPhotos; order++) {
-                if (findAsset(request, InspectionAssetType.PHOTO, order).isEmpty()) {
-                    throw new IllegalArgumentException("Ainda falta enviar a foto " + order + " de " + requiredPhotos + ".");
-                }
+                requireStoredAsset(request, InspectionAssetType.PHOTO, order, "Ainda falta enviar a foto " + order + " de " + requiredPhotos + ".");
             }
             int signatureOrder = requiredPhotos + 2;
-            if (findAsset(request, InspectionAssetType.SIGNATURE, signatureOrder).isEmpty()) {
-                throw new IllegalArgumentException("Ainda falta enviar a assinatura do associado.");
-            }
+            requireStoredAsset(request, InspectionAssetType.SIGNATURE, signatureOrder, "Ainda falta enviar a assinatura do associado.");
             int vehicleDocumentOrder = requiredPhotos + 3;
-            if (findAsset(request, InspectionAssetType.VEHICLE_DOCUMENT, vehicleDocumentOrder).isEmpty()) {
-                throw new IllegalArgumentException("Ainda falta enviar o CRLV do veículo.");
-            }
+            requireStoredAsset(request, InspectionAssetType.VEHICLE_DOCUMENT, vehicleDocumentOrder, "Ainda falta enviar o CRLV do veículo.");
             int identityDocumentOrder = requiredPhotos + 4;
-            if (findAsset(request, InspectionAssetType.IDENTITY_DOCUMENT, identityDocumentOrder).isEmpty()) {
-                throw new IllegalArgumentException("Ainda falta enviar o RG ou a CNH do associado.");
-            }
+            requireStoredAsset(request, InspectionAssetType.IDENTITY_DOCUMENT, identityDocumentOrder, "Ainda falta enviar o RG ou a CNH do associado.");
         }
 
         int videoOrder = newInspection ? requiredPhotos + 1 : 1;
-        if (findAsset(request, InspectionAssetType.VIDEO, videoOrder).isEmpty()) {
-            throw new IllegalArgumentException("Ainda falta enviar o vídeo da vistoria.");
-        }
+        requireStoredAsset(request, InspectionAssetType.VIDEO, videoOrder, "Ainda falta enviar o vídeo da vistoria.");
 
         repository.flush();
         request.getAssets().stream()
                 .filter(asset -> asset.getAssetType() != InspectionAssetType.REPORT)
                 .forEach(asset -> {
                     if (!storageService.isAvailable(asset)) {
-                        throw new IllegalArgumentException("Um dos arquivos enviados não está disponível no banco de dados.");
+                        throw new IllegalArgumentException("Um dos arquivos enviados não está disponível no PostgreSQL.");
                     }
                 });
 
-        byte[] reportBytes = pdfService.generate(request);
-        int reportOrder = newInspection ? requiredPhotos + 5 : 2;
-        storageService.storeBytes(
+        Optional<InspectionAsset> existingReport = findAsset(
                 request,
                 InspectionAssetType.REPORT,
-                "Relatório da vistoria",
-                "relatorio-retrato-nh.pdf",
-                "application/pdf",
-                reportOrder,
-                reportBytes
+                newInspection ? requiredPhotos + 5 : 2
         );
+        if (existingReport.isEmpty() || !storageService.isAvailable(existingReport.get())) {
+            byte[] reportBytes = pdfService.generate(request);
+            int reportOrder = newInspection ? requiredPhotos + 5 : 2;
+            storageService.storeBytes(
+                    request,
+                    InspectionAssetType.REPORT,
+                    "Relatório da vistoria",
+                    "relatorio-retrato-nh.pdf",
+                    "application/pdf",
+                    reportOrder,
+                    reportBytes
+            );
+        }
+
         request.complete();
         repository.flush();
-        deleteInspectionUploadsQuietly(token);
         return completedUploadResponse(request);
+    }
+
+    private void requireStoredAsset(
+            InspectionRequest request,
+            InspectionAssetType type,
+            int sortOrder,
+            String message
+    ) {
+        Optional<InspectionAsset> asset = findAsset(request, type, sortOrder);
+        if (asset.isEmpty() || !storageService.isAvailable(asset.get())) {
+            throw new IllegalArgumentException(message);
+        }
     }
 
     private InspectionUploadResponse completedUploadResponse(InspectionRequest request) {
@@ -273,7 +225,7 @@ public class InspectionResumableUploadService {
                 null,
                 null,
                 false,
-                "Envio manual pelo consultor."
+                "Arquivos confirmados no PostgreSQL."
         );
     }
 
@@ -319,12 +271,8 @@ public class InspectionResumableUploadService {
             long totalSize,
             String contentType
     ) {
-        if (assetType == null) {
-            throw new IllegalArgumentException("Informe o tipo do arquivo.");
-        }
-        if (totalSize <= 0) {
-            throw new IllegalArgumentException("O arquivo enviado está vazio.");
-        }
+        if (assetType == null) throw new IllegalArgumentException("Informe o tipo do arquivo.");
+        if (totalSize <= 0) throw new IllegalArgumentException("O arquivo enviado está vazio.");
 
         boolean newInspection = request.getRequestType() == InspectionRequestType.NEW_INSPECTION;
         int requiredPhotos = request.getVehicleType().requiredPhotoCount();
@@ -338,31 +286,19 @@ public class InspectionResumableUploadService {
                 if (!newInspection || sortOrder < 1 || sortOrder > requiredPhotos) {
                     throw new IllegalArgumentException("A posição da foto é inválida para esta vistoria.");
                 }
-                if (totalSize > MAX_PHOTO_BYTES) {
-                    throw new IllegalArgumentException("Cada foto deve possuir no máximo 12 MB.");
-                }
-                if (!PHOTO_TYPES.contains(contentType)) {
-                    throw new IllegalArgumentException("Envie fotos JPG, PNG ou WebP.");
-                }
+                if (totalSize > MAX_PHOTO_BYTES) throw new IllegalArgumentException("Cada foto deve possuir no máximo 12 MB.");
+                if (!PHOTO_TYPES.contains(contentType)) throw new IllegalArgumentException("Envie fotos JPG, PNG ou WebP.");
             }
             case VIDEO -> {
-                if (sortOrder != videoOrder) {
-                    throw new IllegalArgumentException("A posição do vídeo é inválida para esta vistoria.");
-                }
-                if (totalSize > MAX_VIDEO_BYTES) {
-                    throw new IllegalArgumentException("O vídeo deve possuir no máximo 220 MB.");
-                }
-                if (!VIDEO_TYPES.contains(contentType)) {
-                    throw new IllegalArgumentException("Envie o vídeo em MP4, MOV, WebM ou 3GP.");
-                }
+                if (sortOrder != videoOrder) throw new IllegalArgumentException("A posição do vídeo é inválida para esta vistoria.");
+                if (totalSize > MAX_VIDEO_BYTES) throw new IllegalArgumentException("O vídeo deve possuir no máximo 220 MB.");
+                if (!VIDEO_TYPES.contains(contentType)) throw new IllegalArgumentException("Envie o vídeo em MP4, MOV, WebM ou 3GP.");
             }
             case SIGNATURE -> {
                 if (!newInspection || sortOrder != signatureOrder) {
                     throw new IllegalArgumentException("A posição da assinatura é inválida para esta vistoria.");
                 }
-                if (totalSize > MAX_SIGNATURE_BYTES) {
-                    throw new IllegalArgumentException("A assinatura deve possuir no máximo 3 MB.");
-                }
+                if (totalSize > MAX_SIGNATURE_BYTES) throw new IllegalArgumentException("A assinatura deve possuir no máximo 3 MB.");
                 if (!PHOTO_TYPES.contains(contentType)) {
                     throw new IllegalArgumentException("A assinatura deve ser enviada como imagem PNG, JPG ou WebP.");
                 }
@@ -410,9 +346,7 @@ public class InspectionResumableUploadService {
                 case REPORT -> "Relatório da vistoria";
             };
         }
-        if (cleanLabel.length() > 140) {
-            cleanLabel = cleanLabel.substring(0, 140);
-        }
+        if (cleanLabel.length() > 140) cleanLabel = cleanLabel.substring(0, 140);
         return cleanLabel;
     }
 
@@ -426,10 +360,7 @@ public class InspectionResumableUploadService {
     }
 
     private void validateChunk(String uploadId, int chunkIndex, int totalChunks, MultipartFile chunk) {
-        sanitizeUploadId(uploadId);
-        if (totalChunks < 1 || totalChunks > MAX_CHUNKS) {
-            throw new IllegalArgumentException("Quantidade de partes do arquivo inválida.");
-        }
+        validateUploadIdentity(uploadId, totalChunks);
         if (chunkIndex < 0 || chunkIndex >= totalChunks) {
             throw new IllegalArgumentException("Parte do arquivo inválida.");
         }
@@ -438,6 +369,30 @@ public class InspectionResumableUploadService {
         }
         if (chunk.getSize() > MAX_CHUNK_BYTES) {
             throw new IllegalArgumentException("Cada parte do envio deve possuir no máximo 6 MB.");
+        }
+    }
+
+    private void validateUploadIdentity(String uploadId, int totalChunks) {
+        String clean = uploadId == null ? "" : uploadId.trim();
+        if (!clean.matches("^[A-Za-z0-9_-]{8,140}$")) {
+            throw new IllegalArgumentException("Identificador de envio inválido.");
+        }
+        if (totalChunks < 1 || totalChunks > MAX_CHUNKS) {
+            throw new IllegalArgumentException("Quantidade de partes do arquivo inválida.");
+        }
+    }
+
+    private byte[] readChunk(MultipartFile chunk) {
+        try {
+            byte[] bytes = chunk.getBytes();
+            if (bytes.length != chunk.getSize()) {
+                throw new IllegalArgumentException("Uma das partes do arquivo chegou incompleta.");
+            }
+            return bytes;
+        } catch (IllegalArgumentException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalStateException("Não foi possível ler uma das partes do arquivo.", exception);
         }
     }
 
@@ -454,77 +409,6 @@ public class InspectionResumableUploadService {
         return request.getAssets().stream()
                 .filter(asset -> asset.getAssetType() == type && asset.getSortOrder() == sortOrder)
                 .findFirst();
-    }
-
-    private Path uploadDirectory(String token, String uploadId) {
-        Path inspectionDirectory = uploadRoot.resolve(hash(token));
-        Path directory = inspectionDirectory.resolve(uploadId).normalize();
-        if (!directory.startsWith(uploadRoot)) {
-            throw new IllegalArgumentException("Identificador de envio inválido.");
-        }
-        return directory;
-    }
-
-    private void persistChunk(Path directory, int chunkIndex, MultipartFile chunk) {
-        try {
-            Files.createDirectories(directory);
-            Path destination = directory.resolve(String.format(Locale.ROOT, "%06d.part", chunkIndex));
-            Path temporary = directory.resolve(String.format(Locale.ROOT, "%06d.tmp-%s", chunkIndex, java.util.UUID.randomUUID()));
-            try (InputStream input = chunk.getInputStream()) {
-                Files.copy(input, temporary, StandardCopyOption.REPLACE_EXISTING);
-            }
-            try {
-                Files.move(temporary, destination, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException ignored) {
-                Files.move(temporary, destination, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } catch (Exception exception) {
-            throw new IllegalStateException("Não foi possível guardar uma parte do arquivo para continuar o envio.", exception);
-        }
-    }
-
-    private int countReceivedChunks(Path directory, int totalChunks) {
-        int received = 0;
-        for (int index = 0; index < totalChunks; index++) {
-            if (Files.isRegularFile(directory.resolve(String.format(Locale.ROOT, "%06d.part", index)))) {
-                received++;
-            }
-        }
-        return received;
-    }
-
-    private Path assemble(Path directory, int totalChunks, long expectedSize) {
-        Path assembled = directory.resolve("assembled.upload");
-        try (OutputStream output = new BufferedOutputStream(Files.newOutputStream(
-                assembled,
-                StandardOpenOption.CREATE,
-                StandardOpenOption.TRUNCATE_EXISTING,
-                StandardOpenOption.WRITE
-        ))) {
-            for (int index = 0; index < totalChunks; index++) {
-                Path part = directory.resolve(String.format(Locale.ROOT, "%06d.part", index));
-                if (!Files.isRegularFile(part)) {
-                    throw new IllegalArgumentException("O envio ainda possui partes pendentes.");
-                }
-                Files.copy(part, output);
-            }
-        } catch (IllegalArgumentException exception) {
-            throw exception;
-        } catch (Exception exception) {
-            throw new IllegalStateException("Não foi possível reunir as partes do arquivo enviado.", exception);
-        }
-
-        try {
-            if (Files.size(assembled) != expectedSize) {
-                Files.deleteIfExists(assembled);
-                throw new IllegalArgumentException("O arquivo chegou incompleto. Tente enviar novamente.");
-            }
-            return assembled;
-        } catch (IllegalArgumentException exception) {
-            throw exception;
-        } catch (Exception exception) {
-            throw new IllegalStateException("Não foi possível validar o arquivo recebido.", exception);
-        }
     }
 
     private String buildFileName(
@@ -575,72 +459,5 @@ public class InspectionResumableUploadService {
         return contentType == null
                 ? ""
                 : contentType.toLowerCase(Locale.ROOT).split(";", 2)[0].trim();
-    }
-
-    private String sanitizeUploadId(String uploadId) {
-        String clean = uploadId == null ? "" : uploadId.trim();
-        if (!clean.matches("^[A-Za-z0-9_-]{8,140}$")) {
-            throw new IllegalArgumentException("Identificador de envio inválido.");
-        }
-        return clean;
-    }
-
-    private String hash(String value) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
-        } catch (Exception exception) {
-            throw new IllegalStateException("Não foi possível preparar o envio.", exception);
-        }
-    }
-
-    private void deleteInspectionUploadsQuietly(String token) {
-        deleteDirectoryQuietly(uploadRoot.resolve(hash(token)));
-    }
-
-    private void deleteDirectoryQuietly(Path directory) {
-        if (directory == null || !Files.exists(directory)) {
-            return;
-        }
-        try (Stream<Path> stream = Files.walk(directory)) {
-            stream.sorted(Comparator.reverseOrder()).forEach(path -> {
-                try {
-                    Files.deleteIfExists(path);
-                } catch (Exception ignored) {
-                    // A limpeza temporária não pode invalidar um arquivo já salvo no banco de dados.
-                }
-            });
-        } catch (Exception ignored) {
-            // A limpeza temporária não pode invalidar um arquivo já salvo no banco de dados.
-        }
-    }
-
-    private void cleanupStaleUploadsIfNeeded() {
-        long now = System.currentTimeMillis();
-        long previous = lastCleanupAt.get();
-        if (now - previous < CLEANUP_INTERVAL.toMillis() || !lastCleanupAt.compareAndSet(previous, now)) {
-            return;
-        }
-        if (!Files.isDirectory(uploadRoot)) {
-            return;
-        }
-        OffsetDateTime cutoff = OffsetDateTime.now().minus(STALE_UPLOAD_AGE);
-        try (Stream<Path> directories = Files.list(uploadRoot)) {
-            directories.filter(Files::isDirectory).forEach(directory -> {
-                try {
-                    OffsetDateTime modified = OffsetDateTime.ofInstant(
-                            Files.getLastModifiedTime(directory).toInstant(),
-                            java.time.ZoneOffset.UTC
-                    );
-                    if (modified.isBefore(cutoff)) {
-                        deleteDirectoryQuietly(directory);
-                    }
-                } catch (Exception ignored) {
-                    // A limpeza será tentada novamente em outro envio.
-                }
-            });
-        } catch (Exception ignored) {
-            // A limpeza será tentada novamente em outro envio.
-        }
     }
 }

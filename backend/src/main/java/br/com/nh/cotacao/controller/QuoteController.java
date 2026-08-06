@@ -1,20 +1,19 @@
 package br.com.nh.cotacao.controller;
 
 import br.com.nh.cotacao.dto.QuoteDtos.*;
-import br.com.nh.cotacao.service.InspectionService;
 import br.com.nh.cotacao.service.QuotePdfService;
 import br.com.nh.cotacao.service.QuoteService;
 import jakarta.validation.Valid;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -23,16 +22,13 @@ public class QuoteController {
 
     private final QuoteService quoteService;
     private final QuotePdfService pdfService;
-    private final InspectionService inspectionService;
 
     public QuoteController(
             QuoteService quoteService,
-            QuotePdfService pdfService,
-            InspectionService inspectionService
+            QuotePdfService pdfService
     ) {
         this.quoteService = quoteService;
         this.pdfService = pdfService;
-        this.inspectionService = inspectionService;
     }
 
     @PostMapping("/options")
@@ -55,13 +51,17 @@ public class QuoteController {
         return quoteService.decide(id, request);
     }
 
+    /**
+     * O fluxo antigo enviava fotos diretamente para o Google Drive. Ele fica
+     * explicitamente desativado para que nenhuma vistoria contorne o Retrato NH
+     * e a persistência obrigatória no PostgreSQL.
+     */
     @PostMapping(value = "/{id}/inspection", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public InspectionUploadResponse uploadInspection(
-            @PathVariable UUID id,
-            @RequestParam("photos") List<MultipartFile> photos,
-            @RequestParam("labels") List<String> labels
-    ) {
-        return inspectionService.upload(id, photos, labels);
+    public void legacyInspectionUploadDisabled(@PathVariable UUID id) {
+        throw new ResponseStatusException(
+                HttpStatus.GONE,
+                "Este envio antigo foi desativado. Gere ou abra o link do Retrato NH para salvar os arquivos no PostgreSQL."
+        );
     }
 
     @GetMapping("/{id}/pdf")

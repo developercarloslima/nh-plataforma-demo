@@ -117,6 +117,49 @@ public class ConsultantDashboardService {
     }
 
     @Transactional
+    public ConsultantQuoteSummary updateQuoteDetails(
+            UUID consultantId,
+            UUID quoteId,
+            UpdateQuoteDetailsRequest request
+    ) {
+        Consultant consultant = consultantService.findActive(consultantId);
+        Quotation quotation = findOwnedQuotation(consultant, quoteId);
+        repairOwnership(quotation, consultant);
+
+        Map<String, String> immutableBefore = immutableQuoteSnapshot(quotation);
+        quoteService.updateNonPricingData(
+                quotation,
+                request.customerName(),
+                request.cpf(),
+                request.whatsapp(),
+                request.plate(),
+                request.model(),
+                request.manufactureYear(),
+                request.zeroKm()
+        );
+
+        InspectionRequest inspection = inspectionRepository.findByQuotation_Id(quotation.getId()).orElse(null);
+        if (inspection != null) {
+            repairOwnership(inspection, consultant);
+            inspection.updateAssociateData(
+                    quotation.getCustomerName(),
+                    quotation.getCustomerCpf(),
+                    quotation.getWhatsapp(),
+                    quotation.getPlate()
+            );
+        }
+
+        Map<String, String> immutableAfter = immutableQuoteSnapshot(quotation);
+        if (!immutableBefore.equals(immutableAfter)) {
+            throw new IllegalStateException("A edição tentou alterar informações protegidas do cálculo da cotação.");
+        }
+
+        quotationRepository.flush();
+        if (inspection != null) inspectionRepository.flush();
+        return toQuote(quotation, inspection);
+    }
+
+    @Transactional
     public void deleteQuote(UUID consultantId, UUID quoteId) {
         Consultant consultant = consultantService.findActive(consultantId);
         Quotation quotation = findOwnedQuotation(consultant, quoteId);
@@ -197,8 +240,9 @@ public class ConsultantDashboardService {
         InspectionResponse inspectionResponse = inspection == null ? null : retratoService.toResponse(inspection);
         boolean hasFiles = hasFiles(inspection);
         return new ConsultantQuoteSummary(
-                item.getId(), item.getQuoteNumber(), item.getCustomerName(), item.getPlate(), item.isZeroKm(),
-                item.getModel(), item.getSelectedPlanName(), item.getStatus(), item.getCreatedAt(), item.getValidUntil(),
+                item.getId(), item.getQuoteNumber(), item.getCustomerName(), item.getCustomerCpf(), item.getWhatsapp(),
+                item.getPlate(), item.isZeroKm(), item.getModel(), item.getManufactureYear(),
+                item.getSelectedPlanName(), item.getMonthlyValue(), item.getStatus(), item.getCreatedAt(), item.getValidUntil(),
                 expired,
                 hasStoredCpf(item),
                 "/api/quotes/" + item.getId() + "/pdf",
@@ -211,6 +255,35 @@ public class ConsultantDashboardService {
                 hasFiles,
                 inspection == null ? 0 : (int) inspection.getAssets().stream().filter(storageService::isAvailable).count()
         );
+    }
+
+    /**
+     * Fotografia dos campos que formam o preço e o conteúdo comercial da cotação.
+     * Qualquer mudança acidental faz a transação inteira ser revertida.
+     */
+    private Map<String, String> immutableQuoteSnapshot(Quotation item) {
+        Map<String, String> snapshot = new LinkedHashMap<>();
+        snapshot.put("fipeValue", String.valueOf(item.getFipeValue()));
+        snapshot.put("categoryCode", String.valueOf(item.getCategoryCode()));
+        snapshot.put("region", String.valueOf(item.getRegion()));
+        snapshot.put("motorcycleOrigin", String.valueOf(item.getMotorcycleOrigin()));
+        snapshot.put("selectedPlanCode", String.valueOf(item.getSelectedPlanCode()));
+        snapshot.put("selectedPlanName", String.valueOf(item.getSelectedPlanName()));
+        snapshot.put("baseMonthlyValue", String.valueOf(item.getBaseMonthlyValue()));
+        snapshot.put("monthlyValue", String.valueOf(item.getMonthlyValue()));
+        snapshot.put("mandatoryMonthlyFee", String.valueOf(item.getMandatoryMonthlyFee()));
+        snapshot.put("oneTimeFee", String.valueOf(item.getOneTimeFee()));
+        snapshot.put("mandatoryFeeDescription", String.valueOf(item.getMandatoryFeeDescription()));
+        for (int index = 0; index < item.getSelectedOptionals().size(); index++) {
+            var optional = item.getSelectedOptionals().get(index);
+            snapshot.put("optional." + index, optional.getCoverageCode() + "|" + optional.getMonthlyPrice());
+        }
+        int index = 0;
+        for (var coverage : item.getCoverageSnapshots()) {
+            snapshot.put("coverage." + index++, coverage.getCoverageCode() + "|"
+                    + coverage.getCoverageStatus() + "|" + coverage.getMonthlyPrice());
+        }
+        return snapshot;
     }
 
     @Transactional

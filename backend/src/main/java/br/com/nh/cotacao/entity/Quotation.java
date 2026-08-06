@@ -353,6 +353,49 @@ public class Quotation {
         this.customerCpf = digits;
     }
 
+    /**
+     * Atualiza somente dados cadastrais que não participam do cálculo da cotação.
+     * Plano, categoria, FIPE, coberturas e valores permanecem imutáveis.
+     */
+    public void updateNonPricingData(String customerName, String customerCpf, String whatsapp, String plate, String model, Integer manufactureYear, boolean zeroKm) {
+        if (customerName == null || customerName.isBlank()) {
+            throw new IllegalArgumentException("Informe o nome do associado.");
+        }
+        String cleanCustomerName = cleanName(customerName);
+        if (cleanCustomerName.length() > 120) {
+            throw new IllegalArgumentException("O nome do associado deve possuir no máximo 120 caracteres.");
+        }
+
+        String cpfDigits = customerCpf == null ? "" : customerCpf.replaceAll("\\D", "");
+        if (!cpfDigits.isBlank() && cpfDigits.length() != 11) {
+            throw new IllegalArgumentException("Informe um CPF válido.");
+        }
+
+        String phoneDigits = whatsapp == null ? "" : whatsapp.replaceAll("\\D", "");
+        if (!phoneDigits.isBlank() && (phoneDigits.length() < 10 || phoneDigits.length() > 13)) {
+            throw new IllegalArgumentException("Informe um WhatsApp válido com DDD.");
+        }
+
+        if (model == null || model.isBlank()) {
+            throw new IllegalArgumentException("Informe o modelo do veículo.");
+        }
+        String cleanModel = model.trim().replaceAll("\\s+", " ");
+        if (cleanModel.length() > 120) {
+            throw new IllegalArgumentException("O modelo deve possuir no máximo 120 caracteres.");
+        }
+        if (manufactureYear == null || manufactureYear < 1950 || manufactureYear > 2100) {
+            throw new IllegalArgumentException("Informe um ano de fabricação válido.");
+        }
+
+        this.customerName = cleanCustomerName;
+        this.customerCpf = cpfDigits.isBlank() ? null : cpfDigits;
+        this.whatsapp = phoneDigits.isBlank() ? null : phoneDigits;
+        this.model = cleanModel;
+        this.manufactureYear = manufactureYear;
+        this.zeroKm = zeroKm;
+        this.plate = normalizePlate(plate, zeroKm);
+    }
+
     public void registerDriveFolder(String folderId, String folderUrl) {
         this.driveFolderId = folderId;
         this.driveFolderUrl = folderUrl;

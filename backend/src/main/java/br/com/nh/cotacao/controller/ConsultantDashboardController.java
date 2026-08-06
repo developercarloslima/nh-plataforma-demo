@@ -5,12 +5,14 @@ import br.com.nh.cotacao.dto.ConsultantDashboardDtos.ConsultantInspectionSummary
 import br.com.nh.cotacao.dto.ConsultantDashboardDtos.ConsultantQuoteSummary;
 import br.com.nh.cotacao.dto.ConsultantDashboardDtos.RedoQuoteRequest;
 import br.com.nh.cotacao.dto.ConsultantDashboardDtos.StartInspectionRequest;
+import br.com.nh.cotacao.dto.ConsultantDashboardDtos.UpdateQuoteDetailsRequest;
 import br.com.nh.cotacao.service.ConsultantDashboardService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -50,6 +52,15 @@ public class ConsultantDashboardController {
             @Valid @RequestBody(required = false) RedoQuoteRequest request
     ) {
         return service.redoQuote(consultantId, quoteId, request == null ? null : request.cpf());
+    }
+
+    @PatchMapping("/{consultantId}/quotes/{quoteId}")
+    public ConsultantQuoteSummary updateQuoteDetails(
+            @PathVariable UUID consultantId,
+            @PathVariable UUID quoteId,
+            @Valid @RequestBody UpdateQuoteDetailsRequest request
+    ) {
+        return service.updateQuoteDetails(consultantId, quoteId, request);
     }
 
     @DeleteMapping("/{consultantId}/quotes/{quoteId}")

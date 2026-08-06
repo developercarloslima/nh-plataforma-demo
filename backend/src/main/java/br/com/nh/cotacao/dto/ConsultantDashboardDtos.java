@@ -4,11 +4,17 @@ import br.com.nh.cotacao.entity.InspectionRequestStatus;
 import br.com.nh.cotacao.entity.InspectionRequestType;
 import br.com.nh.cotacao.entity.QuoteStatus;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 
 public final class ConsultantDashboardDtos {
     private ConsultantDashboardDtos() {}
@@ -17,10 +23,14 @@ public final class ConsultantDashboardDtos {
             UUID id,
             String quoteNumber,
             String customerName,
+            String customerCpf,
+            String whatsapp,
             String plate,
             boolean zeroKm,
             String model,
+            Integer manufactureYear,
             String selectedPlanName,
+            BigDecimal monthlyValue,
             QuoteStatus status,
             OffsetDateTime createdAt,
             OffsetDateTime validUntil,
@@ -67,6 +77,16 @@ public final class ConsultantDashboardDtos {
 
     public record RedoQuoteRequest(
             @Pattern(regexp = "^[0-9.\\-]{11,14}$", message = "CPF inválido") String cpf
+    ) {}
+
+    public record UpdateQuoteDetailsRequest(
+            @NotBlank @Size(max = 120) String customerName,
+            @Pattern(regexp = "^$|^[0-9.\\-]{11,14}$", message = "CPF inválido") String cpf,
+            @Size(max = 30) String whatsapp,
+            @Size(max = 10) String plate,
+            @NotBlank @Size(max = 120) String model,
+            @NotNull @Min(1950) @Max(2100) Integer manufactureYear,
+            @NotNull Boolean zeroKm
     ) {}
 
     public record ConsultantDashboardResponse(

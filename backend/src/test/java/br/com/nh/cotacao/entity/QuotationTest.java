@@ -84,6 +84,71 @@ class QuotationTest {
     }
 
     @Test
+    void shouldEditOnlyNonPricingDataWithoutChangingQuoteValue() {
+        Quotation quotation = quotationWithBaseValue("100.00");
+        quotation.addOptional("FUNERAL", "Auxílio funeral", null, new BigDecimal("5.00"));
+
+        BigDecimal fipeBefore = quotation.getFipeValue();
+        BigDecimal baseBefore = quotation.getBaseMonthlyValue();
+        BigDecimal monthlyBefore = quotation.getMonthlyValue();
+        BigDecimal mandatoryBefore = quotation.getMandatoryMonthlyFee();
+        BigDecimal oneTimeBefore = quotation.getOneTimeFee();
+        String planBefore = quotation.getSelectedPlanCode();
+        String categoryBefore = quotation.getCategoryCode();
+        int optionalsBefore = quotation.getSelectedOptionals().size();
+
+        quotation.updateNonPricingData(
+                "Cliente Atualizado",
+                "52998224725",
+                "82988887777",
+                "DEF4G56",
+                "Veículo atualizado",
+                2026,
+                false
+        );
+
+        assertEquals("Cliente Atualizado", quotation.getCustomerName());
+        assertEquals("52998224725", quotation.getCustomerCpf());
+        assertEquals("82988887777", quotation.getWhatsapp());
+        assertEquals("DEF4G56", quotation.getPlate());
+        assertEquals("Veículo atualizado", quotation.getModel());
+        assertEquals(2026, quotation.getManufactureYear());
+        assertEquals(fipeBefore, quotation.getFipeValue());
+        assertEquals(baseBefore, quotation.getBaseMonthlyValue());
+        assertEquals(monthlyBefore, quotation.getMonthlyValue());
+        assertEquals(mandatoryBefore, quotation.getMandatoryMonthlyFee());
+        assertEquals(oneTimeBefore, quotation.getOneTimeFee());
+        assertEquals(planBefore, quotation.getSelectedPlanCode());
+        assertEquals(categoryBefore, quotation.getCategoryCode());
+        assertEquals(optionalsBefore, quotation.getSelectedOptionals().size());
+    }
+
+    @Test
+    void shouldSynchronizeSafeQuoteDataWithExistingInspection() {
+        Consultant consultant = Consultant.create("Consultor", "TEST");
+        Quotation quotation = Quotation.createForConsultant(
+                "NH-2026-SYNC001", consultant, "Cliente", "52998224725", "82999999999",
+                "ABC1D23", "Veículo teste", 2025, false, new BigDecimal("50000.00"),
+                "CAR_NATIONAL", Region.NATIONAL, null, "CAR_ECONOMICO", "Plano Econômico",
+                new BigDecimal("100.00"), BigDecimal.ZERO, BigDecimal.ZERO, null
+        );
+        quotation.decide(QuoteStatus.ACCEPTED);
+        InspectionRequest inspection = InspectionRequest.createForQuotation("token-sync", quotation);
+
+        quotation.updateNonPricingData("Novo Nome", "52998224725", "82988887777", "DEF4G56", "Modelo novo", 2026, false);
+        inspection.updateAssociateData(
+                quotation.getCustomerName(), quotation.getCustomerCpf(),
+                quotation.getWhatsapp(), quotation.getPlate()
+        );
+
+        assertEquals("Novo Nome", inspection.getAssociateName());
+        assertEquals("52998224725", inspection.getCpf());
+        assertEquals("82988887777", inspection.getWhatsapp());
+        assertEquals("DEF4G56", inspection.getPlate());
+        assertEquals(new BigDecimal("100.00"), quotation.getMonthlyValue());
+    }
+
+    @Test
     void shouldStoreZeroKilometerInformation() {
         Consultant consultant = Consultant.create("Consultor", "TEST");
         Quotation quotation = Quotation.createForConsultant(

@@ -227,6 +227,41 @@ public class QuoteService {
         return cpf;
     }
 
+    /**
+     * Altera apenas dados cadastrais. Nenhuma informação utilizada pelo cálculo
+     * de preço é recebida ou modificada por este método.
+     */
+    @Transactional
+    public void updateNonPricingData(
+            Quotation quotation,
+            String customerName,
+            String requestedCpf,
+            String requestedWhatsapp,
+            String requestedPlate,
+            String model,
+            Integer manufactureYear,
+            boolean zeroKm
+    ) {
+        if (quotation == null) throw new IllegalArgumentException("Cotação não encontrada.");
+        if (customerName == null || customerName.isBlank()) {
+            throw new IllegalArgumentException("Informe o nome do associado.");
+        }
+
+        String cpf = requestedCpf == null || requestedCpf.isBlank()
+                ? quotation.getCustomerCpf()
+                : normalizeAndValidateCpf(requestedCpf);
+        String whatsapp = normalizePhone(requestedWhatsapp);
+        if (whatsapp != null && (whatsapp.length() < 10 || whatsapp.length() > 13)) {
+            throw new IllegalArgumentException("Informe um WhatsApp válido com DDD.");
+        }
+        validateYear(manufactureYear);
+        String plate = validateAndNormalizePlate(requestedPlate, zeroKm);
+
+        quotation.updateNonPricingData(
+                customerName, cpf, whatsapp, plate, model, manufactureYear, zeroKm
+        );
+    }
+
     private PlanSelection resolvePlan(
             String selectedPlanCode,
             String categoryCode,

@@ -1,4 +1,4 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#070c40"><title>Área do Colaborador | Novo Horizonte</title><link rel="icon" href="/assets/favicon-nh.png"><link rel="stylesheet" href="/shared/portal.css?v=20260806-database-media-v3">  <link rel="stylesheet" href="/shared/responsive.css?v=20260806-all-devices-v2">
+<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#070c40"><title>Área do Colaborador | Novo Horizonte</title><link rel="icon" href="/assets/favicon-nh.png"><link rel="stylesheet" href="/shared/portal.css?v=20260806-nh-brand-buttons-v1">  <link rel="stylesheet" href="/shared/responsive.css?v=20260806-all-devices-v2">
 </head><body>
 <header class="portal-header"><a class="portal-brand" href="/"><img src="/assets/logo-nh-simbolo.png" alt="Novo Horizonte"><span><strong>Novo Horizonte</strong><small>Área do Colaborador</small></span></a><div class="header-actions"><a href="/">Site principal</a><button id="logout" hidden>Sair</button></div></header>
 <section id="login-view" class="login-wrap"><div class="card login-card"><span class="eyebrow" style="color:#070c40">ACESSO RESTRITO</span><h1>Área do Colaborador</h1><p>Entre com o acesso fornecido pela Novo Horizonte.</p><form id="login-form" class="form-grid"><label class="span-2">Usuário<input id="username" autocomplete="username" required></label><label class="span-2">Senha<input id="password" type="password" autocomplete="current-password" required></label><button class="primary span-2" type="submit">Entrar com segurança</button></form><div id="login-message"></div></div></section>
@@ -26,6 +26,36 @@
   </div>
 </section>
 <p class="footer-note">Novo Horizonte Proteção Veicular · Ambiente interno</p></main>
+<dialog id="consultant-quote-edit-dialog" class="admin-dialog quote-edit-dialog">
+  <form id="consultant-quote-edit-form" class="dialog-card">
+    <div class="dialog-head">
+      <div><span class="eyebrow" style="color:#070c40">EDIÇÃO SEGURA</span><h2>Editar dados da cotação</h2><p>Somente dados cadastrais podem ser alterados. O preço permanece exatamente igual.</p></div>
+      <button id="consultant-quote-edit-close" class="dialog-close" type="button" aria-label="Fechar">×</button>
+    </div>
+    <input id="consultant-quote-edit-id" type="hidden">
+    <div class="quote-edit-locked-grid" aria-label="Informações protegidas da cotação">
+      <div><span>Número</span><strong id="consultant-quote-edit-number">—</strong></div>
+      <div><span>Plano protegido</span><strong id="consultant-quote-edit-plan">—</strong></div>
+      <div><span>Valor mensal protegido</span><strong id="consultant-quote-edit-value">—</strong></div>
+      <div><span>Proteção</span><strong>Preço e coberturas bloqueados</strong></div>
+    </div>
+    <div class="form-grid quote-edit-fields">
+      <label class="span-2">Nome do associado<input id="consultant-quote-edit-name" maxlength="120" required></label>
+      <label>CPF<input id="consultant-quote-edit-cpf" inputmode="numeric" maxlength="14" placeholder="Somente números"></label>
+      <label>WhatsApp<input id="consultant-quote-edit-whatsapp" inputmode="tel" maxlength="30" placeholder="DDD + número"></label>
+      <label class="span-2">Modelo do veículo<input id="consultant-quote-edit-model" maxlength="120" required></label>
+      <label>Ano de fabricação<input id="consultant-quote-edit-year" type="number" inputmode="numeric" min="1950" max="2100" required></label>
+      <label class="quote-edit-zero-km"><span>Veículo 0 km</span><select id="consultant-quote-edit-zero-km"><option value="false">Não</option><option value="true">Sim</option></select></label>
+      <label class="span-2">Placa<input id="consultant-quote-edit-plate" maxlength="10" autocomplete="off"></label>
+    </div>
+    <div class="quote-edit-protection"><strong>Dados bloqueados:</strong> categoria, valor FIPE, origem da motocicleta, plano, coberturas, opcionais, taxas e valor mensal não podem ser editados por este formulário.</div>
+    <div id="consultant-quote-edit-message"></div>
+    <div class="actions dialog-actions">
+      <button id="consultant-quote-edit-cancel" class="outline" type="button">Cancelar</button>
+      <button id="consultant-quote-edit-save" class="primary" type="submit">Salvar dados cadastrais</button>
+    </div>
+  </form>
+</dialog>
 <dialog id="consultant-files-dialog" class="admin-dialog wide-dialog">
   <div class="dialog-card">
     <div class="dialog-head"><div><span class="eyebrow" style="color:#070c40">ARQUIVOS DA VISTORIA</span><h2 id="consultant-files-title">Vistoria</h2></div><button id="consultant-files-close" class="dialog-close" type="button" aria-label="Fechar">×</button></div>
@@ -48,5 +78,5 @@
     </div>
   </div>
 </dialog>
-<script src="/shared/config.js?v=20260804-current-origin"></script><script src="/colaborador/portal.js?v=20260806-consultant-dashboard-v4"></script><script src="/shared/responsive.js?v=20260806-all-devices-v2"></script>
+<script src="/shared/config.js?v=20260804-current-origin"></script><script src="/colaborador/portal.js?v=20260806-consultant-dashboard-v5"></script><script src="/shared/responsive.js?v=20260806-all-devices-v2"></script>
 </body></html>

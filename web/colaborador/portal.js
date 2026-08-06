@@ -8,6 +8,7 @@ let selectedConsultant = null;
 let dashboardData = null;
 let dashboardTimer = null;
 let activeCompletionCommunication = null;
+let activeQuoteEditId = null;
 const dismissedCompletionIds = new Set();
 const consultantMediaObjectUrls = new Set();
 
@@ -187,6 +188,13 @@ function date(value) {
   return value ? new Date(value).toLocaleString('pt-BR') : '—';
 }
 
+function money(value) {
+  const number = Number(value);
+  return Number.isFinite(number)
+    ? number.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    : '—';
+}
+
 function badge(status, labels) {
   const [label, kind] = labels[status] || [status || 'Não iniciada', ''];
   return `<span class="badge ${kind}">${escapeHtml(label)}</span>`;
@@ -247,6 +255,7 @@ function quoteActions(item) {
     || item.pdfUrl
     || `/api/quotes/${item.id}/pdf`;
   const review = `<a class="button outline small-button" href="${escapeHtml(pdfUrl)}" target="_blank" rel="noopener">Rever cotação</a>`;
+  const edit = `<button class="outline small-button" data-edit-quote="${item.id}" type="button">Editar dados</button>`;
   const startInspection = item.status === 'ACCEPTED' && !item.inspectionId
     ? `<button class="secondary small-button" data-start-quote-inspection="${item.id}" type="button">Iniciar vistoria</button>`
     : '';
@@ -254,7 +263,7 @@ function quoteActions(item) {
     ? `<button class="secondary small-button" data-redo-quote="${item.id}" type="button">Refazer cotação</button>`
     : '';
   const remove = `<button class="danger small-button" data-delete-quote="${item.id}" type="button">Excluir</button>`;
-  return `<div class="row-actions quote-actions">${review}${startInspection}${redo}${remove}</div>`;
+  return `<div class="row-actions quote-actions">${review}${edit}${startInspection}${redo}${remove}</div>`;
 }
 
 function findQuote(id) {
@@ -318,6 +327,109 @@ async function redoQuote(id, button) {
   }
 }
 
+function setQuoteEditMessage(text = '', type = 'error') {
+  const box = $('consultant-quote-edit-message');
+  box.className = text ? `message ${type}` : '';
+  box.textContent = text;
+}
+
+function closeQuoteEditDialog() {
+  const dialog = $('consultant-quote-edit-dialog');
+  if (dialog.open) dialog.close();
+  activeQuoteEditId = null;
+  setQuoteEditMessage();
+}
+
+function syncQuoteEditPlateRequirement() {
+  const zeroKm = $('consultant-quote-edit-zero-km').value === 'true';
+  const plateInput = $('consultant-quote-edit-plate');
+  plateInput.required = !zeroKm;
+  plateInput.placeholder = zeroKm ? 'Opcional para veículo 0 km' : 'Informe a placa';
+}
+
+function openQuoteEditDialog(id) {
+  const item = findQuote(id);
+  if (!item) return;
+  activeQuoteEditId = item.id;
+  $('consultant-quote-edit-id').value = item.id;
+  $('consultant-quote-edit-name').value = item.customerName || '';
+  $('consultant-quote-edit-cpf').value = item.customerCpf || '';
+  $('consultant-quote-edit-whatsapp').value = item.whatsapp || '';
+  $('consultant-quote-edit-plate').value = item.plate || '';
+  $('consultant-quote-edit-number').textContent = item.quoteNumber || '—';
+  $('consultant-quote-edit-model').value = item.model || '';
+  $('consultant-quote-edit-year').value = item.manufactureYear || '';
+  $('consultant-quote-edit-zero-km').value = String(Boolean(item.zeroKm));
+  syncQuoteEditPlateRequirement();
+  $('consultant-quote-edit-plan').textContent = item.selectedPlanName || '—';
+  $('consultant-quote-edit-value').textContent = money(item.monthlyValue);
+  setQuoteEditMessage();
+  $('consultant-quote-edit-dialog').showModal();
+  $('consultant-quote-edit-name').focus();
+}
+
+async function saveQuoteEdit(event) {
+  event.preventDefault();
+  const item = findQuote(activeQuoteEditId || $('consultant-quote-edit-id').value);
+  if (!item || !selectedConsultant?.id) return;
+
+  const button = $('consultant-quote-edit-save');
+  const customerName = $('consultant-quote-edit-name').value.trim();
+  const cpf = $('consultant-quote-edit-cpf').value.trim();
+  const whatsapp = $('consultant-quote-edit-whatsapp').value.trim();
+  const plateValue = $('consultant-quote-edit-plate').value.trim();
+  const model = $('consultant-quote-edit-model').value.trim();
+  const manufactureYear = Number($('consultant-quote-edit-year').value);
+  const zeroKm = $('consultant-quote-edit-zero-km').value === 'true';
+
+  if (!customerName) {
+    setQuoteEditMessage('Informe o nome do associado.');
+    return;
+  }
+  const cpfDigits = cpf.replace(/\D/g, '');
+  if (cpfDigits && cpfDigits.length !== 11) {
+    setQuoteEditMessage('O CPF deve possuir 11 números.');
+    return;
+  }
+  const phoneDigits = whatsapp.replace(/\D/g, '');
+  if (phoneDigits && (phoneDigits.length < 10 || phoneDigits.length > 13)) {
+    setQuoteEditMessage('Informe um WhatsApp válido com DDD.');
+    return;
+  }
+  if (!model) {
+    setQuoteEditMessage('Informe o modelo do veículo.');
+    return;
+  }
+  if (!Number.isInteger(manufactureYear) || manufactureYear < 1950 || manufactureYear > 2100) {
+    setQuoteEditMessage('Informe um ano de fabricação válido.');
+    return;
+  }
+  const plateDigits = plateValue.replace(/[^A-Za-z0-9]/g, '');
+  if (!zeroKm && (plateDigits.length < 7 || plateDigits.length > 10)) {
+    setQuoteEditMessage('Informe uma placa válida.');
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = 'Salvando...';
+  setQuoteEditMessage();
+  try {
+    await api(`/api/consultant-dashboard/${encodeURIComponent(selectedConsultant.id)}/quotes/${encodeURIComponent(item.id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ customerName, cpf, whatsapp, plate: plateValue, model, manufactureYear, zeroKm })
+    });
+    closeQuoteEditDialog();
+    await loadDashboard(selectedConsultant, { silent: true });
+    message('Dados cadastrais atualizados. Plano, coberturas e valores permaneceram inalterados.', 'success');
+  } catch (error) {
+    setQuoteEditMessage(error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Salvar dados cadastrais';
+  }
+}
+
 async function deleteQuote(id, button) {
   const item = findQuote(id);
   if (!item || !selectedConsultant?.id) return;
@@ -370,6 +482,9 @@ function renderDashboard(data) {
   });
   document.querySelectorAll('[data-download-report]').forEach(button => {
     button.addEventListener('click', () => downloadConsultantReport(button.dataset.downloadReport, button));
+  });
+  document.querySelectorAll('[data-edit-quote]').forEach(button => {
+    button.addEventListener('click', () => openQuoteEditDialog(button.dataset.editQuote));
   });
   document.querySelectorAll('[data-start-quote-inspection]').forEach(button => {
     button.addEventListener('click', () => startQuoteInspection(button.dataset.startQuoteInspection, button));
@@ -645,6 +760,15 @@ const defaultSgaUrl = 'https://sga.hinova.com.br/sga/sgav4_novohorizonte/v5/logi
 const configuredSgaUrl = window.NH_CONFIG?.sgaUrl;
 $('sga-card').href = configuredSgaUrl && configuredSgaUrl !== '#' ? configuredSgaUrl : defaultSgaUrl;
 boot();
+
+$('consultant-quote-edit-form').addEventListener('submit', saveQuoteEdit);
+$('consultant-quote-edit-zero-km').addEventListener('change', syncQuoteEditPlateRequirement);
+$('consultant-quote-edit-close').addEventListener('click', closeQuoteEditDialog);
+$('consultant-quote-edit-cancel').addEventListener('click', closeQuoteEditDialog);
+$('consultant-quote-edit-dialog').addEventListener('close', () => {
+  activeQuoteEditId = null;
+  setQuoteEditMessage();
+});
 
 $('consultant-files-close').addEventListener('click', () => $('consultant-files-dialog').close());
 $('consultant-download-all-files').addEventListener('click', downloadAllConsultantFiles);

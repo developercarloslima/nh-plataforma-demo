@@ -455,7 +455,7 @@ function renderInspectionStage(quote) {
   });
   $('decision-result').innerHTML = `
     <div class="inspection-box inspection-pending">
-      <div><span class="step-tag">ETAPA 4</span><h3>Proposta aceita — gerar Retrato NH</h3><p>Crie o link de vistoria e envie ao associado. As fotos e o vídeo serão armazenados no Drive.</p></div>
+      <div><span class="step-tag">ETAPA 4</span><h3>Proposta aceita — gerar Retrato NH</h3><p>Crie o link de vistoria e envie ao associado. As fotos, o vídeo e os documentos serão armazenados com segurança no PostgreSQL.</p></div>
       <div class="inspection-actions"><a class="primary-button" href="/colaborador/retrato.html?${params.toString()}">Abrir Retrato NH →</a></div>
     </div>`;
 }
@@ -713,7 +713,7 @@ async function uploadInspection() {
   const button = $('inspection-upload');
   setLoading(button, true, 'Enviando fotos...', 'Enviar fotos e concluir vistoria');
   $('upload-status').hidden = false;
-  $('upload-status').innerHTML = '<span class="upload-spinner"></span><div><b>Enviando e organizando a vistoria...</b><small>Não feche esta tela. O sistema está criando a pasta no Drive e atualizando o PDF.</small></div>';
+  $('upload-status').innerHTML = '<span class="upload-spinner"></span><div><b>Enviando e organizando a vistoria...</b><small>Não feche esta tela. O sistema está confirmando os arquivos no PostgreSQL e atualizando o relatório.</small></div>';
 
   try {
     const formData = new FormData();
