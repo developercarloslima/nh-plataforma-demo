@@ -66,7 +66,6 @@ let discardRecording = false;
 let signatureHasInk = false;
 let vehicleDocumentFile = null;
 let identityDocumentFile = null;
-let additionalFiles = [];
 let signatureDrawing = false;
 let signatureLastPoint = null;
 
@@ -235,7 +234,6 @@ async function persistDraftSnapshot(reason = '') {
       video: serializedFile(videoFile),
       vehicleDocument: serializedFile(vehicleDocumentFile),
       identityDocument: serializedFile(identityDocumentFile),
-      additionalFiles: additionalFiles.map(serializedFile),
       residenceAddress: $('residence-address').value.trim(),
       signature: signatureBlob,
       updatedAt: Date.now()
@@ -283,17 +281,12 @@ async function restoreDraftFromCache() {
   videoFile = restoredFile(draft.video, 'video-vistoria.webm', 'video/webm');
   vehicleDocumentFile = restoredFile(draft.vehicleDocument, 'crlv-veiculo.pdf', 'application/pdf');
   identityDocumentFile = restoredFile(draft.identityDocument, 'rg-cnh-associado.pdf', 'application/pdf');
-  additionalFiles = (draft.additionalFiles || [])
-    .map((entry, index) => restoredFile(entry, `arquivo-adicional-${index + 1}`, 'application/octet-stream'))
-    .filter(Boolean)
-    .map(normalizeAdditionalFile);
   $('residence-address').value = draft.residenceAddress || '';
   restoredSignatureBlob = draft.signature || null;
   hasRestoredDraft = photoFiles.some(Boolean)
     || Boolean(videoFile)
     || Boolean(vehicleDocumentFile)
     || Boolean(identityDocumentFile)
-    || additionalFiles.length > 0
     || Boolean(restoredSignatureBlob)
     || Boolean(draft.residenceAddress);
 
@@ -339,7 +332,6 @@ async function applyRestoredDraftToUi() {
   if (identityDocumentFile) {
     updateDocumentStatus('identity-document', identityDocumentFile, true);
   }
-  renderAdditionalFiles(true);
   if (restoredSignatureBlob) {
     await drawSignatureBlob(restoredSignatureBlob);
   }
@@ -410,7 +402,6 @@ function configureInspectionProfile(vehicleType) {
   photoPreviewUrls = new Array(labels.length).fill(null);
   vehicleDocumentFile = null;
   identityDocumentFile = null;
-  additionalFiles = [];
 
   $('vehicle-guide-title').textContent = inspectionProfile.title;
   $('vehicle-guide-count').textContent = `${labels.length} fotos obrigatórias + 1 vídeo`;
@@ -926,12 +917,9 @@ function updateCaptureSummary() {
       + ` · RG/CNH ${identityDocumentFile ? 'enviado' : 'pendente'}`
       + ` · assinatura ${signatureHasInk ? 'registrada' : 'pendente'}`
     : '';
-  const additionalStatus = additionalFiles.length
-    ? ` · ${additionalFiles.length} arquivo(s) adicional(is)`
-    : '';
   $('capture-summary').textContent = requiredPhotos
-    ? `${capturedPhotos} de ${requiredPhotos} fotos registradas · ${videoStatus}${registrationStatus}${additionalStatus}`
-    : `${videoStatus}${additionalStatus}`;
+    ? `${capturedPhotos} de ${requiredPhotos} fotos registradas · ${videoStatus}${registrationStatus}`
+    : videoStatus;
 }
 
 function serverHasAsset(assetType, sortOrder) {
@@ -1222,13 +1210,6 @@ $('upload-form').addEventListener('submit', async (event) => {
       });
     }
 
-    additionalFiles.forEach((file, index) => assets.push({
-      assetType: 'OTHER_DOCUMENT',
-      sortOrder: 100 + index,
-      label: file.name?.replace(/\.[^.]+$/, '') || `Arquivo adicional ${index + 1}`,
-      file
-    }));
-
     const progressState = {
       totalBytes: assets.reduce((total, asset) => total + asset.file.size, 0),
       sentBytes: 0
@@ -1376,96 +1357,10 @@ function handleDocumentSelection(inputId, label) {
 handleDocumentSelection('vehicle-document', 'o CRLV do veículo');
 handleDocumentSelection('identity-document', 'o RG ou a CNH do associado');
 
-const ADDITIONAL_FILE_LIMIT = 20;
-const ADDITIONAL_IMAGE_MAX_BYTES = 12 * 1024 * 1024;
-const ADDITIONAL_VIDEO_MAX_BYTES = 220 * 1024 * 1024;
-const ADDITIONAL_ALLOWED_TYPES = new Set([
-  'image/jpeg', 'image/png', 'image/webp',
-  'video/mp4', 'video/quicktime', 'video/webm', 'video/3gpp',
-  ...DOCUMENT_TYPES
-]);
-
 function fileExtension(file) {
   const match = String(file?.name || '').toLowerCase().match(/\.([a-z0-9]+)$/);
   return match?.[1] || '';
 }
-
-function normalizeAdditionalFile(file) {
-  if (!file) return null;
-  const inferredType = FILE_MIME_BY_EXTENSION[fileExtension(file)];
-  const currentType = normalizedDocumentType(file);
-  const contentType = ADDITIONAL_ALLOWED_TYPES.has(currentType) ? currentType : inferredType;
-  if (!contentType || !ADDITIONAL_ALLOWED_TYPES.has(contentType)) {
-    throw new Error(`O arquivo ${file.name || 'selecionado'} não é compatível. Use fotos, vídeos, PDF, DOC, DOCX, ODT, RTF ou TXT.`);
-  }
-  if (file.size <= 0) throw new Error(`O arquivo ${file.name || 'selecionado'} está vazio.`);
-  const maxBytes = contentType.startsWith('video/')
-    ? ADDITIONAL_VIDEO_MAX_BYTES
-    : contentType.startsWith('image/')
-      ? ADDITIONAL_IMAGE_MAX_BYTES
-      : DOCUMENT_MAX_BYTES;
-  if (file.size > maxBytes) {
-    const maxLabel = contentType.startsWith('video/') ? '220 MB' : contentType.startsWith('image/') ? '12 MB' : '30 MB';
-    throw new Error(`O arquivo ${file.name || 'selecionado'} deve possuir no máximo ${maxLabel}.`);
-  }
-  if (file.type === contentType) return file;
-  return new File([file], file.name || 'arquivo-adicional', {
-    type: contentType,
-    lastModified: file.lastModified || Date.now()
-  });
-}
-
-function renderAdditionalFiles(restored = false) {
-  const list = $('additional-files-list');
-  if (!list) return;
-  list.innerHTML = additionalFiles.map((file, index) => `
-    <div class="additional-file-row">
-      <div><strong>${escapeHtml(file.name || `Arquivo ${index + 1}`)}</strong><small>${formatBytes(file.size)} · ${escapeHtml(file.type || 'arquivo')}</small></div>
-      <button class="outline" data-remove-additional-file="${index}" type="button">Remover</button>
-    </div>
-  `).join('') || '<small class="field-helper">Nenhum arquivo adicional selecionado.</small>';
-  list.querySelectorAll('[data-remove-additional-file]').forEach(button => {
-    button.addEventListener('click', () => {
-      additionalFiles.splice(Number(button.dataset.removeAdditionalFile), 1);
-      renderAdditionalFiles();
-      updateCaptureSummary();
-      scheduleDraftSave(0, 'Lista de arquivos adicionais atualizada.');
-    });
-  });
-  const status = $('additional-files-status');
-  if (status) {
-    status.textContent = additionalFiles.length
-      ? `${additionalFiles.length} arquivo(s) ${restored ? 'recuperado(s)' : 'selecionado(s)'}.`
-      : 'Envio opcional.';
-  }
-}
-
-$('additional-files')?.addEventListener('change', (event) => {
-  clearMessage();
-  try {
-    const selected = Array.from(event.target.files || []).map(normalizeAdditionalFile);
-    const merged = [...additionalFiles];
-    selected.forEach(file => {
-      const duplicate = merged.some(current => current.name === file.name
-        && current.size === file.size
-        && current.lastModified === file.lastModified);
-      if (!duplicate) merged.push(file);
-    });
-    if (merged.length > ADDITIONAL_FILE_LIMIT) {
-      throw new Error(`Envie no máximo ${ADDITIONAL_FILE_LIMIT} arquivos adicionais por vistoria.`);
-    }
-    additionalFiles = merged;
-    renderAdditionalFiles();
-    updateCaptureSummary();
-    scheduleDraftSave(0, 'Arquivos adicionais salvos neste aparelho.');
-  } catch (error) {
-    msg(error.message);
-  } finally {
-    event.target.value = '';
-  }
-});
-
-renderAdditionalFiles();
 
 const signatureCanvas = $('signature-pad');
 const signatureContext = signatureCanvas.getContext('2d');
