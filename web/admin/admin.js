@@ -13,6 +13,7 @@ let plans = [];
 let coverages = [];
 let auditEntries = [];
 let settings = {};
+const adminMediaObjectUrls = new Set();
 
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const date = value => value ? new Date(value).toLocaleString('pt-BR') : '—';
@@ -23,7 +24,8 @@ const QUOTE_STATUS_LABELS = Object.freeze({
   DECLINED: ['Recusada', 'off'], CANCELLED: ['Cancelada', 'off']
 });
 const INSPECTION_STATUS_LABELS = Object.freeze({
-  CREATED: ['Pendente', 'warn'], UNDER_REVIEW: ['Em análise', 'warn'], COMPLETED: ['Material enviado', 'ok'],
+  WAITING_FILES: ['Aguardando arquivos', 'warn'], UPLOADING_FILES: ['Envio em andamento', 'warn'], CREATED: ['Pendente', 'warn'],
+  UNDER_REVIEW: ['Em análise', 'warn'], COMPLETED: ['Material enviado', 'ok'],
   APPROVED: ['Aprovada', 'ok'], REJECTED: ['Reprovada', 'off'], CANCELLED: ['Cancelada', 'off'], EXPIRED: ['Expirada', 'off']
 });
 const AUDIT_TYPE_LABELS = Object.freeze({
@@ -76,6 +78,42 @@ async function api(path, options = {}) {
   return response.status === 204 ? null : response.json();
 }
 
+async function apiBlob(path) {
+  const headers = new Headers();
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  const response = await fetch(window.NH_API?.backend(path) || path, { headers, cache: 'no-store' });
+  if (response.status === 401 || response.status === 403) {
+    showLogin('Sua sessão administrativa expirou. Entre novamente.');
+    throw new Error('Sessão administrativa inválida.');
+  }
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.message || 'Não foi possível carregar o arquivo.');
+  }
+  return response.blob();
+}
+
+const ADMIN_ASSET_LABELS = {
+  PHOTO: 'Foto da vistoria',
+  VIDEO: 'Vídeo da vistoria',
+  SIGNATURE: 'Assinatura',
+  VEHICLE_DOCUMENT: 'CRLV do veículo',
+  IDENTITY_DOCUMENT: 'RG ou CNH',
+  REPORT: 'Relatório da vistoria'
+};
+
+function formatBytes(value) {
+  const bytes = Number(value || 0);
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function releaseAdminMediaUrls() {
+  adminMediaObjectUrls.forEach(url => URL.revokeObjectURL(url));
+  adminMediaObjectUrls.clear();
+}
+
 function message(text, type = 'error') {
   const element = $('message');
   element.className = `message ${type}`;
@@ -101,6 +139,10 @@ function quoteBadge(item) {
 function inspectionBadge(status) {
   const [label, kind] = INSPECTION_STATUS_LABELS[status] || [status, ''];
   return statusBadge(label, kind);
+}
+
+function hasInspectionFiles(item) {
+  return Number(item?.assetCount || 0) > 0;
 }
 
 function coverageBadge(status) {
@@ -139,6 +181,7 @@ function openDialog(id) {
 
 function closeDialog(id) {
   const dialog = $(id);
+  if (id === 'inspection-dialog') releaseAdminMediaUrls();
   if (dialog.open) dialog.close();
 }
 
@@ -321,12 +364,24 @@ function renderInspections() {
   const filter = $('inspection-filter').value.trim().toLowerCase();
   $('inspections-body').innerHTML = inspections
     .filter(item => `${item.consultantName} ${item.associateName} ${item.plate || ""}`.toLowerCase().includes(filter))
-    .map(item => `<tr>
-      <td><strong>${esc(item.associateName)}</strong></td><td>${esc(item.consultantName)}</td><td>${esc(item.plate || '0 km — sem placa')}</td>
-      <td>${item.requestType === 'NEW_INSPECTION' ? 'Nova vistoria' : 'Atualização de boleto'}</td><td>${item.assetCount}</td>
-      <td>${inspectionBadge(item.status)}</td><td>${date(item.createdAt)}</td>
-      <td><button class="secondary small-button" data-inspection-analyze="${item.id}" type="button">Analisar</button></td>
-    </tr>`).join('') || emptyRow(8, 'Nenhuma atividade do Retrato NH encontrada.');
+    .map(item => {
+      const filesAvailable = hasInspectionFiles(item);
+      const currentPublicUrl = item.publicUrl
+        ? (window.NH_URLS?.retratoUrl(item.publicUrl) || item.publicUrl)
+        : null;
+      const statusAction = filesAvailable
+        ? `<button class="outline small-button" data-inspection-analyze="${item.id}" type="button">Ver arquivos</button>`
+        : '';
+      const pendingActions = filesAvailable
+        ? ''
+        : `${item.associateInspectionWhatsappUrl ? `<a class="button secondary small-button" href="${esc(item.associateInspectionWhatsappUrl)}" target="_blank" rel="noopener">Enviar link</a>` : ''}${currentPublicUrl ? `<a class="button outline small-button" href="${esc(currentPublicUrl)}" target="_blank" rel="noopener">Fazer vistoria</a>` : ''}`;
+      return `<tr>
+        <td><strong>${esc(item.associateName)}</strong></td><td>${esc(item.consultantName)}</td><td>${esc(item.plate || '0 km — sem placa')}</td>
+        <td>${item.requestType === 'NEW_INSPECTION' ? 'Nova vistoria' : 'Atualização de boleto'}</td><td>${item.assetCount}</td>
+        <td><div class="status-with-action">${inspectionBadge(item.status)}${statusAction}</div></td><td>${date(item.createdAt)}</td>
+        <td><div class="row-actions">${pendingActions}<button class="secondary small-button" data-inspection-analyze="${item.id}" type="button">Analisar</button></div></td>
+      </tr>`;
+    }).join('') || emptyRow(8, 'Nenhuma atividade do Retrato NH encontrada.');
   document.querySelectorAll('[data-inspection-analyze]').forEach(button => button.addEventListener('click', () => openInspectionAnalysis(button.dataset.inspectionAnalyze)));
 }
 
@@ -367,28 +422,170 @@ function openQuoteAnalysis(id) {
 function openInspectionAnalysis(id) {
   const item = inspections.find(value => value.id === id);
   if (!item) return;
+  const filesAvailable = hasInspectionFiles(item);
+  const currentPublicUrl = item.publicUrl
+    ? (window.NH_URLS?.retratoUrl(item.publicUrl) || item.publicUrl)
+    : null;
+
   $('inspection-analysis-id').value = item.id;
   $('inspection-dialog-title').textContent = `${item.plate || '0 km — sem placa'} — ${item.associateName}`;
-  $('inspection-analysis-status').value = item.status;
   $('inspection-analysis-note').value = item.adminNote || '';
+
+  const statusSelect = $('inspection-analysis-status');
+  const readyForAnalysis = filesAvailable && Array.isArray(item.assets) && item.assets.some(asset => asset.type === 'REPORT' && asset.available) && Boolean(item.completedAt);
+  const allowedWhileWaiting = new Set(['WAITING_FILES', 'UPLOADING_FILES', 'CANCELLED', 'EXPIRED']);
+  Array.from(statusSelect.options).forEach(option => {
+    option.disabled = !readyForAnalysis && !allowedWhileWaiting.has(option.value);
+  });
+  if (!filesAvailable) {
+    statusSelect.value = item.status === 'CANCELLED' || item.status === 'EXPIRED' ? item.status : 'WAITING_FILES';
+  } else if (!readyForAnalysis) {
+    statusSelect.value = item.status === 'CANCELLED' || item.status === 'EXPIRED' ? item.status : 'UPLOADING_FILES';
+  } else {
+    statusSelect.value = item.status;
+  }
+
   $('inspection-detail-grid').innerHTML = detailItems([
     ['Associado', item.associateName], ['CPF', item.maskedCpf], ['WhatsApp', formatPhone(item.whatsapp) || '—'],
     ['Consultor', item.consultantName], ['Placa', item.plate || '0 km — sem placa'],
     ['Endereço residencial', item.residenceAddress || '—'],
     ['Tipo', item.requestType === 'NEW_INSPECTION' ? 'Nova vistoria' : 'Atualização de boleto'],
-    ['Arquivos enviados', item.assetCount], ['Criada em', date(item.createdAt)], ['Expira em', date(item.expiresAt)],
+    ['Arquivos disponíveis', item.assetCount], ['Situação dos arquivos', filesAvailable ? `Armazenados no sistema até ${date(item.filesExpireAt)}` : (Number(item.expiredAssetCount || 0) > 0 ? 'Arquivos apagados após 40 dias' : 'Aguardando envio do associado')],
+    ['Criada em', date(item.createdAt)], ['Expira em', date(item.expiresAt)],
     ['Concluída em', date(item.completedAt)], ['Última análise', date(item.reviewedAt)]
   ]);
-  const currentPublicUrl = item.publicUrl
-    ? (window.NH_URLS?.retratoUrl(item.publicUrl) || item.publicUrl)
-    : null;
-  $('inspection-links').innerHTML = linkButtons([
-    [currentPublicUrl, 'Abrir link do associado'], [item.driveFolderUrl, 'Abrir Drive'], [item.reportUrl, 'Abrir relatório'], [item.signatureUrl, 'Abrir assinatura'],
+
+  $('inspection-links').innerHTML = linkButtons(filesAvailable ? [
+    [currentPublicUrl, 'Abrir link da vistoria'],
     [window.NH_URLS?.replaceLinkInCommunicationUrl(item.teamWhatsappUrl, item.publicUrl, currentPublicUrl) || item.teamWhatsappUrl, 'Enviar por WhatsApp'],
     [window.NH_URLS?.replaceLinkInCommunicationUrl(item.teamEmailUrl, item.publicUrl, currentPublicUrl) || item.teamEmailUrl, 'Enviar por e-mail'],
     [item.associateDecisionWhatsappUrl, item.status === 'APPROVED' ? 'Informar aprovação ao associado' : 'Informar recusa ao associado']
+  ] : [
+    [item.associateInspectionWhatsappUrl, 'Enviar link ao associado'],
+    [currentPublicUrl, 'Fazer vistoria agora'],
+    [window.NH_URLS?.replaceLinkInCommunicationUrl(item.teamWhatsappUrl, item.publicUrl, currentPublicUrl) || item.teamWhatsappUrl, 'Enviar para a equipe']
   ]);
+  renderAdminInspectionFiles(item);
   openDialog('inspection-dialog');
+}
+
+function renderAdminInspectionFiles(item) {
+  releaseAdminMediaUrls();
+  const section = $('admin-inspection-files-section');
+  const grid = $('admin-inspection-files-grid');
+  const assets = Array.isArray(item.assets) ? item.assets : [];
+  const available = assets.filter(asset => asset.available);
+  section.hidden = assets.length === 0;
+  if (section.hidden) {
+    grid.innerHTML = '';
+    return;
+  }
+
+  $('admin-inspection-files-retention').textContent = available.length
+    ? `Os arquivos ficam disponíveis até ${date(item.filesExpireAt)} e são apagados automaticamente após 40 dias.`
+    : 'O prazo de 40 dias terminou e os arquivos foram apagados automaticamente.';
+  const allButton = $('admin-download-all-files');
+  allButton.hidden = available.length === 0;
+  allButton.dataset.inspectionId = item.id;
+
+  grid.innerHTML = assets.map(asset => {
+    const title = asset.label || ADMIN_ASSET_LABELS[asset.type] || 'Arquivo';
+    const image = asset.available && String(asset.contentType || '').startsWith('image/');
+    const video = asset.available && String(asset.contentType || '').startsWith('video/');
+    const preview = image
+      ? `<div class="inspection-media-preview"><span class="inspection-media-loading">Carregando imagem...</span><img data-admin-image-preview="${asset.id}" alt="${esc(title)}" hidden></div>`
+      : video
+        ? `<div class="inspection-media-preview"><div class="inspection-media-placeholder">▶ Vídeo disponível</div><video data-admin-video-preview="${asset.id}" controls hidden></video></div>`
+        : `<div class="inspection-media-preview"><div class="inspection-media-placeholder">${asset.type === 'REPORT' ? 'PDF' : 'DOCUMENTO'}</div></div>`;
+    const actions = asset.available
+      ? `<div class="inspection-media-actions">${video ? `<button class="outline" data-admin-play-video="${asset.id}" type="button">Reproduzir</button>` : ''}<button class="secondary" data-admin-download-asset="${asset.id}" data-file-name="${esc(asset.fileName)}" type="button">Baixar</button></div>`
+      : '<div class="inspection-media-expired">Arquivo removido após 40 dias.</div>';
+    return `<article class="inspection-media-card ${asset.available ? '' : 'expired'}">${preview}<div class="inspection-media-body"><strong>${esc(title)}</strong><small>${esc(asset.fileName)}</small><small>${formatBytes(asset.fileSize)} · ${esc(asset.contentType || 'arquivo')}</small>${actions}</div></article>`;
+  }).join('');
+
+  available.filter(asset => String(asset.contentType || '').startsWith('image/')).forEach(asset => loadAdminImagePreview(item.id, asset));
+  grid.querySelectorAll('[data-admin-download-asset]').forEach(button => button.addEventListener('click', () => downloadAdminAsset(item.id, button.dataset.adminDownloadAsset, button.dataset.fileName, button)));
+  grid.querySelectorAll('[data-admin-play-video]').forEach(button => button.addEventListener('click', () => playAdminVideo(item.id, button.dataset.adminPlayVideo, button)));
+}
+
+async function loadAdminImagePreview(inspectionId, asset) {
+  const image = document.querySelector(`[data-admin-image-preview="${asset.id}"]`);
+  if (!image) return;
+  const loading = image.parentElement.querySelector('.inspection-media-loading');
+  try {
+    const blob = await apiBlob(`/api/admin/inspections/${inspectionId}/assets/${asset.id}`);
+    const url = URL.createObjectURL(blob);
+    adminMediaObjectUrls.add(url);
+    image.src = url;
+    image.hidden = false;
+    if (loading) loading.remove();
+  } catch (error) {
+    if (loading) loading.textContent = error.message;
+  }
+}
+
+async function playAdminVideo(inspectionId, assetId, button) {
+  const video = document.querySelector(`[data-admin-video-preview="${assetId}"]`);
+  if (!video) return;
+  button.disabled = true;
+  button.textContent = 'Carregando...';
+  try {
+    const blob = await apiBlob(`/api/admin/inspections/${inspectionId}/assets/${assetId}`);
+    const url = URL.createObjectURL(blob);
+    adminMediaObjectUrls.add(url);
+    video.src = url;
+    video.hidden = false;
+    video.previousElementSibling?.remove();
+    await video.play().catch(() => {});
+    button.textContent = 'Vídeo carregado';
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = 'Tentar novamente';
+    message(error.message);
+  }
+}
+
+async function downloadAdminAsset(inspectionId, assetId, fileName, button) {
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Baixando...';
+  try {
+    const blob = await apiBlob(`/api/admin/inspections/${inspectionId}/assets/${assetId}?download=true`);
+    triggerAdminDownload(blob, fileName || 'arquivo-vistoria');
+  } catch (error) {
+    message(error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
+function triggerAdminDownload(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+async function downloadAllAdminFiles() {
+  const id = $('admin-download-all-files').dataset.inspectionId;
+  if (!id) return;
+  const button = $('admin-download-all-files');
+  button.disabled = true;
+  button.textContent = 'Preparando pacote...';
+  try {
+    const blob = await apiBlob(`/api/admin/inspections/${id}/assets.zip`);
+    triggerAdminDownload(blob, `arquivos-vistoria-${id}.zip`);
+  } catch (error) {
+    message(error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Baixar todos (.zip)';
+  }
 }
 
 function detailItems(items) {
@@ -619,7 +816,7 @@ const AUDIT_FIELD_LABELS = Object.freeze({
 const AUDIT_VALUE_LABELS = Object.freeze({
   NATIONAL: 'Nacional', NORTHEAST: 'Demais cidades do Nordeste', CAPITAL: 'Capital',
   INCLUDED: 'Incluído', NOT_INCLUDED: 'Não incluído', OPTIONAL: 'Serviço opcional',
-  CREATED: 'Pendente', UNDER_REVIEW: 'Em análise', ACCEPTED: 'Aceita', DECLINED: 'Recusada',
+  WAITING_FILES: 'Aguardando arquivos', UPLOADING_FILES: 'Envio em andamento', CREATED: 'Pendente', UNDER_REVIEW: 'Em análise', ACCEPTED: 'Aceita', DECLINED: 'Recusada',
   COMPLETED: 'Material enviado', APPROVED: 'Aprovada', REJECTED: 'Recusada', CANCELLED: 'Cancelada', EXPIRED: 'Expirada',
   CREATED_IN_PORTAL: 'Criado pelo portal', IMPORTED: 'Importado', SELF_SERVICE: 'Cliente pelo site', CONSULTANT: 'Consultor'
 });
@@ -965,10 +1162,12 @@ $('coverage-plan-filter').addEventListener('change', renderCoverages);
 $('coverage-status-filter').addEventListener('change', renderCoverages);
 $('coverage-text-filter').addEventListener('input', renderCoverages);
 $('audit-filter').addEventListener('input', renderAudit);
+$('admin-download-all-files').addEventListener('click', downloadAllAdminFiles);
 document.querySelectorAll('[data-open-settings]').forEach(button => button.addEventListener('click', openSettingsModal));
 document.querySelectorAll('[data-close-dialog]').forEach(button => button.addEventListener('click', () => closeDialog(button.dataset.closeDialog)));
 
 document.querySelectorAll('.admin-dialog').forEach(dialog => {
+  dialog.addEventListener('close', () => { if (dialog.id === 'inspection-dialog') releaseAdminMediaUrls(); });
   dialog.addEventListener('click', event => {
     const rect = dialog.getBoundingClientRect();
     const outside = event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom;

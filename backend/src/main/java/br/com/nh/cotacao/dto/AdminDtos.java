@@ -10,6 +10,7 @@ import jakarta.validation.constraints.*;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 public final class AdminDtos {
@@ -204,10 +205,14 @@ public final class AdminDtos {
             String reportUrl,
             String teamWhatsappUrl,
             String teamEmailUrl,
+            String associateInspectionWhatsappUrl,
             String associateDecisionWhatsappUrl,
             OffsetDateTime decisionMessageSentAt,
             boolean associateDecisionMessagePending,
-            int assetCount
+            int assetCount,
+            int expiredAssetCount,
+            OffsetDateTime filesExpireAt,
+            List<InspectionDtos.InspectionAssetResponse> assets
     ) {}
 
     public record CommunicationSettingsResponse(

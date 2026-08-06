@@ -10,7 +10,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.time.format.DateTimeFormatter;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 
 @Service
@@ -19,12 +20,14 @@ public class RetratoService {
     private static final long MAX_PHOTO_BYTES = 12L * 1024 * 1024;
     private static final long MAX_VIDEO_BYTES = 220L * 1024 * 1024;
     private static final long MAX_SIGNATURE_BYTES = 3L * 1024 * 1024;
+    private static final long MAX_DOCUMENT_BYTES = 18L * 1024 * 1024;
     private static final Set<String> PHOTO_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
     private static final Set<String> VIDEO_TYPES = Set.of("video/mp4", "video/quicktime", "video/webm", "video/3gpp");
+    private static final Set<String> DOCUMENT_TYPES = Set.of("application/pdf", "image/jpeg", "image/png", "image/webp");
 
     private final InspectionRequestRepository repository;
     private final ConsultantService consultantService;
-    private final GoogleDriveStorageService driveStorage;
+    private final InspectionAssetStorageService storageService;
     private final RetratoPdfService pdfService;
     private final String publicWebUrl;
     private final CommunicationSettingsService communicationSettings;
@@ -32,14 +35,14 @@ public class RetratoService {
     public RetratoService(
             InspectionRequestRepository repository,
             ConsultantService consultantService,
-            GoogleDriveStorageService driveStorage,
+            InspectionAssetStorageService storageService,
             RetratoPdfService pdfService,
             CommunicationSettingsService communicationSettings,
             @Value("${app.public-web-url:https://aforma-demo.vercel.app}") String publicWebUrl
     ) {
         this.repository = repository;
         this.consultantService = consultantService;
-        this.driveStorage = driveStorage;
+        this.storageService = storageService;
         this.pdfService = pdfService;
         this.publicWebUrl = normalizePublicWebUrl(publicWebUrl);
         this.communicationSettings = communicationSettings;
@@ -70,10 +73,18 @@ public class RetratoService {
         if (quotation == null || quotation.getOrigin() != QuoteOrigin.SELF_SERVICE) {
             throw new IllegalArgumentException("A vistoria automática exige uma cotação feita pelo cliente.");
         }
+        return ensureForQuotation(quotation);
+    }
+
+    @Transactional
+    public InspectionResponse ensureForQuotation(Quotation quotation) {
+        if (quotation == null) {
+            throw new IllegalArgumentException("Cotação não encontrada.");
+        }
         return repository.findByQuotation_Id(quotation.getId())
                 .map(this::toResponse)
                 .orElseGet(() -> toResponse(repository.save(
-                        InspectionRequest.createForSelfServiceQuote(randomToken(), quotation)
+                        InspectionRequest.createForQuotation(randomToken(), quotation)
                 )));
     }
 
@@ -99,10 +110,14 @@ public class RetratoService {
             List<String> labels,
             MultipartFile video,
             String residenceAddress,
-            MultipartFile signature
+            MultipartFile signature,
+            MultipartFile vehicleDocument,
+            MultipartFile identityDocument
     ) {
         InspectionRequest request = findByToken(token);
-        if (request.getStatus() != InspectionRequestStatus.CREATED
+        if (request.getStatus() != InspectionRequestStatus.WAITING_FILES
+                && request.getStatus() != InspectionRequestStatus.UPLOADING_FILES
+                && request.getStatus() != InspectionRequestStatus.CREATED
                 && request.getStatus() != InspectionRequestStatus.UNDER_REVIEW) {
             throw new IllegalArgumentException("Esta solicitação não está disponível para novos envios.");
         }
@@ -121,6 +136,14 @@ public class RetratoService {
                 throw new IllegalArgumentException("A assinatura do associado é obrigatória para concluir o cadastro.");
             }
             validateSignature(signature);
+            if (vehicleDocument == null || vehicleDocument.isEmpty()) {
+                throw new IllegalArgumentException("O CRLV do veículo é obrigatório.");
+            }
+            if (identityDocument == null || identityDocument.isEmpty()) {
+                throw new IllegalArgumentException("O RG ou a CNH do associado é obrigatório.");
+            }
+            validateDocument(vehicleDocument, "CRLV do veículo");
+            validateDocument(identityDocument, "RG ou CNH do associado");
         }
 
         List<MultipartFile> safePhotos = photos == null ? List.of() : photos.stream()
@@ -135,54 +158,83 @@ public class RetratoService {
         }
         safePhotos.forEach(this::validatePhoto);
 
-        String date = request.getCreatedAt().format(DateTimeFormatter.ofPattern("dd-MM-yyyy"));
-        String type = request.getRequestType() == InspectionRequestType.NEW_INSPECTION ? "Nova vistoria" : "Atualização de boleto";
-        var folder = driveStorage.createFolder(request.getAssociateName() + " - " + vehiclePlateLabel(request) + " - " + type + " - " + date);
-        request.registerFolder(folder.id(), folder.url());
-
         int order = 1;
         for (MultipartFile photo : safePhotos) {
             String label = labelAt(labels, order - 1, "Foto " + order);
-            String extension = extension(photo.getContentType(), ".jpg");
-            String fileName = String.format(Locale.ROOT, "%02d-%s%s", order, slug(label), extension);
-            var file = driveStorage.upload(folder.id(), fileName, photo.getContentType(), bytes(photo));
-            request.addAsset(InspectionAsset.create(
-                    request, InspectionAssetType.PHOTO, label, fileName, photo.getContentType(), photo.getSize(), order,
-                    file.id(), file.viewUrl()
-            ));
+            String fileName = String.format(Locale.ROOT, "%02d-%s%s", order, slug(label), extension(photo.getContentType(), ".jpg"));
+            storeMultipart(request, InspectionAssetType.PHOTO, label, fileName, photo, order);
             order++;
         }
 
-        String videoExtension = extension(video.getContentType(), ".mp4");
-        String videoName = String.format(Locale.ROOT, "%02d-video-vistoria%s", order, videoExtension);
-        var videoFile = driveStorage.upload(folder.id(), videoName, video.getContentType(), bytes(video));
-        request.addAsset(InspectionAsset.create(
-                request, InspectionAssetType.VIDEO, "Vídeo da vistoria", videoName, video.getContentType(), video.getSize(), order,
-                videoFile.id(), videoFile.viewUrl()
-        ));
-        order++;
+        int videoOrder = newInspection ? requiredPhotoCount + 1 : 1;
+        storeMultipart(
+                request,
+                InspectionAssetType.VIDEO,
+                newInspection ? "Vídeo da vistoria" : "Vídeo para atualização de boleto",
+                String.format(Locale.ROOT, "%02d-video-vistoria%s", videoOrder, extension(video.getContentType(), ".mp4")),
+                video,
+                videoOrder
+        );
 
         if (newInspection) {
-            String signatureType = cleanType(signature.getContentType());
-            String signatureName = String.format(Locale.ROOT, "%02d-assinatura-associado%s", order, extension(signatureType, ".png"));
-            var signatureFile = driveStorage.upload(folder.id(), signatureName, signatureType, bytes(signature));
-            request.addAsset(InspectionAsset.create(
-                    request, InspectionAssetType.SIGNATURE, "Assinatura do associado", signatureName,
-                    signatureType, signature.getSize(), order, signatureFile.id(), signatureFile.viewUrl()
-            ));
+            int signatureOrder = requiredPhotoCount + 2;
+            storeMultipart(request, InspectionAssetType.SIGNATURE, "Assinatura do associado",
+                    String.format(Locale.ROOT, "%02d-assinatura-associado%s", signatureOrder, extension(signature.getContentType(), ".png")),
+                    signature, signatureOrder);
+
+            int vehicleDocumentOrder = requiredPhotoCount + 3;
+            storeMultipart(request, InspectionAssetType.VEHICLE_DOCUMENT, "CRLV do veículo",
+                    String.format(Locale.ROOT, "%02d-crlv-veiculo%s", vehicleDocumentOrder, extension(vehicleDocument.getContentType(), ".pdf")),
+                    vehicleDocument, vehicleDocumentOrder);
+
+            int identityDocumentOrder = requiredPhotoCount + 4;
+            storeMultipart(request, InspectionAssetType.IDENTITY_DOCUMENT, "RG ou CNH do associado",
+                    String.format(Locale.ROOT, "%02d-rg-cnh-associado%s", identityDocumentOrder, extension(identityDocument.getContentType(), ".pdf")),
+                    identityDocument, identityDocumentOrder);
         }
 
         repository.saveAndFlush(request);
         byte[] reportBytes = pdfService.generate(request);
-        var report = driveStorage.upload(folder.id(), "relatorio-retrato-nh.pdf", "application/pdf", reportBytes);
-        request.complete(report.id(), report.viewUrl());
-        repository.save(request);
+        int reportOrder = newInspection ? requiredPhotoCount + 5 : 2;
+        storageService.storeBytes(request, InspectionAssetType.REPORT, "Relatório da vistoria",
+                "relatorio-retrato-nh.pdf", "application/pdf", reportOrder, reportBytes);
+        request.complete();
+        repository.saveAndFlush(request);
 
-        InspectionResponse response = toResponse(request);
-        return new InspectionUploadResponse(
-                response, request.getDriveFolderUrl(), request.getReportUrl(),
-                false, "Envio manual pelo consultor."
-        );
+        return new InspectionUploadResponse(toResponse(request), null, null, false, "Arquivos armazenados no painel de análise.");
+    }
+
+    private void storeMultipart(
+            InspectionRequest request,
+            InspectionAssetType type,
+            String label,
+            String fileName,
+            MultipartFile file,
+            int sortOrder
+    ) {
+        Path temporary = null;
+        try {
+            temporary = Files.createTempFile("nh-inspection-", ".upload");
+            file.transferTo(temporary);
+            storageService.store(
+                    request,
+                    type,
+                    label,
+                    fileName,
+                    cleanType(file.getContentType()),
+                    file.getSize(),
+                    sortOrder,
+                    temporary
+            );
+        } catch (RuntimeException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalStateException("Não foi possível armazenar um dos arquivos da vistoria.", exception);
+        } finally {
+            if (temporary != null) {
+                try { Files.deleteIfExists(temporary); } catch (Exception ignored) {}
+            }
+        }
     }
 
     private InspectionRequest findByToken(String token) {
@@ -209,7 +261,7 @@ public class RetratoService {
                     ? "Nova vistoria" : "Atualização de boleto";
             String teamMessage;
 
-            if (request.getDriveFolderUrl() == null) {
+            if (request.getCompletedAt() == null) {
                 teamMessage = "Nova solicitação do Retrato NH\n\nAssociado: " + request.getAssociateName()
                         + "\nPlaca: " + vehiclePlateLabel(request)
                         + "\nWhatsApp do associado: " + visiblePhone(request.getWhatsapp())
@@ -221,8 +273,7 @@ public class RetratoService {
                         + "\nPlaca: " + vehiclePlateLabel(request)
                         + "\nConsultor: " + request.getConsultantName()
                         + "\nTipo: " + requestTypeLabel
-                        + "\n\nPasta no Drive: " + request.getDriveFolderUrl()
-                        + (request.getReportUrl() == null ? "" : "\nRelatório: " + request.getReportUrl());
+                        + "\n\nOs arquivos estão disponíveis no painel de análise por 40 dias.";
             }
 
             teamWhatsappUrl = "https://wa.me/" + teamWhatsappNumber + "?text="
@@ -231,7 +282,8 @@ public class RetratoService {
         List<InspectionAssetResponse> assets = request.getAssets().stream()
                 .map(asset -> new InspectionAssetResponse(
                         asset.getId(), asset.getAssetType(), asset.getLabel(), asset.getFileName(),
-                        asset.getDriveFileUrl(), asset.getSortOrder()
+                        asset.getContentType(), asset.getFileSize(), null, asset.getSortOrder(),
+                        storageService.isAvailable(asset), asset.getStoredAt(), asset.getExpiresAt(), asset.getPurgedAt()
                 )).toList();
         return new InspectionResponse(
                 request.getId(), request.getPublicToken(), request.getRequestType(), request.getVehicleType(), request.getAssociateName(),
@@ -239,7 +291,7 @@ public class RetratoService {
                 request.getConsultant() == null ? null : request.getConsultant().getId(),
                 request.getConsultantName(), request.getStatus(), request.getCreatedAt(), request.getExpiresAt(),
                 request.getCompletedAt(), publicUrl, whatsappUrl, teamWhatsappUrl, associateCompletionWhatsappUrl,
-                request.getDriveFolderUrl(), request.getReportUrl(), assets
+                null, null, assets
         );
     }
 
@@ -290,6 +342,15 @@ public class RetratoService {
         }
     }
 
+    private void validateDocument(MultipartFile file, String label) {
+        if (file.getSize() > MAX_DOCUMENT_BYTES) {
+            throw new IllegalArgumentException(label + " deve possuir no máximo 18 MB.");
+        }
+        if (!DOCUMENT_TYPES.contains(cleanType(file.getContentType()))) {
+            throw new IllegalArgumentException("Envie " + label + " em PDF, JPG, PNG ou WebP.");
+        }
+    }
+
     private byte[] bytes(MultipartFile file) {
         try { return file.getBytes(); }
         catch (Exception exception) { throw new IllegalArgumentException("Não foi possível ler um dos arquivos enviados."); }
@@ -314,6 +375,7 @@ public class RetratoService {
             case "video/webm" -> ".webm";
             case "video/3gpp" -> ".3gp";
             case "video/mp4" -> ".mp4";
+            case "application/pdf" -> ".pdf";
             default -> fallback;
         };
     }

@@ -32,8 +32,14 @@ public final class InspectionDtos {
             InspectionAssetType type,
             String label,
             String fileName,
+            String contentType,
+            long fileSize,
             String driveFileUrl,
-            int sortOrder
+            int sortOrder,
+            boolean available,
+            OffsetDateTime storedAt,
+            OffsetDateTime expiresAt,
+            OffsetDateTime purgedAt
     ) {}
 
     public record InspectionResponse(
@@ -67,5 +73,24 @@ public final class InspectionDtos {
             String reportUrl,
             boolean automaticWhatsappSent,
             String automaticWhatsappDetail
+    ) {}
+
+    public record ChunkUploadResponse(
+            boolean complete,
+            int receivedChunks,
+            int totalChunks,
+            InspectionAssetType assetType,
+            int sortOrder,
+            InspectionResponse inspection
+    ) {}
+
+    public record FinishInspectionUploadRequest(
+            String residenceAddress
+    ) {}
+
+    public record ChunkUploadStatusResponse(
+            boolean complete,
+            List<Integer> receivedChunks,
+            InspectionResponse inspection
     ) {}
 }

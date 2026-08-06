@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#070c40">
   <title>Equipe de Análise | Novo Horizonte</title>
   <link rel="icon" href="/assets/favicon-nh.png">
-  <link rel="stylesheet" href="/shared/portal.css?v=20260804-brand-manual">
+  <link rel="stylesheet" href="/shared/portal.css?v=20260806-database-media-v3">
   <link rel="stylesheet" href="/shared/responsive.css?v=20260804-universal">
 </head>
 <body>
@@ -56,13 +56,23 @@
     </div>
     <input id="inspection-id" type="hidden">
     <div id="inspection-details" class="detail-grid"></div>
+    <section id="inspection-files-section" class="inspection-media-section" hidden>
+      <div class="inspection-media-head">
+        <div><h3>Arquivos enviados</h3><p id="inspection-files-retention">Disponíveis por 40 dias.</p></div>
+        <button id="download-all-files" class="secondary" type="button">Baixar todos (.zip)</button>
+      </div>
+      <div id="inspection-files-grid" class="inspection-media-grid"></div>
+    </section>
     <div class="form-grid" style="margin-top:18px">
       <label>Status<select id="inspection-status">
+        <option value="WAITING_FILES">Aguardando arquivos</option>
+        <option value="UPLOADING_FILES">Envio em andamento</option>
         <option value="COMPLETED">Aguardando análise</option>
         <option value="UNDER_REVIEW">Em análise</option>
         <option value="APPROVED">Aprovada</option>
         <option value="REJECTED">Recusada</option>
         <option value="CANCELLED">Cancelada</option>
+        <option value="EXPIRED">Expirada</option>
       </select></label>
       <label class="span-2">Observação da análise<textarea id="inspection-note" maxlength="1200" rows="4" placeholder="Informe pendências, motivo da recusa ou orientações."></textarea></label>
     </div>
@@ -91,6 +101,6 @@
 
 <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
-<script src="/analise/analise.js?v=20260804-manual-whatsapp"></script>
+<script src="/analise/analise.js?v=20260806-database-media-v3"></script>
 </body>
 </html>

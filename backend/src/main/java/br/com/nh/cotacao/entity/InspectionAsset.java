@@ -2,6 +2,7 @@ package br.com.nh.cotacao.entity;
 
 import jakarta.persistence.*;
 
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
@@ -33,11 +34,24 @@ public class InspectionAsset {
     @Column(name = "sort_order", nullable = false)
     private int sortOrder;
 
-    @Column(name = "drive_file_id", nullable = false, length = 160)
+    @Column(name = "drive_file_id", length = 160)
     private String driveFileId;
 
     @Column(name = "drive_file_url", length = 500)
     private String driveFileUrl;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "storage_kind", nullable = false, length = 20)
+    private InspectionAssetStorageKind storageKind;
+
+    @Column(name = "stored_at")
+    private OffsetDateTime storedAt;
+
+    @Column(name = "expires_at")
+    private OffsetDateTime expiresAt;
+
+    @Column(name = "purged_at")
+    private OffsetDateTime purgedAt;
 
     protected InspectionAsset() {}
 
@@ -52,6 +66,40 @@ public class InspectionAsset {
             String driveFileId,
             String driveFileUrl
     ) {
+        InspectionAsset asset = base(request, type, label, fileName, contentType, fileSize, sortOrder);
+        asset.storageKind = InspectionAssetStorageKind.DRIVE;
+        asset.driveFileId = driveFileId;
+        asset.driveFileUrl = driveFileUrl;
+        return asset;
+    }
+
+    public static InspectionAsset createDatabase(
+            InspectionRequest request,
+            InspectionAssetType type,
+            String label,
+            String fileName,
+            String contentType,
+            long fileSize,
+            int sortOrder,
+            OffsetDateTime storedAt,
+            OffsetDateTime expiresAt
+    ) {
+        InspectionAsset asset = base(request, type, label, fileName, contentType, fileSize, sortOrder);
+        asset.storageKind = InspectionAssetStorageKind.DATABASE;
+        asset.storedAt = storedAt;
+        asset.expiresAt = expiresAt;
+        return asset;
+    }
+
+    private static InspectionAsset base(
+            InspectionRequest request,
+            InspectionAssetType type,
+            String label,
+            String fileName,
+            String contentType,
+            long fileSize,
+            int sortOrder
+    ) {
         InspectionAsset asset = new InspectionAsset();
         asset.id = UUID.randomUUID();
         asset.inspectionRequest = request;
@@ -61,12 +109,22 @@ public class InspectionAsset {
         asset.contentType = contentType;
         asset.fileSize = fileSize;
         asset.sortOrder = sortOrder;
-        asset.driveFileId = driveFileId;
-        asset.driveFileUrl = driveFileUrl;
         return asset;
     }
 
+    public boolean isAvailable() {
+        return storageKind == InspectionAssetStorageKind.DATABASE
+                && purgedAt == null
+                && expiresAt != null
+                && expiresAt.isAfter(OffsetDateTime.now());
+    }
+
+    public void markPurged(OffsetDateTime at) {
+        this.purgedAt = at;
+    }
+
     public UUID getId() { return id; }
+    public InspectionRequest getInspectionRequest() { return inspectionRequest; }
     public InspectionAssetType getAssetType() { return assetType; }
     public String getLabel() { return label; }
     public String getFileName() { return fileName; }
@@ -75,4 +133,8 @@ public class InspectionAsset {
     public int getSortOrder() { return sortOrder; }
     public String getDriveFileId() { return driveFileId; }
     public String getDriveFileUrl() { return driveFileUrl; }
+    public InspectionAssetStorageKind getStorageKind() { return storageKind; }
+    public OffsetDateTime getStoredAt() { return storedAt; }
+    public OffsetDateTime getExpiresAt() { return expiresAt; }
+    public OffsetDateTime getPurgedAt() { return purgedAt; }
 }

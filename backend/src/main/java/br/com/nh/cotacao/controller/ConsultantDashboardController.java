@@ -25,6 +25,14 @@ public class ConsultantDashboardController {
         return service.dashboard(consultantId);
     }
 
+    @PostMapping("/{consultantId}/quotes/{quoteId}/inspection")
+    public ConsultantInspectionSummary ensureInspection(
+            @PathVariable UUID consultantId,
+            @PathVariable UUID quoteId
+    ) {
+        return service.ensureInspection(consultantId, quoteId);
+    }
+
     @PostMapping("/inspections/{inspectionId}/completion-message-sent")
     public ConsultantInspectionSummary markCompletionMessageSent(@PathVariable UUID inspectionId) {
         return service.markCompletionMessageSent(inspectionId);

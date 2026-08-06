@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#070c40">
   <title>Painel Administrativo NH</title>
   <link rel="icon" href="/assets/favicon-nh.png">
-  <link rel="stylesheet" href="/shared/portal.css?v=20260805-admin-full-catalog">
+  <link rel="stylesheet" href="/shared/portal.css?v=20260806-database-media-v3">
   <link rel="stylesheet" href="/shared/responsive.css?v=20260804-universal">
 </head>
 <body>
@@ -293,8 +293,15 @@
     <div class="dialog-head"><div><span class="eyebrow" style="color:#070c40">ANÁLISE DO RETRATO NH</span><h2 id="inspection-dialog-title">Retrato NH</h2></div><button class="dialog-close" type="button" data-close-dialog="inspection-dialog">×</button></div>
     <input id="inspection-analysis-id" type="hidden">
     <div id="inspection-detail-grid" class="detail-grid"></div>
+    <section id="admin-inspection-files-section" class="inspection-media-section" hidden>
+      <div class="inspection-media-head">
+        <div><h3>Arquivos enviados</h3><p id="admin-inspection-files-retention">Disponíveis por 40 dias.</p></div>
+        <button id="admin-download-all-files" class="secondary" type="button">Baixar todos (.zip)</button>
+      </div>
+      <div id="admin-inspection-files-grid" class="inspection-media-grid"></div>
+    </section>
     <div class="form-grid" style="margin-top:18px">
-      <label>Status<select id="inspection-analysis-status"><option value="CREATED">Pendente</option><option value="UNDER_REVIEW">Em análise</option><option value="COMPLETED">Material enviado</option><option value="APPROVED">Aprovada</option><option value="REJECTED">Reprovada</option><option value="CANCELLED">Cancelada</option><option value="EXPIRED">Expirada</option></select></label>
+      <label>Status<select id="inspection-analysis-status"><option value="WAITING_FILES">Aguardando arquivos</option><option value="UPLOADING_FILES">Envio em andamento</option><option value="UNDER_REVIEW">Em análise</option><option value="COMPLETED">Material enviado</option><option value="APPROVED">Aprovada</option><option value="REJECTED">Reprovada</option><option value="CANCELLED">Cancelada</option><option value="EXPIRED">Expirada</option></select></label>
       <label class="span-2">Observação administrativa<textarea id="inspection-analysis-note" maxlength="1200" rows="4" placeholder="Registre a análise, pendências ou decisão."></textarea></label>
     </div>
     <div id="inspection-links" class="actions"></div>
@@ -315,6 +322,6 @@
 <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
 <script src="/shared/money-input.js?v=20260805-brl-mask"></script>
-<script src="/admin/admin.js?v=20260805-admin-full-catalog"></script>
+<script src="/admin/admin.js?v=20260806-database-media-v3"></script>
 </body>
 </html>

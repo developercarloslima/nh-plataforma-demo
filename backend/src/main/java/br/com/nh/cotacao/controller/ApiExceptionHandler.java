@@ -1,6 +1,8 @@
 package br.com.nh.cotacao.controller;
 
 import br.com.nh.cotacao.dto.ApiError;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
@@ -15,6 +17,8 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+    private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
+
 
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<ApiError> handleResponseStatus(ResponseStatusException exception) {
@@ -63,6 +67,7 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<ApiError> handleConfiguration(IllegalStateException exception) {
+        log.error("Falha de infraestrutura ao processar a solicitação", exception);
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(new ApiError(
                 OffsetDateTime.now(),
                 HttpStatus.SERVICE_UNAVAILABLE.value(),
@@ -73,6 +78,7 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleUnexpected(Exception exception) {
+        log.error("Erro inesperado ao processar a solicitação", exception);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiError(
                 OffsetDateTime.now(),
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),

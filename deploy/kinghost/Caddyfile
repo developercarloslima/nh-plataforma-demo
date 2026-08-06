@@ -3,17 +3,17 @@
   admin off
 }
 {$DOMAIN} {
-  redir https://{$WWW_DOMAIN}{uri} permanent
-}
-{$WWW_DOMAIN} {
   encode zstd gzip
   reverse_proxy web:80
   header {
-    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    Strict-Transport-Security "max-age=31536000"
     -Server
   }
   log {
     output stdout
     format console
   }
+}
+{$WWW_DOMAIN} {
+  redir https://{$DOMAIN}{uri} permanent
 }

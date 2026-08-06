@@ -20,10 +20,10 @@ public class RetratoPdfService {
     private static final Color LIGHT = new Color(244, 246, 252);
     private static final DateTimeFormatter DATE_TIME = DateTimeFormatter.ofPattern("dd/MM/yyyy 'às' HH:mm");
 
-    private final GoogleDriveStorageService driveStorage;
+    private final InspectionAssetStorageService storageService;
 
-    public RetratoPdfService(GoogleDriveStorageService driveStorage) {
-        this.driveStorage = driveStorage;
+    public RetratoPdfService(InspectionAssetStorageService storageService) {
+        this.storageService = storageService;
     }
 
     public byte[] generate(InspectionRequest request) {
@@ -72,34 +72,47 @@ public class RetratoPdfService {
             document.add(subtitle);
 
             for (InspectionAsset asset : request.getAssets()) {
+                if (asset.getAssetType() == InspectionAssetType.REPORT) continue;
+
                 if (asset.getAssetType() == InspectionAssetType.VIDEO) {
                     Paragraph video = new Paragraph("Vídeo: " + asset.getLabel(), new Font(Font.HELVETICA, 10, Font.BOLD, NAVY));
-                    video.add(new Chunk("\n" + (asset.getDriveFileUrl() == null ? "Arquivo armazenado no Drive" : asset.getDriveFileUrl()),
+                    video.add(new Chunk("\nArquivo armazenado no banco de dados por 40 dias.",
                             new Font(Font.HELVETICA, 8, Font.NORMAL, Color.DARK_GRAY)));
                     video.setSpacingAfter(10);
                     document.add(video);
                     continue;
                 }
 
+                boolean documentAsset = asset.getAssetType() == InspectionAssetType.VEHICLE_DOCUMENT
+                        || asset.getAssetType() == InspectionAssetType.IDENTITY_DOCUMENT;
+                if (documentAsset && (asset.getContentType() == null || !asset.getContentType().toLowerCase().startsWith("image/"))) {
+                    Paragraph documentFile = new Paragraph(asset.getLabel(), new Font(Font.HELVETICA, 10, Font.BOLD, NAVY));
+                    documentFile.add(new Chunk("\nDocumento armazenado no banco de dados por 40 dias.",
+                            new Font(Font.HELVETICA, 8, Font.NORMAL, Color.DARK_GRAY)));
+                    documentFile.setSpacingAfter(10);
+                    document.add(documentFile);
+                    continue;
+                }
+
                 try {
-                    if (asset.getAssetType() == InspectionAssetType.SIGNATURE) {
-                        document.add(new Paragraph("Assinatura eletrônica do associado", new Font(Font.HELVETICA, 12, Font.BOLD, NAVY)));
-                    }
-                    byte[] bytes = driveStorage.download(asset.getDriveFileId());
+                    byte[] bytes = storageService.readAll(asset.getId());
                     Image image = Image.getInstance(bytes);
                     image.scaleToFit(500, 300);
                     image.setAlignment(Image.ALIGN_CENTER);
+                    if (asset.getAssetType() == InspectionAssetType.SIGNATURE) {
+                        document.add(new Paragraph("Assinatura eletrônica do associado", new Font(Font.HELVETICA, 12, Font.BOLD, NAVY)));
+                    }
                     document.add(new Paragraph(asset.getLabel(), new Font(Font.HELVETICA, 10, Font.BOLD, NAVY)));
                     document.add(image);
                     document.add(Chunk.NEWLINE);
                 } catch (Exception ignored) {
-                    document.add(new Paragraph(asset.getLabel() + " — imagem armazenada no Drive",
+                    document.add(new Paragraph(asset.getLabel() + " — prévia indisponível no relatório",
                             new Font(Font.HELVETICA, 9, Font.NORMAL, Color.DARK_GRAY)));
                 }
             }
 
             Paragraph footer = new Paragraph(
-                    "Documento gerado automaticamente pelo Retrato NH. Os arquivos originais permanecem armazenados na pasta da vistoria no Google Drive.",
+                    "Documento gerado automaticamente pelo Retrato NH. Os arquivos originais ficam disponíveis no painel de análise por 40 dias.",
                     new Font(Font.HELVETICA, 8, Font.NORMAL, Color.GRAY)
             );
             footer.setSpacingBefore(12);
@@ -124,14 +137,12 @@ public class RetratoPdfService {
         table.addCell(valueCell);
     }
 
-
     private void addFullWidthPair(PdfPTable table, String label, String value) {
         PdfPCell labelCell = new PdfPCell(new Phrase(label, new Font(Font.HELVETICA, 8, Font.BOLD, NAVY)));
         labelCell.setBackgroundColor(LIGHT);
         labelCell.setPadding(7);
         labelCell.setBorderColor(Color.WHITE);
         table.addCell(labelCell);
-
         PdfPCell valueCell = new PdfPCell(new Phrase(value == null ? "—" : value, new Font(Font.HELVETICA, 9)));
         valueCell.setColspan(3);
         valueCell.setPadding(7);

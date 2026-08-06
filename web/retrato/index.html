@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#070c40">
   <title>Retrato NH | Vistoria Digital</title>
   <link rel="icon" href="/assets/favicon-nh.png">
-  <link rel="stylesheet" href="/shared/portal.css?v=20260805-guide-page">
+  <link rel="stylesheet" href="/shared/portal.css?v=20260806-database-api-v5">
   <link rel="stylesheet" href="/shared/responsive.css?v=20260805-guide-page">
 </head>
 <body>
@@ -25,6 +25,9 @@
   </section>
 
   <div id="message" aria-live="polite"></div>
+  <div id="connection-actions" class="connection-actions" hidden>
+    <button id="retry-load" class="secondary" type="button">Tentar carregar novamente</button>
+  </div>
 
   <section id="guideline-card" class="card" hidden style="margin-top:22px">
     <div class="steps">
@@ -66,6 +69,14 @@
     <h2 id="upload-heading">Registre os arquivos</h2>
     <p id="upload-note" class="muted"></p>
 
+    <aside id="draft-panel" class="draft-panel" hidden aria-live="polite">
+      <div>
+        <strong>Rascunho salvo neste aparelho</strong>
+        <small id="draft-status">As fotos e o vídeo serão mantidos para uma nova tentativa de envio.</small>
+      </div>
+      <button id="discard-draft" class="outline" type="button">Apagar rascunho</button>
+    </aside>
+
     <form id="upload-form">
       <div id="photos" class="upload-grid"></div>
 
@@ -79,13 +90,28 @@
 
       <section id="registration-fields" class="registration-fields" hidden>
         <span class="eyebrow" style="color:#070c40">CONCLUSÃO DO CADASTRO</span>
-        <h3>Endereço e assinatura do associado</h3>
-        <p class="muted">Para venda nova, estes dados são obrigatórios antes do envio da vistoria.</p>
+        <h3>Endereço, documentos e assinatura do associado</h3>
+        <p class="muted">Para venda nova, o endereço, o CRLV, o RG ou a CNH e a assinatura são obrigatórios.</p>
 
         <label for="residence-address">Endereço completo de residência *</label>
         <textarea id="residence-address" rows="4" maxlength="600" placeholder="Rua, número, complemento, bairro, cidade, estado e CEP"></textarea>
         <small class="field-helper">Informe o endereço completo onde o associado reside.</small>
 
+        <div class="document-upload-grid">
+          <label class="document-upload-card" for="vehicle-document">
+            <span>CRLV do veículo *</span>
+            <small>Envie uma foto nítida ou o arquivo PDF do documento.</small>
+            <input id="vehicle-document" type="file" accept="image/jpeg,image/png,image/webp,application/pdf">
+            <strong id="vehicle-document-status">Documento pendente.</strong>
+          </label>
+
+          <label class="document-upload-card" for="identity-document">
+            <span>RG ou CNH do associado *</span>
+            <small>Envie uma foto nítida ou o arquivo PDF do documento oficial.</small>
+            <input id="identity-document" type="file" accept="image/jpeg,image/png,image/webp,application/pdf">
+            <strong id="identity-document-status">Documento pendente.</strong>
+          </label>
+        </div>
         <div class="signature-block">
           <div class="signature-heading">
             <div>
@@ -100,6 +126,13 @@
       </section>
 
       <p id="capture-summary" class="capture-summary" aria-live="polite">Fotos e vídeo pendentes.</p>
+
+      <section id="upload-progress" class="upload-progress" hidden aria-live="polite">
+        <strong>Envio seguro em andamento</strong>
+        <progress id="upload-progress-bar" max="100" value="0"></progress>
+        <small id="upload-progress-text"></small>
+        <p>Não feche esta tela. Se a internet oscilar, o sistema tentará novamente e continuará do ponto em que parou.</p>
+      </section>
 
       <div class="actions">
         <button id="submit-inspection" class="secondary" type="submit">Enviar vistoria com segurança</button>
@@ -187,6 +220,6 @@
 </section>
 
 <script src="/shared/config.js?v=20260804-current-origin"></script>
-<script src="/retrato/retrato.js?v=20260805-guide-page"></script>
+<script src="/retrato/retrato.js?v=20260806-database-api-v5"></script>
 </body>
 </html>

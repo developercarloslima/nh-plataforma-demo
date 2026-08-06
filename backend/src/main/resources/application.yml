@@ -7,8 +7,8 @@ spring:
     password: ${DATABASE_PASSWORD:nh123}
   servlet:
     multipart:
-      max-file-size: 120MB
-      max-request-size: 400MB
+      max-file-size: 230MB
+      max-request-size: 450MB
   jpa:
     open-in-view: false
     hibernate:
@@ -55,6 +55,11 @@ app:
     access-token: ${WHATSAPP_CLOUD_ACCESS_TOKEN:}
     completion-template-name: ${WHATSAPP_COMPLETION_TEMPLATE_NAME:}
     language-code: ${WHATSAPP_TEMPLATE_LANGUAGE:pt_BR}
+  inspection-upload:
+    temp-dir: ${INSPECTION_UPLOAD_TEMP_DIR:/tmp/nh-inspection-uploads}
+  inspection-storage:
+    retention-days: ${INSPECTION_RETENTION_DAYS:40}
+    cleanup-cron: ${INSPECTION_CLEANUP_CRON:0 15 * * * *}
   google-drive:
     enabled: ${GOOGLE_DRIVE_ENABLED:false}
     credentials-base64: ${GOOGLE_DRIVE_CREDENTIALS_BASE64:}

@@ -123,8 +123,18 @@ public class InspectionRequest {
         if (quotation == null || quotation.getOrigin() != QuoteOrigin.SELF_SERVICE) {
             throw new IllegalArgumentException("A vistoria automática exige uma cotação feita pelo cliente.");
         }
+        return createForQuotation(publicToken, quotation);
+    }
+
+    public static InspectionRequest createForQuotation(String publicToken, Quotation quotation) {
+        if (quotation == null || quotation.getStatus() != QuoteStatus.ACCEPTED) {
+            throw new IllegalArgumentException("A cotação precisa estar aceita para iniciar a vistoria.");
+        }
         if (quotation.getCustomerCpf() == null || quotation.getCustomerCpf().isBlank()) {
             throw new IllegalArgumentException("A cotação não possui CPF para gerar o link da vistoria.");
+        }
+        if (quotation.getConsultant() == null) {
+            throw new IllegalArgumentException("A cotação não possui consultor responsável.");
         }
         return createBase(
                 publicToken,
@@ -164,7 +174,7 @@ public class InspectionRequest {
         request.consultant = consultant;
         request.consultantName = consultantName;
         request.quotation = quotation;
-        request.status = InspectionRequestStatus.CREATED;
+        request.status = InspectionRequestStatus.WAITING_FILES;
         request.createdAt = OffsetDateTime.now();
         request.expiresAt = request.createdAt.plusDays(7);
         return request;
@@ -177,7 +187,10 @@ public class InspectionRequest {
     }
 
     public boolean isExpired() {
-        return (status == InspectionRequestStatus.CREATED || status == InspectionRequestStatus.UNDER_REVIEW)
+        return (status == InspectionRequestStatus.WAITING_FILES
+                || status == InspectionRequestStatus.UPLOADING_FILES
+                || status == InspectionRequestStatus.CREATED
+                || status == InspectionRequestStatus.UNDER_REVIEW)
                 && OffsetDateTime.now().isAfter(expiresAt);
     }
 
@@ -186,7 +199,17 @@ public class InspectionRequest {
         this.driveFolderUrl = url;
     }
 
-    public void addAsset(InspectionAsset asset) { assets.add(asset); }
+    public void addAsset(InspectionAsset asset) {
+        assets.add(asset);
+        markUploadStarted();
+    }
+
+    public void markUploadStarted() {
+        if (status == InspectionRequestStatus.WAITING_FILES
+                || status == InspectionRequestStatus.CREATED) {
+            status = InspectionRequestStatus.UPLOADING_FILES;
+        }
+    }
 
     public void registerResidenceAddress(String address) {
         if (requestType != InspectionRequestType.NEW_INSPECTION) {
@@ -203,9 +226,12 @@ public class InspectionRequest {
         this.residenceAddress = clean;
     }
 
-    public void complete(String reportFileId, String reportUrl) {
-        this.reportFileId = reportFileId;
-        this.reportUrl = reportUrl;
+    public void complete() {
+        assertStoredCompletionRequirements(true);
+        this.reportFileId = null;
+        this.reportUrl = null;
+        this.driveFolderId = null;
+        this.driveFolderUrl = null;
         this.status = InspectionRequestStatus.COMPLETED;
         this.completedAt = OffsetDateTime.now();
         this.completionMessageSentAt = null;
@@ -213,6 +239,18 @@ public class InspectionRequest {
 
     public void adminReview(InspectionRequestStatus newStatus, String note) {
         if (newStatus == null) throw new IllegalArgumentException("Informe o novo status do Retrato NH.");
+        if (assets.isEmpty()
+                && newStatus != InspectionRequestStatus.WAITING_FILES
+                && newStatus != InspectionRequestStatus.CANCELLED
+                && newStatus != InspectionRequestStatus.EXPIRED) {
+            throw new IllegalArgumentException("Esta vistoria ainda não possui arquivos. Mantenha o status Aguardando arquivos.");
+        }
+        if (newStatus == InspectionRequestStatus.UNDER_REVIEW
+                || newStatus == InspectionRequestStatus.COMPLETED
+                || newStatus == InspectionRequestStatus.APPROVED
+                || newStatus == InspectionRequestStatus.REJECTED) {
+            assertStoredCompletionRequirements(true);
+        }
         InspectionRequestStatus previousStatus = this.status;
         this.status = newStatus;
         if (previousStatus != newStatus) {
@@ -227,6 +265,34 @@ public class InspectionRequest {
             if (this.completedAt == null && newStatus != InspectionRequestStatus.CANCELLED) {
                 this.completedAt = this.reviewedAt;
             }
+        }
+    }
+
+
+    private void assertStoredCompletionRequirements(boolean requireReport) {
+        if (requestType == InspectionRequestType.NEW_INSPECTION) {
+            long photoCount = assets.stream()
+                    .filter(asset -> asset.getAssetType() == InspectionAssetType.PHOTO)
+                    .filter(InspectionAsset::isAvailable)
+                    .count();
+            if (photoCount < vehicleType.requiredPhotoCount()) {
+                throw new IllegalArgumentException("Ainda faltam fotos obrigatórias da vistoria.");
+            }
+            requireAsset(InspectionAssetType.SIGNATURE, "a assinatura do associado");
+            requireAsset(InspectionAssetType.VEHICLE_DOCUMENT, "o CRLV do veículo");
+            requireAsset(InspectionAssetType.IDENTITY_DOCUMENT, "o RG ou a CNH do associado");
+        }
+        requireAsset(InspectionAssetType.VIDEO, "o vídeo da vistoria");
+        if (requireReport) {
+            requireAsset(InspectionAssetType.REPORT, "o relatório da vistoria");
+        }
+    }
+
+    private void requireAsset(InspectionAssetType type, String label) {
+        boolean present = assets.stream()
+                .anyMatch(asset -> asset.getAssetType() == type && asset.isAvailable());
+        if (!present) {
+            throw new IllegalArgumentException("Ainda falta enviar " + label + ".");
         }
     }
 

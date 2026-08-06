@@ -22,6 +22,7 @@ public class AdminActivityService {
     private final InspectionRequestRepository inspectionRepository;
     private final CatalogChangeAuditRepository auditRepository;
     private final CommunicationSettingsService settingsService;
+    private final InspectionAssetStorageService storageService;
     private final String publicApiUrl;
     private final String publicWebUrl;
 
@@ -30,6 +31,7 @@ public class AdminActivityService {
             InspectionRequestRepository inspectionRepository,
             CatalogChangeAuditRepository auditRepository,
             CommunicationSettingsService settingsService,
+            InspectionAssetStorageService storageService,
             @Value("${app.public-api-url:http://localhost:8080}") String publicApiUrl,
             @Value("${app.public-web-url:https://aforma-demo.vercel.app}") String publicWebUrl
     ) {
@@ -37,6 +39,7 @@ public class AdminActivityService {
         this.inspectionRepository = inspectionRepository;
         this.auditRepository = auditRepository;
         this.settingsService = settingsService;
+        this.storageService = storageService;
         this.publicApiUrl = stripTrailingSlash(publicApiUrl);
         this.publicWebUrl = normalizePublicWebUrl(publicWebUrl);
     }
@@ -123,29 +126,69 @@ public class AdminActivityService {
         String type = item.getRequestType() == InspectionRequestType.NEW_INSPECTION
                 ? "Nova vistoria" : "Atualização de boleto";
         String plateLabel = plateLabel(item.getPlate(), item.getRequestType() == InspectionRequestType.NEW_INSPECTION);
-        String signatureUrl = item.getAssets().stream()
-                .filter(asset -> asset.getAssetType() == InspectionAssetType.SIGNATURE)
-                .map(InspectionAsset::getDriveFileUrl)
-                .filter(url -> url != null && !url.isBlank())
-                .findFirst()
+
+        List<br.com.nh.cotacao.dto.InspectionDtos.InspectionAssetResponse> assets = item.getAssets().stream()
+                .map(asset -> new br.com.nh.cotacao.dto.InspectionDtos.InspectionAssetResponse(
+                        asset.getId(), asset.getAssetType(), asset.getLabel(), asset.getFileName(),
+                        asset.getContentType(), asset.getFileSize(), null, asset.getSortOrder(),
+                        storageService.isAvailable(asset), asset.getStoredAt(), asset.getExpiresAt(), asset.getPurgedAt()
+                ))
+                .toList();
+        int availableCount = (int) assets.stream().filter(br.com.nh.cotacao.dto.InspectionDtos.InspectionAssetResponse::available).count();
+        int expiredCount = (int) assets.stream().filter(asset -> !asset.available() && asset.purgedAt() != null).count();
+        OffsetDateTime filesExpireAt = assets.stream()
+                .filter(br.com.nh.cotacao.dto.InspectionDtos.InspectionAssetResponse::available)
+                .map(br.com.nh.cotacao.dto.InspectionDtos.InspectionAssetResponse::expiresAt)
+                .filter(java.util.Objects::nonNull)
+                .max(OffsetDateTime::compareTo)
                 .orElse(null);
+
         String message = "Retrato NH - " + type
                 + "\nAssociado: " + item.getAssociateName()
                 + "\nConsultor: " + item.getConsultantName()
                 + "\nPlaca: " + plateLabel
-                + (item.getDriveFolderUrl() == null ? "\nLink: " + publicUrl : "\nDrive: " + item.getDriveFolderUrl())
-                + (item.getReportUrl() == null ? "" : "\nRelatório: " + item.getReportUrl());
+                + (availableCount == 0
+                    ? "\nLink: " + publicUrl
+                    : "\nArquivos disponíveis no painel de análise por 40 dias.");
         String subject = "Retrato NH - " + plateLabel;
+        InspectionRequestStatus displayStatus;
+        boolean preCompletion = item.getStatus() == InspectionRequestStatus.WAITING_FILES
+                || item.getStatus() == InspectionRequestStatus.UPLOADING_FILES
+                || item.getStatus() == InspectionRequestStatus.CREATED;
+        if (availableCount == 0 && preCompletion) {
+            displayStatus = InspectionRequestStatus.WAITING_FILES;
+        } else if (availableCount > 0
+                && (item.getStatus() == InspectionRequestStatus.WAITING_FILES
+                    || item.getStatus() == InspectionRequestStatus.CREATED)) {
+            displayStatus = InspectionRequestStatus.UPLOADING_FILES;
+        } else {
+            displayStatus = item.getStatus();
+        }
+        String associateInspectionUrl = associateInspectionWhatsappUrl(item, publicUrl);
         String associateDecisionUrl = associateDecisionWhatsappUrl(item);
         boolean decisionMessagePending = associateDecisionUrl != null && item.getDecisionMessageSentAt() == null;
         return new AdminInspectionResponse(
                 item.getId(), item.getRequestType().name(), item.getAssociateName(), maskCpf(item.getCpf()),
-                item.getWhatsapp(), item.getPlate(), item.getResidenceAddress(), signatureUrl,
-                item.getConsultant() == null ? null : item.getConsultant().getId(), item.getConsultantName(), item.getStatus(), item.getCreatedAt(), item.getExpiresAt(), item.getCompletedAt(),
-                item.getAdminNote(), item.getReviewedAt(), publicUrl, item.getDriveFolderUrl(), item.getReportUrl(),
-                whatsappUrl(whatsapp, message), emailUrl(email, subject, message),
-                associateDecisionUrl, item.getDecisionMessageSentAt(), decisionMessagePending, item.getAssets().size()
+                item.getWhatsapp(), item.getPlate(), item.getResidenceAddress(), null,
+                item.getConsultant() == null ? null : item.getConsultant().getId(), item.getConsultantName(), displayStatus,
+                item.getCreatedAt(), item.getExpiresAt(), item.getCompletedAt(), item.getAdminNote(), item.getReviewedAt(),
+                publicUrl, null, null, whatsappUrl(whatsapp, message), emailUrl(email, subject, message), associateInspectionUrl,
+                associateDecisionUrl, item.getDecisionMessageSentAt(), decisionMessagePending,
+                availableCount, expiredCount, filesExpireAt, assets
         );
+    }
+
+    private String associateInspectionWhatsappUrl(InspectionRequest item, String publicUrl) {
+        String phone = normalizeAssociatePhone(item.getWhatsapp());
+        if (phone == null || publicUrl == null || publicUrl.isBlank()) return null;
+        String firstName = item.getAssociateName() == null || item.getAssociateName().isBlank()
+                ? "associado" : item.getAssociateName().trim().split("\\s+")[0];
+        String action = item.getRequestType() == InspectionRequestType.NEW_INSPECTION
+                ? "realizar a vistoria digital completa"
+                : "gravar o vídeo para atualização do boleto";
+        String message = "Olá, " + firstName + "! Acesse o link abaixo para " + action
+                + " do seu veículo pela Novo Horizonte Proteção Veicular:\n" + publicUrl;
+        return whatsappUrl(phone, message);
     }
 
     private String associateDecisionWhatsappUrl(InspectionRequest item) {

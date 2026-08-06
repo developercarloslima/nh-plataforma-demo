@@ -23,8 +23,14 @@ public final class ConsultantDashboardDtos {
             OffsetDateTime createdAt,
             OffsetDateTime validUntil,
             boolean expired,
+            UUID inspectionId,
             InspectionRequestStatus inspectionStatus,
-            OffsetDateTime inspectionCompletedAt
+            OffsetDateTime inspectionCompletedAt,
+            String inspectionPublicUrl,
+            String inspectionWhatsappUrl,
+            String inspectionDriveFolderUrl,
+            boolean inspectionHasFiles,
+            int inspectionAssetCount
     ) {}
 
     public record ConsultantInspectionSummary(
@@ -40,7 +46,14 @@ public final class ConsultantDashboardDtos {
             String whatsapp,
             String associateCompletionWhatsappUrl,
             OffsetDateTime completionMessageSentAt,
-            boolean completionMessagePending
+            boolean completionMessagePending,
+            String publicUrl,
+            String associateInspectionWhatsappUrl,
+            String driveFolderUrl,
+            boolean hasFiles,
+            int assetCount,
+            OffsetDateTime filesExpireAt,
+            List<InspectionDtos.InspectionAssetResponse> assets
     ) {}
 
     public record ConsultantDashboardResponse(

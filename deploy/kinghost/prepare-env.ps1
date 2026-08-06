@@ -12,5 +12,5 @@ $content = Get-Content ".env" -Raw
 $content = $content.Replace("TROQUE_POR_UMA_SENHA_FORTE", (New-Secret 36))
 $content = $content.Replace("TROQUE_POR_UMA_CHAVE_ALEATORIA_COM_64_CARACTERES", (New-Secret 64))
 [IO.File]::WriteAllText((Join-Path $Root ".env"), $content, (New-Object Text.UTF8Encoding($false)))
-Write-Host ".env criado. Preencha domínios, acessos, SGA, Hinova e Google Drive."
+Write-Host ".env criado. Preencha domínios, acessos, SGA, Hinova e as credenciais da plataforma."
 notepad .env

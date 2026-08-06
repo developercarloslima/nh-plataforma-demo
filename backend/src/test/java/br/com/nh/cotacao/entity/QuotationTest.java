@@ -170,6 +170,12 @@ class QuotationTest {
         assertEquals(consultant.getName(), quotation.getConsultantName());
         assertEquals(consultant.getId(), inspection.getConsultant().getId());
         assertEquals(consultant.getName(), inspection.getConsultantName());
+        assertEquals(InspectionRequestStatus.WAITING_FILES, inspection.getStatus());
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> inspection.adminReview(InspectionRequestStatus.APPROVED, "Aprovação indevida")
+        );
+        assertTrue(error.getMessage().contains("Aguardando arquivos"));
     }
 
     private Quotation quotationWithBaseValue(String baseValue) {
