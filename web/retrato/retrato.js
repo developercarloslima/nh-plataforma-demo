@@ -60,6 +60,8 @@ let mediaRecorder = null;
 let recordedChunks = [];
 let currentPhotoIndex = null;
 let captureMode = null;
+let selfieMirrorCorrection = false;
+let activeFacingMode = 'environment';
 let recordingTimer = null;
 let recordingStartedAt = null;
 let discardRecording = false;
@@ -604,11 +606,15 @@ async function openPhotoCamera(index) {
 
   try {
     const photo = inspectionProfile.photos[index];
+    const isSelfie = photo.label.toLowerCase().includes('selfie');
+    selfieMirrorCorrection = isSelfie;
     await openCamera({ audio: false, facingMode: photo.facingMode || 'environment' });
+    applySelfieOrientation();
     $('camera-title').textContent = `${index + 1}. ${labels[index]}`;
-    $('camera-instruction').textContent = photo.label.toLowerCase().includes('selfie')
-      ? 'Reproduza o enquadramento mostrado no guia. Mantenha o associado, a frente do veículo e a placa visíveis.'
+    $('camera-instruction').textContent = isSelfie
+      ? 'Reproduza o enquadramento mostrado no guia. Confira se a placa aparece com as letras na orientação correta. Use “Inverter imagem” se necessário.'
       : 'Reproduza o ângulo mostrado no guia e toque em “Capturar foto”.';
+    $('toggle-selfie-mirror').hidden = !isSelfie;
     $('capture-photo').hidden = false;
     $('start-recording').hidden = true;
     $('stop-recording').hidden = true;
@@ -625,7 +631,10 @@ async function openVideoCamera() {
   clearMessage();
 
   try {
+    selfieMirrorCorrection = false;
     await openCamera({ audio: true, facingMode: 'environment' });
+    applySelfieOrientation();
+    $('toggle-selfie-mirror').hidden = true;
     $('camera-title').textContent = request?.requestType === 'NEW_INSPECTION'
       ? `${labels.length + 1}. Vídeo da vistoria`
       : 'Vídeo para atualização de boleto';
@@ -640,6 +649,7 @@ async function openVideoCamera() {
 }
 
 async function openCamera({ audio, facingMode = 'environment' }) {
+  activeFacingMode = facingMode;
   if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
     throw new Error('A câmera exige um navegador atualizado e uma conexão HTTPS. Em testes locais, use localhost.');
   }
@@ -683,6 +693,22 @@ function handleCameraError(error) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+function applySelfieOrientation() {
+  const frame = $('camera-preview')?.closest('.camera-live-frame');
+  const shouldCorrect = activeFacingMode === 'user' && selfieMirrorCorrection;
+  frame?.classList.toggle('selfie-orientation-corrected', shouldCorrect);
+  const toggle = $('toggle-selfie-mirror');
+  if (toggle) {
+    toggle.textContent = shouldCorrect ? 'Restaurar orientação' : 'Inverter imagem';
+    toggle.setAttribute('aria-pressed', String(shouldCorrect));
+  }
+}
+
+$('toggle-selfie-mirror').addEventListener('click', () => {
+  selfieMirrorCorrection = !selfieMirrorCorrection;
+  applySelfieOrientation();
+});
+
 $('capture-photo').addEventListener('click', capturePhoto);
 
 async function capturePhoto() {
@@ -698,7 +724,16 @@ async function capturePhoto() {
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext('2d');
-  context.drawImage(preview, 0, 0, width, height);
+  const correctSelfie = activeFacingMode === 'user' && selfieMirrorCorrection;
+  if (correctSelfie) {
+    context.save();
+    context.translate(width, 0);
+    context.scale(-1, 1);
+    context.drawImage(preview, 0, 0, width, height);
+    context.restore();
+  } else {
+    context.drawImage(preview, 0, 0, width, height);
+  }
 
   const blob = await new Promise((resolve, reject) => {
     canvas.toBlob(

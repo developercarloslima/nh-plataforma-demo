@@ -605,3 +605,12 @@ button:focus-visible,
     width: 100%;
   }
 }
+
+
+/* Selfie: permite corrigir a orientação para que placa e textos não fiquem espelhados. */
+.camera-live-frame video {
+  transition: transform .18s ease;
+}
+.camera-live-frame.selfie-orientation-corrected video {
+  transform: scaleX(-1);
+}
