@@ -6,6 +6,7 @@ import br.com.nh.cotacao.entity.MotorcycleOrigin;
 import br.com.nh.cotacao.entity.QuoteOrigin;
 import br.com.nh.cotacao.entity.QuoteStatus;
 import br.com.nh.cotacao.entity.Region;
+import br.com.nh.cotacao.entity.RearWindowBranding;
 import jakarta.validation.constraints.*;
 
 import java.math.BigDecimal;
@@ -166,6 +167,9 @@ public final class AdminDtos {
             Region region,
             MotorcycleOrigin motorcycleOrigin,
             String selectedPlanName,
+            BigDecimal preDiscountMonthlyValue,
+            Integer discountPercent,
+            RearWindowBranding rearWindowBranding,
             BigDecimal monthlyValue,
             BigDecimal oneTimeFee,
             QuoteStatus status,
@@ -191,6 +195,9 @@ public final class AdminDtos {
             String whatsapp,
             String plate,
             String residenceAddress,
+            String contractedPlan,
+            Integer discountPercent,
+            RearWindowBranding rearWindowBranding,
             String signatureUrl,
             UUID consultantId,
             String consultantName,
@@ -225,6 +232,12 @@ public final class AdminDtos {
     public record UpdateCommunicationSettingsRequest(
             @Email @Size(max = 180) String teamEmail,
             @Pattern(regexp = "^$|^[0-9]{10,15}$", message = "Informe o WhatsApp somente com números, incluindo DDI e DDD.") String teamWhatsapp
+    ) {}
+
+    public record DeleteSummary(
+            int deleted,
+            int protectedApproved,
+            String message
     ) {}
 
     public record AuditResponse(

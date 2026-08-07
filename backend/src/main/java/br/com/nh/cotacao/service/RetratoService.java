@@ -59,10 +59,15 @@ public class RetratoService {
 
     @Transactional
     public InspectionResponse create(CreateInspectionRequest input) {
+        if (input.requestType() == InspectionRequestType.NEW_INSPECTION) {
+            throw new IllegalArgumentException(
+                    "Nova vistoria só pode ser iniciada a partir de uma cotação aceita. Abra a cotação aceita e clique em Iniciar vistoria."
+            );
+        }
         String cpf = input.cpf().replaceAll("\\D", "");
         if (!validCpf(cpf)) throw new IllegalArgumentException("Informe um CPF válido.");
         Consultant consultant = consultantService.findActive(input.consultantId());
-        boolean zeroKm = input.requestType() == InspectionRequestType.NEW_INSPECTION && input.zeroKm();
+        boolean zeroKm = false;
         String plate = validateAndNormalizeManualPlate(input.plate(), input.requestType(), zeroKm);
         InspectionRequest request = InspectionRequest.create(
                 randomToken(),
@@ -72,7 +77,8 @@ public class RetratoService {
                 input.whatsapp(),
                 plate,
                 input.vehicleType() == null ? InspectionVehicleType.FOUR_WHEELS_OR_MORE : input.vehicleType(),
-                consultant
+                consultant,
+                input.contractedPlan()
         );
         return toResponse(repository.save(request));
     }
@@ -89,6 +95,9 @@ public class RetratoService {
     public InspectionResponse ensureForQuotation(Quotation quotation) {
         if (quotation == null) {
             throw new IllegalArgumentException("Cotação não encontrada.");
+        }
+        if (quotation.getStatus() != QuoteStatus.ACCEPTED) {
+            throw new IllegalArgumentException("A cotação precisa estar aceita para iniciar a nova vistoria.");
         }
         return repository.findByQuotation_Id(quotation.getId())
                 .map(this::toResponse)
@@ -300,12 +309,14 @@ public class RetratoService {
                         + "\nWhatsApp do associado: " + visiblePhone(request.getWhatsapp())
                         + "\nConsultor: " + request.getConsultantName()
                         + "\nTipo: " + requestTypeLabel
+                        + (request.getContractedPlan() == null ? "" : "\nPlano já contratado: " + request.getContractedPlan())
                         + "\n\nLink para o associado: " + publicUrl;
             } else {
                 teamMessage = "Retrato NH concluído\n\nAssociado: " + request.getAssociateName()
                         + "\nPlaca: " + vehiclePlateLabel(request)
                         + "\nConsultor: " + request.getConsultantName()
                         + "\nTipo: " + requestTypeLabel
+                        + (request.getContractedPlan() == null ? "" : "\nPlano já contratado: " + request.getContractedPlan())
                         + "\n\nOs arquivos estão disponíveis no painel de análise por 40 dias.";
             }
 
@@ -318,9 +329,13 @@ public class RetratoService {
                         asset.getContentType(), asset.getFileSize(), null, asset.getSortOrder(),
                         storageService.isAvailable(asset), asset.getStoredAt(), asset.getExpiresAt(), asset.getPurgedAt()
                 )).toList();
+        Quotation linkedQuotation = request.getQuotation();
         return new InspectionResponse(
                 request.getId(), request.getPublicToken(), request.getRequestType(), request.getVehicleType(), request.getAssociateName(),
                 maskCpf(request.getCpf()), request.getWhatsapp(), request.getPlate(), request.getResidenceAddress(),
+                request.getContractedPlan(),
+                linkedQuotation == null ? 0 : linkedQuotation.getDiscountPercent(),
+                linkedQuotation == null ? RearWindowBranding.NOT_APPLICABLE : linkedQuotation.getRearWindowBranding(),
                 request.getConsultant() == null ? null : request.getConsultant().getId(),
                 request.getConsultantName(), request.getStatus(), request.getCreatedAt(), request.getExpiresAt(),
                 request.getCompletedAt(), publicUrl, whatsappUrl, teamWhatsappUrl, associateCompletionWhatsappUrl,

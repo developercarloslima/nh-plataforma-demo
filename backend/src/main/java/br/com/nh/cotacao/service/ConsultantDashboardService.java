@@ -67,19 +67,9 @@ public class ConsultantDashboardService {
                         (left, right) -> left.getCreatedAt().isAfter(right.getCreatedAt()) ? left : right
                 ));
 
-        // Cotações antigas sem CPF permanecem visíveis. A vistoria será criada quando o
-        // consultor informar o CPF pelo botão "Iniciar vistoria".
-        for (Quotation quotation : quoteEntities) {
-            if (quotation.getStatus() == QuoteStatus.ACCEPTED
-                    && hasStoredCpf(quotation)
-                    && !inspectionsByQuote.containsKey(quotation.getId())) {
-                InspectionResponse created = retratoService.ensureForQuotation(quotation);
-                InspectionRequest createdInspection = inspectionRepository.findById(created.id())
-                        .orElseThrow(() -> new IllegalStateException("A vistoria foi criada, mas não pôde ser carregada."));
-                inspections.add(createdInspection);
-                inspectionsByQuote.put(quotation.getId(), createdInspection);
-            }
-        }
+        // A abertura do painel não cria mais vistorias automaticamente.
+        // A nova vistoria só nasce quando o consultor abre o Retrato NH a partir
+        // de uma cotação ACEITA e confirma a geração do link.
 
         inspections.sort(Comparator.comparing(InspectionRequest::getCreatedAt).reversed());
 
@@ -98,6 +88,9 @@ public class ConsultantDashboardService {
         Consultant consultant = consultantService.findActive(consultantId);
         Quotation quotation = findOwnedQuotation(consultant, quoteId);
         repairOwnership(quotation, consultant);
+        if (quotation.getStatus() != QuoteStatus.ACCEPTED) {
+            throw new IllegalArgumentException("A cotação precisa estar aceita para iniciar a nova vistoria.");
+        }
         quoteService.ensureCustomerCpf(quotation, requestedCpf);
 
         InspectionResponse created = retratoService.ensureForQuotation(quotation);
@@ -241,7 +234,7 @@ public class ConsultantDashboardService {
         boolean hasFiles = hasFiles(inspection);
         return new ConsultantQuoteSummary(
                 item.getId(), item.getQuoteNumber(), item.getCustomerName(), item.getCustomerCpf(), item.getWhatsapp(),
-                item.getPlate(), item.isZeroKm(), item.getModel(), item.getManufactureYear(),
+                item.getPlate(), item.isZeroKm(), item.getModel(), item.getManufactureYear(), item.getCategoryCode(),
                 item.getSelectedPlanName(), item.getMonthlyValue(), item.getStatus(), item.getCreatedAt(), item.getValidUntil(),
                 expired,
                 hasStoredCpf(item),
@@ -270,6 +263,9 @@ public class ConsultantDashboardService {
         snapshot.put("selectedPlanCode", String.valueOf(item.getSelectedPlanCode()));
         snapshot.put("selectedPlanName", String.valueOf(item.getSelectedPlanName()));
         snapshot.put("baseMonthlyValue", String.valueOf(item.getBaseMonthlyValue()));
+        snapshot.put("preDiscountMonthlyValue", String.valueOf(item.getPreDiscountMonthlyValue()));
+        snapshot.put("discountPercent", String.valueOf(item.getDiscountPercent()));
+        snapshot.put("rearWindowBranding", String.valueOf(item.getRearWindowBranding()));
         snapshot.put("monthlyValue", String.valueOf(item.getMonthlyValue()));
         snapshot.put("mandatoryMonthlyFee", String.valueOf(item.getMandatoryMonthlyFee()));
         snapshot.put("oneTimeFee", String.valueOf(item.getOneTimeFee()));

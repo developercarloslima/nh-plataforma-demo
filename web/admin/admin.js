@@ -5,6 +5,7 @@ const $ = id => document.getElementById(id);
 
 let token = localStorage.getItem(TOKEN_KEY);
 let consultants = [];
+let users = [];
 let quotes = [];
 let inspections = [];
 let categories = [];
@@ -30,7 +31,7 @@ const INSPECTION_STATUS_LABELS = Object.freeze({
 });
 const AUDIT_TYPE_LABELS = Object.freeze({
   PLAN: 'Plano', PRICE_RANGE: 'Faixa de valor', PLAN_COVERAGE: 'Cobertura', OPTIONAL: 'Opcional',
-  CONSULTANT: 'Consultor', QUOTE_STATUS: 'Cotação', INSPECTION_STATUS: 'Retrato NH', COMMUNICATION: 'Comunicação'
+  CONSULTANT: 'Consultor', PORTAL_USER: 'Usuário', QUOTE_STATUS: 'Cotação', QUOTE_DELETE: 'Exclusão de cotação', INSPECTION_STATUS: 'Retrato NH', INSPECTION_DELETE: 'Exclusão de vistoria', DATA_RETENTION: 'Retenção automática', COMMUNICATION: 'Comunicação'
 });
 
 const regionLabel = value => REGION_LABELS[value] || value || '—';
@@ -207,6 +208,7 @@ async function load() {
   try {
     const result = await Promise.all([
       api('/api/admin/consultants'),
+      api('/api/admin/users'),
       api('/api/admin/quotes'),
       api('/api/admin/inspections'),
       api('/api/admin/catalog/categories'),
@@ -216,7 +218,7 @@ async function load() {
       api('/api/admin/catalog/audit'),
       api('/api/admin/settings/communications')
     ]);
-    [consultants, quotes, inspections, categories, prices, plans, coverages, auditEntries, settings] = result;
+    [consultants, users, quotes, inspections, categories, prices, plans, coverages, auditEntries, settings] = result;
     renderAll();
   } catch (error) {
     if (!$('admin-view').hidden) message(error.message);
@@ -229,6 +231,7 @@ function renderAll() {
   renderOverview();
   renderActivities();
   renderConsultants();
+  renderUsers();
   renderQuotes();
   renderInspections();
   renderPlans();
@@ -348,6 +351,144 @@ function openConsultantModal(id = '') {
   $('consultant-name').focus();
 }
 
+function roleLabel(role) {
+  return ({ ADMIN: 'Administrador', ANALYST: 'Analista', CONSULTANT: 'Consultor' })[role] || role || '—';
+}
+
+function renderUsers() {
+  $('users-body').innerHTML = users.map(item => `<tr>
+    <td><strong>${esc(item.username)}</strong></td>
+    <td>${esc(item.displayName || '—')}</td>
+    <td>${statusBadge(roleLabel(item.role), item.role === 'ADMIN' ? 'ok' : item.role === 'ANALYST' ? 'warn' : '')}</td>
+    <td>${statusBadge(item.active ? 'Ativo' : 'Inativo', item.active ? 'ok' : 'off')}</td>
+    <td>${date(item.lastLoginAt)}</td>
+    <td>${date(item.passwordChangedAt)}</td>
+    <td><div class="row-actions">
+      <button class="secondary small-button" data-user-edit="${item.id}" type="button">Editar</button>
+      <button class="outline small-button" data-user-password="${item.id}" type="button">Alterar senha</button>
+      <button class="${item.active ? 'danger' : 'outline'} small-button" data-user-toggle="${item.id}" type="button">${item.active ? 'Desativar' : 'Ativar'}</button>
+    </div></td>
+  </tr>`).join('') || emptyRow(7, 'Nenhum usuário cadastrado.');
+
+  document.querySelectorAll('[data-user-edit]').forEach(button => button.addEventListener('click', () => openUserModal(button.dataset.userEdit)));
+  document.querySelectorAll('[data-user-password]').forEach(button => button.addEventListener('click', () => openPasswordModal(button.dataset.userPassword)));
+  document.querySelectorAll('[data-user-toggle]').forEach(button => button.addEventListener('click', () => toggleUser(button.dataset.userToggle)));
+}
+
+function openUserModal(id = '') {
+  const item = users.find(value => value.id === id);
+  $('user-id').value = item?.id || '';
+  $('user-username').value = item?.username || '';
+  $('user-display-name').value = item?.displayName || '';
+  $('user-role').value = item?.role || 'CONSULTANT';
+  $('user-password').value = '';
+  $('user-password-wrap').hidden = Boolean(item);
+  $('user-password').required = !item;
+  $('user-active-wrap').hidden = !item;
+  $('user-active').checked = item?.active ?? true;
+  $('user-dialog-title').textContent = item ? 'Editar usuário' : 'Novo usuário';
+  openDialog('user-dialog');
+  $('user-username').focus();
+}
+
+function openPasswordModal(id) {
+  const item = users.find(value => value.id === id);
+  if (!item) return;
+  $('password-user-id').value = item.id;
+  $('password-new').value = '';
+  $('password-confirm').value = '';
+  $('password-dialog-title').textContent = `Alterar senha — ${item.username}`;
+  openDialog('password-dialog');
+  $('password-new').focus();
+}
+
+async function toggleUser(id) {
+  const item = users.find(value => value.id === id);
+  if (!item) return;
+  const action = item.active ? 'desativar' : 'ativar';
+  const confirmed = await confirmAction(
+    `${item.active ? 'Desativar' : 'Ativar'} usuário?`,
+    item.active
+      ? `${item.username} perderá o acesso imediatamente.`
+      : `${item.username} poderá voltar a acessar o portal com a senha atual.`,
+    item.active ? 'Desativar' : 'Ativar'
+  );
+  if (!confirmed) return;
+  try {
+    await api(`/api/admin/users/${id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: !item.active })
+    });
+    message(`Usuário ${action === 'desativar' ? 'desativado' : 'ativado'}.`, 'success');
+    await load();
+  } catch (error) { message(error.message); }
+}
+
+async function deleteQuote(id) {
+  const item = quotes.find(value => value.id === id);
+  if (!item) return;
+  const confirmed = await confirmAction(
+    'Excluir cotação do banco?',
+    `A cotação ${item.quoteNumber} de ${item.customerName} será excluída definitivamente. Esta ação não pode ser desfeita.`,
+    'Excluir cotação'
+  );
+  if (!confirmed) return;
+  try {
+    await api(`/api/admin/quotes/${id}`, { method: 'DELETE' });
+    message('Cotação excluída do banco.', 'success');
+    await load();
+  } catch (error) { message(error.message); }
+}
+
+async function deleteAllQuotes() {
+  if (!quotes.length) return message('Não existem cotações para excluir.');
+  const confirmed = await confirmAction(
+    'Excluir TODAS as cotações?',
+    `Serão excluídas definitivamente ${quotes.length} cotações, inclusive aceitas. Vistorias vinculadas serão preservadas como registros independentes.`,
+    'Excluir todas'
+  );
+  if (!confirmed) return;
+  try {
+    const result = await api('/api/admin/quotes', { method: 'DELETE' });
+    message(result.message || 'Cotações excluídas.', 'success');
+    await load();
+  } catch (error) { message(error.message); }
+}
+
+async function deleteInspection(id) {
+  const item = inspections.find(value => value.id === id);
+  if (!item) return;
+  if (item.status === 'APPROVED') return message('Vistorias aprovadas não podem ser excluídas manualmente.');
+  const confirmed = await confirmAction(
+    'Excluir vistoria do banco?',
+    `A vistoria de ${item.associateName} será excluída junto com fotos, vídeos, documentos e relatório armazenados.`,
+    'Excluir vistoria'
+  );
+  if (!confirmed) return;
+  try {
+    await api(`/api/admin/inspections/${id}`, { method: 'DELETE' });
+    message('Vistoria e arquivos excluídos do banco.', 'success');
+    await load();
+  } catch (error) { message(error.message); }
+}
+
+async function deleteAllAllowedInspections() {
+  const allowed = inspections.filter(item => item.status !== 'APPROVED');
+  const approved = inspections.length - allowed.length;
+  if (!allowed.length) return message(`Não existem vistorias permitidas para excluir. ${approved} aprovada(s) permanece(m) protegida(s).`);
+  const confirmed = await confirmAction(
+    'Excluir vistorias permitidas?',
+    `Serão excluídas definitivamente ${allowed.length} vistorias e seus arquivos. ${approved} vistoria(s) aprovada(s) será(ão) preservada(s).`,
+    'Excluir vistorias'
+  );
+  if (!confirmed) return;
+  try {
+    const result = await api('/api/admin/inspections', { method: 'DELETE' });
+    message(result.message || 'Vistorias excluídas.', 'success');
+    await load();
+  } catch (error) { message(error.message); }
+}
+
 function renderQuotes() {
   const filter = $('quote-filter').value.trim().toLowerCase();
   $('quotes-body').innerHTML = quotes
@@ -356,9 +497,10 @@ function renderQuotes() {
       <td><strong>${esc(item.quoteNumber)}</strong></td><td><strong>${esc(quoteOriginLabel(item.origin))}</strong><small class="table-subtitle">${esc(item.consultantName)}</small></td><td>${esc(item.customerName)}</td>
       <td>${esc(item.plate || (item.zeroKm ? '0 km — sem placa' : '—'))}</td><td>${esc(item.selectedPlanName)}</td><td>${brl.format(item.monthlyValue)}</td>
       <td>${date(item.validUntil)}</td><td>${quoteBadge(item)}</td>
-      <td><div class="row-actions"><button class="secondary small-button" data-quote-analyze="${item.id}" type="button">Analisar</button><a class="button outline small-button" href="${esc(item.pdfUrl)}" target="_blank" rel="noopener">PDF</a></div></td>
+      <td><div class="row-actions"><button class="secondary small-button" data-quote-analyze="${item.id}" type="button">Analisar</button><a class="button outline small-button" href="${esc(item.pdfUrl)}" target="_blank" rel="noopener">PDF</a><button class="danger small-button" data-quote-delete="${item.id}" type="button">Excluir</button></div></td>
     </tr>`).join('') || emptyRow(9, 'Nenhuma cotação encontrada.');
   document.querySelectorAll('[data-quote-analyze]').forEach(button => button.addEventListener('click', () => openQuoteAnalysis(button.dataset.quoteAnalyze)));
+  document.querySelectorAll('[data-quote-delete]').forEach(button => button.addEventListener('click', () => deleteQuote(button.dataset.quoteDelete)));
 }
 
 function renderInspections() {
@@ -380,11 +522,13 @@ function renderInspections() {
         <td><strong>${esc(item.associateName)}</strong></td><td>${esc(item.consultantName)}</td><td>${esc(item.plate || '0 km — sem placa')}</td>
         <td>${item.requestType === 'NEW_INSPECTION' ? 'Nova vistoria' : 'Atualização de boleto'}</td><td>${item.assetCount}</td>
         <td><div class="status-with-action">${inspectionBadge(item.status)}${statusAction}</div></td><td>${date(item.createdAt)}</td>
-        <td><div class="row-actions">${pendingActions}<button class="secondary small-button" data-inspection-analyze="${item.id}" type="button">Analisar</button></div></td>
+        <td><div class="row-actions">${pendingActions}<button class="secondary small-button" data-inspection-analyze="${item.id}" type="button">Analisar</button>${item.status === 'APPROVED' ? '' : `<button class="danger small-button" data-inspection-delete="${item.id}" type="button">Excluir</button>`}</div></td>
       </tr>`;
     }).join('') || emptyRow(8, 'Nenhuma atividade do Retrato NH encontrada.');
   document.querySelectorAll('[data-inspection-analyze]').forEach(button => button.addEventListener('click', () => openInspectionAnalysis(button.dataset.inspectionAnalyze)));
+  document.querySelectorAll('[data-inspection-delete]').forEach(button => button.addEventListener('click', () => deleteInspection(button.dataset.inspectionDelete)));
 }
+
 
 function bindAnalyzeButtons() {
   document.querySelectorAll('[data-analyze-source]').forEach(button => button.addEventListener('click', () => {
@@ -400,15 +544,26 @@ function openQuoteAnalysis(id) {
   $('quote-dialog-title').textContent = item.quoteNumber;
   $('quote-analysis-status').value = item.status;
   $('quote-analysis-note').value = item.adminNote || '';
-  $('quote-detail-grid').innerHTML = detailItems([
+  const quoteDiscount = Number(item.discountPercent || 0);
+  const quoteDetails = [
     ['Cliente', item.customerName], ['Origem', quoteOriginLabel(item.origin)], ['Responsável', item.consultantName], ['CPF', item.maskedCpf || '—'], ['WhatsApp', formatPhone(item.whatsapp) || '—'],
     ['Placa', item.plate], ['Modelo', item.model], ['Ano', item.manufactureYear], ['Veículo 0 km', item.zeroKm ? 'Sim' : 'Não'],
     ['Valor FIPE', brl.format(item.fipeValue)], ['Abrangência', regionLabel(item.region)],
     ['Origem da moto', item.motorcycleOrigin ? motorcycleOriginLabel(item.motorcycleOrigin) : 'Não se aplica'],
-    ['Plano', item.selectedPlanName], ['Total mensal', brl.format(item.monthlyValue)],
+    ['Plano', item.selectedPlanName]
+  ];
+  if (quoteDiscount > 0) {
+    quoteDetails.push(['Subtotal antes do desconto', brl.format(item.preDiscountMonthlyValue || item.monthlyValue)]);
+    quoteDetails.push(['Desconto comercial', `${quoteDiscount}%`]);
+    if (quoteDiscount === 15) quoteDetails.push(['Condição do vigia traseiro', 'NH + outra empresa']);
+    if (quoteDiscount === 30) quoteDetails.push(['Condição do vigia traseiro', 'Somente NH']);
+  }
+  quoteDetails.push(
+    ['Total mensal', brl.format(item.monthlyValue)],
     ['Taxa única', brl.format(item.oneTimeFee || 0)], ['Emitida em', date(item.createdAt)], ['Válida até', date(item.validUntil)],
     ['Última análise', date(item.reviewedAt)]
-  ]);
+  );
+  $('quote-detail-grid').innerHTML = detailItems(quoteDetails);
   const currentInspectionUrl = item.inspectionUrl
     ? (window.NH_URLS?.retratoUrl(item.inspectionUrl) || item.inspectionUrl)
     : null;
@@ -446,15 +601,27 @@ function openInspectionAnalysis(id) {
     statusSelect.value = item.status;
   }
 
-  $('inspection-detail-grid').innerHTML = detailItems([
+  const inspectionDiscount = Number(item.discountPercent || 0);
+  const inspectionDetails = [
     ['Associado', item.associateName], ['CPF', item.maskedCpf], ['WhatsApp', formatPhone(item.whatsapp) || '—'],
     ['Consultor', item.consultantName], ['Placa', item.plate || '0 km — sem placa'],
     ['Endereço residencial', item.residenceAddress || '—'],
-    ['Tipo', item.requestType === 'NEW_INSPECTION' ? 'Nova vistoria' : 'Atualização de boleto'],
+    ['Tipo', item.requestType === 'NEW_INSPECTION' ? 'Nova vistoria' : 'Atualização de boleto']
+  ];
+  if (item.requestType === 'BILL_UPDATE') {
+    inspectionDetails.push(['Plano já contratado', item.contractedPlan || '—']);
+  }
+  if (item.requestType === 'NEW_INSPECTION' && inspectionDiscount > 0) {
+    inspectionDetails.push(['Desconto da cotação', `${inspectionDiscount}%`]);
+    if (inspectionDiscount === 15) inspectionDetails.push(['Condição do vigia traseiro', 'NH + outra empresa']);
+    if (inspectionDiscount === 30) inspectionDetails.push(['Condição do vigia traseiro', 'Somente NH']);
+  }
+  inspectionDetails.push(
     ['Arquivos disponíveis', item.assetCount], ['Situação dos arquivos', filesAvailable ? `Armazenados no sistema até ${date(item.filesExpireAt)}` : (Number(item.expiredAssetCount || 0) > 0 ? 'Arquivos apagados após 40 dias' : 'Aguardando envio do associado')],
     ['Criada em', date(item.createdAt)], ['Expira em', date(item.expiresAt)],
     ['Concluída em', date(item.completedAt)], ['Última análise', date(item.reviewedAt)]
-  ]);
+  );
+  $('inspection-detail-grid').innerHTML = detailItems(inspectionDetails);
 
   $('inspection-links').innerHTML = linkButtons(filesAvailable ? [
     [currentPublicUrl, 'Abrir link da vistoria'],
@@ -1033,6 +1200,48 @@ $('consultant-form').addEventListener('submit', async event => {
 });
 
 
+$('user-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const id = $('user-id').value;
+  const payload = {
+    username: $('user-username').value.trim(),
+    displayName: $('user-display-name').value.trim(),
+    role: $('user-role').value
+  };
+  try {
+    if (id) {
+      payload.active = $('user-active').checked;
+      await api(`/api/admin/users/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+      });
+      message('Usuário atualizado.', 'success');
+    } else {
+      payload.password = $('user-password').value;
+      await api('/api/admin/users', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+      });
+      message('Usuário criado com sucesso.', 'success');
+    }
+    closeDialog('user-dialog');
+    await load();
+  } catch (error) { message(error.message); }
+});
+
+$('password-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const id = $('password-user-id').value;
+  const password = $('password-new').value;
+  if (password !== $('password-confirm').value) return message('As senhas informadas não são iguais.');
+  try {
+    await api(`/api/admin/users/${id}/password`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password })
+    });
+    closeDialog('password-dialog');
+    message('Senha alterada com sucesso.', 'success');
+    await load();
+  } catch (error) { message(error.message); }
+});
+
 $('plan-category').addEventListener('change', syncPlanMotorcycleOrigin);
 
 $('plan-form').addEventListener('submit', async event => {
@@ -1150,6 +1359,9 @@ $('settings-form').addEventListener('submit', async event => {
 
 $('logout').addEventListener('click', () => showLogin());
 $('new-consultant-button').addEventListener('click', () => openConsultantModal());
+$('new-user-button').addEventListener('click', () => openUserModal());
+$('delete-all-quotes').addEventListener('click', deleteAllQuotes);
+$('delete-all-inspections').addEventListener('click', deleteAllAllowedInspections);
 $('new-plan-button').addEventListener('click', () => openPlanModal());
 $('new-price-button').addEventListener('click', () => openPriceModal());
 $('new-coverage-button').addEventListener('click', () => openCoverageModal());

@@ -76,6 +76,10 @@ services:
         sync: false
       - key: WHATSAPP_TEMPLATE_LANGUAGE
         value: pt_BR
+      - key: OPERATIONAL_RETENTION_DAYS
+        value: "40"
+      - key: OPERATIONAL_RETENTION_CLEANUP_CRON
+        value: "0 40 * * * *"
       - key: GOOGLE_DRIVE_ENABLED
         value: "false"
       - key: GOOGLE_DRIVE_ROOT_FOLDER_ID

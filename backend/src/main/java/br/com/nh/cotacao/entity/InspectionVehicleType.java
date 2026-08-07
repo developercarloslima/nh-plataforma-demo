@@ -24,7 +24,7 @@ public enum InspectionVehicleType {
 
     public static InspectionVehicleType fromCategoryCode(String categoryCode) {
         String normalized = categoryCode == null ? "" : categoryCode.trim().toUpperCase(Locale.ROOT);
-        return normalized.startsWith("MOTORCYCLE")
+        return (normalized.startsWith("MOTORCYCLE") || normalized.equals("SCOOTER_ELECTRIC"))
                 ? MOTORCYCLE
                 : FOUR_WHEELS_OR_MORE;
     }

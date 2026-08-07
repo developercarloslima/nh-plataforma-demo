@@ -63,6 +63,30 @@ public class AdminActivityService {
         return toQuote(quotation);
     }
 
+    @Transactional
+    public void deleteQuote(UUID id, String username) {
+        Quotation quotation = quotationRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Cotação não encontrada."));
+        String number = quotation.getQuoteNumber();
+        String old = "cliente=" + quotation.getCustomerName() + "; status=" + quotation.getStatus();
+        quotationRepository.delete(quotation);
+        quotationRepository.flush();
+        auditRepository.save(CatalogChangeAudit.createText(
+                "QUOTE_DELETE", null, id.toString(), "Cotação " + number + " excluída do banco",
+                old, "registro excluído", username
+        ));
+    }
+
+    @Transactional
+    public DeleteSummary deleteAllQuotes(String username) {
+        int deleted = quotationRepository.deleteAllQuotations();
+        auditRepository.save(CatalogChangeAudit.createText(
+                "QUOTE_DELETE", null, "BULK", "Exclusão administrativa de todas as cotações",
+                "registros existentes", "excluídas=" + deleted, username
+        ));
+        return new DeleteSummary(deleted, 0, deleted + " cotação(ões) excluída(s) do banco.");
+    }
+
     @Transactional(readOnly = true)
     public List<AdminInspectionResponse> inspections() {
         return inspectionRepository.findAllByOrderByCreatedAtDesc().stream().map(this::toInspection).toList();
@@ -91,6 +115,37 @@ public class AdminActivityService {
         return toInspection(inspection);
     }
 
+    @Transactional
+    public void deleteInspection(UUID id, String username) {
+        InspectionRequest inspection = inspectionRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
+        if (inspection.getStatus() == InspectionRequestStatus.APPROVED) {
+            throw new IllegalArgumentException("Vistorias aprovadas não podem ser excluídas manualmente. Elas serão removidas automaticamente após 40 dias.");
+        }
+        String old = "associado=" + inspection.getAssociateName() + "; placa=" + plateLabel(inspection.getPlate(), false)
+                + "; status=" + inspection.getStatus();
+        inspectionRepository.delete(inspection);
+        inspectionRepository.flush();
+        auditRepository.save(CatalogChangeAudit.createText(
+                "INSPECTION_DELETE", null, id.toString(), "Retrato NH excluído do banco",
+                old, "registro e arquivos excluídos", username
+        ));
+    }
+
+    @Transactional
+    public DeleteSummary deleteAllAllowedInspections(String username) {
+        int protectedApproved = Math.toIntExact(inspectionRepository.countByStatus(InspectionRequestStatus.APPROVED));
+        int deleted = inspectionRepository.deleteAllExceptStatus(InspectionRequestStatus.APPROVED);
+        auditRepository.save(CatalogChangeAudit.createText(
+                "INSPECTION_DELETE", null, "BULK", "Exclusão administrativa das vistorias permitidas",
+                "aprovadas protegidas=" + protectedApproved, "excluídas=" + deleted, username
+        ));
+        return new DeleteSummary(
+                deleted, protectedApproved,
+                deleted + " vistoria(s) excluída(s). " + protectedApproved + " vistoria(s) aprovada(s) preservada(s)."
+        );
+    }
+
     private AdminQuoteResponse toQuote(Quotation item) {
         boolean expired = (item.getStatus() == QuoteStatus.CREATED || item.getStatus() == QuoteStatus.UNDER_REVIEW)
                 && OffsetDateTime.now().isAfter(item.getValidUntil());
@@ -113,7 +168,8 @@ public class AdminActivityService {
                 item.getConsultant() == null ? null : item.getConsultant().getId(),
                 item.getConsultantName(), item.getCustomerName(), maskCpf(item.getCustomerCpf()), item.getWhatsapp(),
                 item.getPlate(), item.getModel(), item.getManufactureYear(), item.isZeroKm(), item.getFipeValue(),
-                item.getCategoryCode(), item.getRegion(), item.getMotorcycleOrigin(), item.getSelectedPlanName(), item.getMonthlyValue(), item.getOneTimeFee(),
+                item.getCategoryCode(), item.getRegion(), item.getMotorcycleOrigin(), item.getSelectedPlanName(),
+                item.getPreDiscountMonthlyValue(), item.getDiscountPercent(), item.getRearWindowBranding(), item.getMonthlyValue(), item.getOneTimeFee(),
                 item.getStatus(), item.getCreatedAt(), item.getValidUntil(), expired, item.getDecidedAt(), item.getAdminNote(),
                 item.getReviewedAt(), pdfUrl, item.getDriveFolderUrl(), item.getDrivePdfUrl(), inspectionUrl,
                 whatsappUrl(whatsapp, message), emailUrl(email, subject, message)
@@ -148,6 +204,7 @@ public class AdminActivityService {
                 + "\nAssociado: " + item.getAssociateName()
                 + "\nConsultor: " + item.getConsultantName()
                 + "\nPlaca: " + plateLabel
+                + (item.getContractedPlan() == null ? "" : "\nPlano já contratado: " + item.getContractedPlan())
                 + (availableCount == 0
                     ? "\nLink: " + publicUrl
                     : "\nArquivos disponíveis no painel de análise por 40 dias.");
@@ -170,7 +227,9 @@ public class AdminActivityService {
         boolean decisionMessagePending = associateDecisionUrl != null && item.getDecisionMessageSentAt() == null;
         return new AdminInspectionResponse(
                 item.getId(), item.getRequestType().name(), item.getAssociateName(), maskCpf(item.getCpf()),
-                item.getWhatsapp(), item.getPlate(), item.getResidenceAddress(), null,
+                item.getWhatsapp(), item.getPlate(), item.getResidenceAddress(), item.getContractedPlan(),
+                item.getQuotation() == null ? 0 : item.getQuotation().getDiscountPercent(),
+                item.getQuotation() == null ? RearWindowBranding.NOT_APPLICABLE : item.getQuotation().getRearWindowBranding(), null,
                 item.getConsultant() == null ? null : item.getConsultant().getId(), item.getConsultantName(), displayStatus,
                 item.getCreatedAt(), item.getExpiresAt(), item.getCompletedAt(), item.getAdminNote(), item.getReviewedAt(),
                 publicUrl, null, null, whatsappUrl(whatsapp, message), emailUrl(email, subject, message), associateInspectionUrl,

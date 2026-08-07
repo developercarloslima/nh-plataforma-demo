@@ -7,7 +7,7 @@
   <title>Equipe de Análise | Novo Horizonte</title>
   <link rel="icon" href="/assets/favicon-nh.png">
   <link rel="stylesheet" href="/shared/portal.css?v=20260806-selfie-font-v2">
-  <link rel="stylesheet" href="/shared/responsive.css?v=20260806-all-devices-v2">
+  <link rel="stylesheet" href="/shared/responsive.css?v=20260807-table-scroll-v1">
   <link rel="stylesheet" href="/shared/brand-system.css?v=20260806-font-buttons-v2">
 </head>
 <body>
@@ -37,15 +37,41 @@
     <p>Confira os materiais enviados, atualize o status e informe o associado quando a vistoria for aprovada ou recusada.</p>
   </section>
   <div id="message" aria-live="polite"></div>
-  <section style="margin-top:22px">
-    <div class="section-head">
-      <div><h2>Vistorias recebidas</h2><p>As solicitações mais recentes aparecem primeiro.</p></div>
-      <div class="actions" style="margin-top:0"><input id="filter" placeholder="Buscar associado, placa ou consultor"><button id="refresh" class="outline" type="button">Atualizar</button></div>
+  <section class="analysis-queues" style="margin-top:22px">
+    <div class="section-head analysis-queues-head">
+      <div><h2>Vistorias recebidas</h2><p>As solicitações mais recentes aparecem primeiro e estão separadas pelo tipo de atendimento.</p></div>
+      <div class="actions analysis-filter-actions" style="margin-top:0"><input id="filter" placeholder="Buscar associado, placa ou consultor"><button id="refresh" class="outline" type="button">Atualizar</button></div>
     </div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Associado</th><th>Placa</th><th>Consultor</th><th>Tipo</th><th>Enviada em</th><th>Status</th><th>Ação</th></tr></thead>
-      <tbody id="inspections-body"></tbody>
-    </table></div>
+
+    <article class="card analysis-queue-card">
+      <div class="analysis-queue-title">
+        <span class="analysis-queue-index">1</span>
+        <div>
+          <h2>Nova vistoria</h2>
+          <p>Vistorias originadas de cotações aceitas para novo cadastro do associado e do veículo.</p>
+        </div>
+        <span id="new-inspections-count" class="analysis-queue-count">0 registros</span>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Associado</th><th>Placa</th><th>Consultor</th><th>Enviada em</th><th>Status</th><th>Ação</th></tr></thead>
+        <tbody id="new-inspections-body"></tbody>
+      </table></div>
+    </article>
+
+    <article class="card analysis-queue-card">
+      <div class="analysis-queue-title">
+        <span class="analysis-queue-index">2</span>
+        <div>
+          <h2>Atualização de boleto</h2>
+          <p>Atualizações iniciadas diretamente no Retrato NH, com identificação do plano já contratado.</p>
+        </div>
+        <span id="billing-inspections-count" class="analysis-queue-count">0 registros</span>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Associado</th><th>Placa</th><th>Consultor</th><th>Enviada em</th><th>Status</th><th>Ação</th></tr></thead>
+        <tbody id="billing-inspections-body"></tbody>
+      </table></div>
+    </article>
   </section>
 </main>
 
@@ -57,6 +83,7 @@
     </div>
     <input id="inspection-id" type="hidden">
     <div id="inspection-details" class="detail-grid"></div>
+    <div id="discount-validation-note" class="message" hidden style="margin-top:16px"></div>
     <section id="inspection-files-section" class="inspection-media-section" hidden>
       <div class="inspection-media-head">
         <div><h3>Arquivos enviados</h3><p id="inspection-files-retention">Disponíveis por 40 dias.</p></div>
@@ -102,7 +129,7 @@
 
 <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
-<script src="/analise/analise.js?v=20260806-documents-v4"></script>
-<script src="/shared/responsive.js?v=20260806-all-devices-v2"></script>
+<script src="/analise/analise.js?v=20260807-discount-validation-v1"></script>
+<script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
 </body>
 </html>

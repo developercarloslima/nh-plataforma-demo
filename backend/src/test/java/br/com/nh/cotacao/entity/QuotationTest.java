@@ -123,6 +123,25 @@ class QuotationTest {
         assertEquals(optionalsBefore, quotation.getSelectedOptionals().size());
     }
 
+
+    @Test
+    void shouldRejectNewInspectionWhenQuotationIsNotAccepted() {
+        Consultant consultant = Consultant.create("Consultor", "TEST");
+        Quotation quotation = Quotation.createForConsultant(
+                "NH-2026-BLOCK001", consultant, "Cliente", "52998224725", "82999999999",
+                "ABC1D23", "Veículo teste", 2025, false, new BigDecimal("50000.00"),
+                "CAR_NATIONAL", Region.NATIONAL, null, "CAR_ECONOMICO", "Plano Econômico",
+                new BigDecimal("100.00"), BigDecimal.ZERO, BigDecimal.ZERO, null
+        );
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> InspectionRequest.createForQuotation("token-block", quotation)
+        );
+
+        assertTrue(error.getMessage().contains("aceita"));
+    }
+
     @Test
     void shouldSynchronizeSafeQuoteDataWithExistingInspection() {
         Consultant consultant = Consultant.create("Consultor", "TEST");
@@ -146,6 +165,94 @@ class QuotationTest {
         assertEquals("82988887777", inspection.getWhatsapp());
         assertEquals("DEF4G56", inspection.getPlate());
         assertEquals(new BigDecimal("100.00"), quotation.getMonthlyValue());
+    }
+
+    @Test
+    void shouldApplyConsultantDiscountToMonthlyValue() {
+        Quotation quotation = quotationWithBaseValue("100.00");
+
+        quotation.applyDiscount(10, RearWindowBranding.NOT_APPLICABLE);
+
+        assertEquals(new BigDecimal("100.00"), quotation.getPreDiscountMonthlyValue());
+        assertEquals(new BigDecimal("90.00"), quotation.getMonthlyValue());
+        assertEquals(10, quotation.getDiscountPercent());
+        assertEquals(RearWindowBranding.NOT_APPLICABLE, quotation.getRearWindowBranding());
+    }
+
+    @Test
+    void shouldRequireTwoLogosForFifteenPercentDiscount() {
+        Quotation quotation = quotationWithBaseValue("100.00");
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> quotation.applyDiscount(15, RearWindowBranding.NH_ONLY)
+        );
+
+        quotation.applyDiscount(15, RearWindowBranding.NH_AND_OTHER_COMPANY);
+
+        assertEquals(new BigDecimal("85.00"), quotation.getMonthlyValue());
+        assertEquals(RearWindowBranding.NH_AND_OTHER_COMPANY, quotation.getRearWindowBranding());
+    }
+
+    @Test
+    void shouldRequireOnlyNhLogoForThirtyPercentDiscount() {
+        Quotation quotation = quotationWithBaseValue("100.00");
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> quotation.applyDiscount(30, RearWindowBranding.NH_AND_OTHER_COMPANY)
+        );
+
+        quotation.applyDiscount(30, RearWindowBranding.NH_ONLY);
+
+        assertEquals(new BigDecimal("70.00"), quotation.getMonthlyValue());
+        assertEquals(RearWindowBranding.NH_ONLY, quotation.getRearWindowBranding());
+    }
+
+    @Test
+    void shouldRejectRearWindowDiscountForMotorcyclesAndElectricScooters() {
+        Consultant consultant = Consultant.create("Consultor", "TEST");
+        Quotation scooter = Quotation.createForConsultant(
+                "NH-2026-SCOOTER001",
+                consultant,
+                "Cliente",
+                "52998224725",
+                "82999999999",
+                "ABC1D23",
+                "Scooter elétrica",
+                2026,
+                false,
+                new BigDecimal("10000.00"),
+                "SCOOTER_ELECTRIC",
+                Region.NATIONAL,
+                null,
+                "SCOOTER_ELECTRIC_STANDARD",
+                "Scooters e motos elétricas",
+                new BigDecimal("100.00"),
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                null
+        );
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> scooter.applyDiscount(15, RearWindowBranding.NH_AND_OTHER_COMPANY)
+        );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> scooter.applyDiscount(30, RearWindowBranding.NH_ONLY)
+        );
+    }
+
+    @Test
+    void shouldRecalculateDiscountAfterAddingOptionalCoverage() {
+        Quotation quotation = quotationWithBaseValue("100.00");
+        quotation.applyDiscount(10, RearWindowBranding.NOT_APPLICABLE);
+
+        quotation.addOptional("FUNERAL", "Auxílio funeral", null, new BigDecimal("10.00"));
+
+        assertEquals(new BigDecimal("110.00"), quotation.getPreDiscountMonthlyValue());
+        assertEquals(new BigDecimal("99.00"), quotation.getMonthlyValue());
     }
 
     @Test
@@ -231,6 +338,7 @@ class QuotationTest {
                 null
         );
 
+        quotation.decide(QuoteStatus.ACCEPTED);
         InspectionRequest inspection = InspectionRequest.createForSelfServiceQuote("token-publico", quotation);
 
         assertEquals(consultant.getId(), quotation.getConsultant().getId());

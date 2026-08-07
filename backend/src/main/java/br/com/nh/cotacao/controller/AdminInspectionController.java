@@ -1,6 +1,7 @@
 package br.com.nh.cotacao.controller;
 
 import br.com.nh.cotacao.dto.AdminDtos.AdminInspectionResponse;
+import br.com.nh.cotacao.dto.AdminDtos.DeleteSummary;
 import br.com.nh.cotacao.dto.AdminDtos.UpdateInspectionStatusRequest;
 import br.com.nh.cotacao.security.PortalPrincipal;
 import br.com.nh.cotacao.service.AdminActivityService;
@@ -28,6 +29,17 @@ public class AdminInspectionController {
             Authentication auth
     ) {
         return service.updateInspectionStatus(id, request, username(auth));
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable UUID id, Authentication auth) {
+        service.deleteInspection(id, username(auth));
+    }
+
+    @DeleteMapping
+    public DeleteSummary deleteAllAllowed(Authentication auth) {
+        return service.deleteAllAllowedInspections(username(auth));
     }
 
     private String username(Authentication auth) {

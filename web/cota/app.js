@@ -12,6 +12,9 @@ const state = {
   plans: [],
   selectedPlanCode: '',
   selectedOptionalCodes: new Set(),
+  discountPercent: 0,
+  rearWindowBranding: 'NOT_APPLICABLE',
+  discountConfirmed: false,
   quote: null,
   inspectionRequirements: [],
   inspectionFiles: [],
@@ -98,6 +101,62 @@ function optionalMonthlyValue() {
   );
 }
 
+function discountConditionFor(percent) {
+  if (percent === 15) {
+    return {
+      branding: 'NH_AND_OTHER_COMPANY',
+      text: 'Confirmo que o perfurado do vigia traseiro possui 2 logomarcas: Novo Horizonte e a outra empresa.'
+    };
+  }
+  if (percent === 30) {
+    return {
+      branding: 'NH_ONLY',
+      text: 'Confirmo que o perfurado do vigia traseiro possui somente a logomarca da Novo Horizonte.'
+    };
+  }
+  return { branding: 'NOT_APPLICABLE', text: '' };
+}
+
+function supportsRearWindowBrandingDiscount() {
+  return !(String(state.vehicleType || '').startsWith('MOTORCYCLE') || state.vehicleType === 'SCOOTER_ELECTRIC');
+}
+
+function updateDiscountAvailability() {
+  const supportsConditional = supportsRearWindowBrandingDiscount();
+  document.querySelectorAll('[data-discount="15"], [data-discount="30"]').forEach(button => {
+    button.disabled = !supportsConditional;
+    button.title = supportsConditional
+      ? ''
+      : '15% e 30% exigem perfurado no vigia traseiro e não se aplicam a motos, scooters ou motos elétricas.';
+  });
+}
+
+function setDiscount(percent) {
+  if (isSelfService) return;
+  let normalized = [0, 5, 10, 15, 30].includes(Number(percent)) ? Number(percent) : 0;
+  if ((normalized === 15 || normalized === 30) && !supportsRearWindowBrandingDiscount()) {
+    normalized = 0;
+    showError('Os descontos de 15% e 30% exigem perfurado no vigia traseiro e não se aplicam a motos, scooters ou motos elétricas.');
+  }
+  updateDiscountAvailability();
+  state.discountPercent = normalized;
+  const condition = discountConditionFor(normalized);
+  state.rearWindowBranding = condition.branding;
+  state.discountConfirmed = normalized !== 15 && normalized !== 30;
+
+  document.querySelectorAll('[data-discount]').forEach(button => {
+    button.classList.toggle('active', Number(button.dataset.discount) === normalized);
+  });
+  const conditionBox = $('discount-condition');
+  const checkbox = $('discount-confirmation');
+  if (conditionBox && checkbox) {
+    conditionBox.hidden = !condition.text;
+    $('discount-condition-text').textContent = condition.text;
+    checkbox.checked = false;
+  }
+  updateSelectionSummary();
+}
+
 function setLoading(button, loading, loadingText, normalText) {
   button.disabled = loading;
   button.textContent = loading ? loadingText : normalText;
@@ -144,6 +203,9 @@ function persistSession() {
   try {
     localStorage.setItem(SESSION_KEY, JSON.stringify({
       vehicleType: state.vehicleType,
+      discountPercent: state.discountPercent,
+      rearWindowBranding: state.rearWindowBranding,
+      discountConfirmed: state.discountConfirmed,
       form: formSnapshot(),
       quoteId: state.quote?.id || null
     }));
@@ -162,6 +224,15 @@ async function restoreSession() {
       item.classList.toggle('active', item.dataset.type === state.vehicleType)
     );
     updateConditionalFields();
+    if (!isSelfService) {
+      state.discountPercent = Number(saved.discountPercent || 0);
+      state.rearWindowBranding = saved.rearWindowBranding || discountConditionFor(state.discountPercent).branding;
+      state.discountConfirmed = Boolean(saved.discountConfirmed) || ![15, 30].includes(state.discountPercent);
+      setDiscount(state.discountPercent);
+      if ([15, 30].includes(state.discountPercent) && state.discountConfirmed && $('discount-confirmation')) {
+        $('discount-confirmation').checked = true;
+      }
+    }
 
     const savedZeroKm = saved.form?.zeroKm === true || saved.form?.zeroKm === 'true';
     const zeroKmInput = document.querySelector(`input[name="zeroKm"][value="${savedZeroKm}"]`);
@@ -187,17 +258,22 @@ function resetResults() {
   state.plans = [];
   state.selectedPlanCode = '';
   state.selectedOptionalCodes.clear();
+  state.discountPercent = 0;
+  state.rearWindowBranding = 'NOT_APPLICABLE';
+  state.discountConfirmed = false;
   state.quote = null;
   $('plans-section').hidden = true;
   $('proposal-section').hidden = true;
   $('optional-section').hidden = true;
   $('decision-result').innerHTML = '';
+  if (!isSelfService) setDiscount(0);
   persistSession();
 }
 
 function updateConditionalFields() {
   $('car-origin-field').hidden = state.vehicleType !== 'CAR';
   $('region-field').hidden = !state.vehicleType.startsWith('MOTORCYCLE');
+  updateDiscountAvailability();
 }
 
 function normalizedCoverageStatus(coverage) {
@@ -229,6 +305,7 @@ function renderPlans() {
   cards.querySelectorAll('input[name="plan"]').forEach(input => input.addEventListener('change', () => {
     state.selectedPlanCode = input.value;
     state.selectedOptionalCodes.clear();
+    if (!isSelfService) setDiscount(0);
     renderPlans();
     renderComparison();
     renderOptionals();
@@ -317,7 +394,10 @@ function updateSelectionSummary() {
   const mandatoryValue = plan ? Number(plan.mandatoryMonthlyFee || 0) : 0;
   const tableValue = plan ? Number(plan.tableMonthlyValue ?? plan.monthlyValue) : 0;
   const oneTimeFee = plan ? Number(plan.oneTimeFee || 0) : 0;
-  const total = plan ? Number(plan.monthlyValue) + optionalValue : 0;
+  const preDiscountTotal = plan ? Number(plan.monthlyValue) + optionalValue : 0;
+  const discountPercent = isSelfService ? 0 : Number(state.discountPercent || 0);
+  const discountValue = preDiscountTotal * discountPercent / 100;
+  const total = preDiscountTotal - discountValue;
   $('selected-plan-name').textContent = plan?.name || '—';
   $('selected-plan-base-value').textContent = plan ? brl.format(tableValue) : '—';
   $('selected-mandatory-row').hidden = !plan || mandatoryValue <= 0;
@@ -325,8 +405,14 @@ function updateSelectionSummary() {
   $('selected-one-time-row').hidden = !plan || oneTimeFee <= 0;
   $('selected-one-time-value').textContent = plan ? brl.format(oneTimeFee) : '—';
   $('selected-optionals-value').textContent = plan ? brl.format(optionalValue) : '—';
+  $('selected-pre-discount-row').hidden = !plan || discountPercent <= 0;
+  $('selected-pre-discount-value').textContent = plan ? brl.format(preDiscountTotal) : '—';
+  $('selected-discount-row').hidden = !plan || discountPercent <= 0;
+  $('selected-discount-label').textContent = discountPercent > 0 ? `Desconto ${discountPercent}%` : 'Desconto';
+  $('selected-discount-value').textContent = discountPercent > 0 ? `− ${brl.format(discountValue)}` : '—';
   $('selected-plan-value').textContent = plan ? brl.format(total) : '—';
-  $('confirm-plan').disabled = !plan;
+  const conditionalDiscountPending = [15, 30].includes(discountPercent) && !state.discountConfirmed;
+  $('confirm-plan').disabled = !plan || conditionalDiscountPending;
 }
 
 function formPayload() {
@@ -345,7 +431,11 @@ function formPayload() {
     selectedPlanCode: state.selectedPlanCode,
     selectedOptionalCodes: [...state.selectedOptionalCodes]
   };
-  if (!isSelfService) payload.consultantId = selectedConsultant.id;
+  if (!isSelfService) {
+    payload.consultantId = selectedConsultant.id;
+    payload.discountPercent = Number(state.discountPercent || 0);
+    payload.rearWindowBranding = state.rearWindowBranding || 'NOT_APPLICABLE';
+  }
   return payload;
 }
 
@@ -362,6 +452,9 @@ function renderQuote(quote, scroll = true) {
   const baseValue = quote.baseMonthlyValue ?? quote.monthlyValue;
   const mandatoryValue = Number(quote.mandatoryMonthlyFee || 0);
   const oneTimeFee = Number(quote.oneTimeFee || 0);
+  const discountPercent = Number(quote.discountPercent || 0);
+  const preDiscountValue = Number(quote.preDiscountMonthlyValue ?? quote.monthlyValue);
+  const discountValue = Math.max(0, preDiscountValue - Number(quote.monthlyValue || 0));
   const optionalValue = quote.optionalMonthlyValue ?? selectedOptionals.reduce(
     (total, item) => total + Number(item.monthlyPrice || 0), 0
   );
@@ -378,6 +471,10 @@ function renderQuote(quote, scroll = true) {
     <div><span>Valor da tabela</span><strong>${brl.format(baseValue)}</strong></div>
     ${mandatoryValue > 0 ? `<div><span>Acréscimo obrigatório</span><strong>${brl.format(mandatoryValue)}</strong></div>` : ''}
     <div><span>Opcionais</span><strong>${brl.format(optionalValue)}</strong></div>
+    ${discountPercent > 0 ? `<div><span>Subtotal antes do desconto</span><strong>${brl.format(preDiscountValue)}</strong></div>` : ''}
+    ${discountPercent > 0 ? `<div><span>Desconto comercial</span><strong>${discountPercent}% (− ${brl.format(discountValue)})</strong></div>` : ''}
+    ${discountPercent === 15 ? '<div><span>Condição do desconto</span><strong>Perfurado traseiro: NH + outra empresa</strong></div>' : ''}
+    ${discountPercent === 30 ? '<div><span>Condição do desconto</span><strong>Perfurado traseiro: somente NH</strong></div>' : ''}
     <div><span>Total mensal</span><strong>${brl.format(quote.monthlyValue)}</strong></div>
     ${oneTimeFee > 0 ? `<div><span>Taxa única de instalação</span><strong>${brl.format(oneTimeFee)}</strong></div>` : ''}
     <div><span>Validade</span><strong>${quote.validUntil ? new Date(quote.validUntil).toLocaleString('pt-BR') : '5 dias'}</strong></div>
@@ -447,7 +544,7 @@ function renderInspectionStage(quote) {
     name: quote.customerName,
     plate: quote.plate || '',
     zeroKm: String(Boolean(quote.zeroKm)),
-    vehicleType: String(quote.categoryCode || '').startsWith('MOTORCYCLE')
+    vehicleType: (String(quote.categoryCode || '').startsWith('MOTORCYCLE') || String(quote.categoryCode || '') === 'SCOOTER_ELECTRIC')
       ? 'MOTORCYCLE'
       : 'FOUR_WHEELS_OR_MORE',
     whatsapp: quote.whatsapp || '',
@@ -536,7 +633,7 @@ async function sharePdfWithClient() {
 }
 
 function inspectionRequirementsForQuote(quote) {
-  if (String(quote.categoryCode).startsWith('MOTORCYCLE')) {
+  if (String(quote.categoryCode).startsWith('MOTORCYCLE') || String(quote.categoryCode) === 'SCOOTER_ELECTRIC') {
     return [
       ['Frente da motocicleta', 'Enquadre toda a parte dianteira, mantendo placa e acessórios visíveis quando aplicável.'],
       ['Traseira da motocicleta', 'Fotografe toda a traseira, com placa legível e sem cortes.'],
@@ -551,9 +648,14 @@ function inspectionRequirementsForQuote(quote) {
         : 'Enquadre o associado em frente à motocicleta e mantenha a placa perfeitamente visível e legível.']
     ];
   }
+  const rearInstruction = Number(quote.discountPercent || 0) === 15
+    ? 'Enquadre toda a traseira, mantenha a placa legível e mostre claramente o perfurado do vigia traseiro com as logomarcas da Novo Horizonte e da outra empresa.'
+    : Number(quote.discountPercent || 0) === 30
+      ? 'Enquadre toda a traseira, mantenha a placa legível e mostre claramente o perfurado do vigia traseiro contendo somente a logomarca da Novo Horizonte.'
+      : 'Enquadre toda a traseira e mantenha a placa perfeitamente legível.';
   return [
     ['Frente do veículo', 'Enquadre o veículo inteiro de frente, sem cortar para-choque, teto ou laterais.'],
-    ['Traseira do veículo', 'Enquadre toda a traseira e mantenha a placa perfeitamente legível.'],
+    ['Traseira do veículo', rearInstruction],
     ['Lateral esquerda', 'Fotografe o veículo inteiro pela lateral esquerda.'],
     ['Lateral direita', 'Fotografe o veículo inteiro pela lateral direita.'],
     ['Painel e quilometragem', 'Ligue o painel e mantenha a quilometragem nítida e centralizada.'],
@@ -737,6 +839,24 @@ async function uploadInspection() {
   }
 }
 
+document.querySelectorAll('[data-discount]').forEach(button => {
+  button.addEventListener('click', () => {
+    setDiscount(Number(button.dataset.discount));
+    persistSession();
+  });
+});
+
+$('clear-discount')?.addEventListener('click', () => {
+  setDiscount(0);
+  persistSession();
+});
+
+$('discount-confirmation')?.addEventListener('change', event => {
+  state.discountConfirmed = Boolean(event.target.checked);
+  updateSelectionSummary();
+  persistSession();
+});
+
 $('vehicle-options').querySelectorAll('.vehicle-option').forEach(button => {
   button.addEventListener('click', () => {
     state.vehicleType = button.dataset.type;
@@ -801,6 +921,9 @@ $('confirm-plan').addEventListener('click', async () => {
   setLoading(button, true, 'Salvando...', 'Confirmar plano e gerar cotação →');
   try {
     if (!isZeroKm() && !$('plate').value.trim()) throw new Error('Informe a placa do veículo.');
+    if (!isSelfService && [15, 30].includes(Number(state.discountPercent)) && !state.discountConfirmed) {
+      throw new Error('Confirme a condição do perfurado do vigia traseiro para utilizar este desconto.');
+    }
     const quote = await api(quoteApiPath(), {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formPayload())
     });
@@ -842,6 +965,9 @@ $('new-quote').addEventListener('click', () => {
   if (zeroKmNo) zeroKmNo.checked = true;
   syncZeroKmOptions();
   state.vehicleType = 'CAR';
+  state.discountPercent = 0;
+  state.rearWindowBranding = 'NOT_APPLICABLE';
+  state.discountConfirmed = false;
   $('vehicle-options').querySelectorAll('.vehicle-option').forEach(item => item.classList.toggle('active', item.dataset.type === 'CAR'));
   localStorage.removeItem(SESSION_KEY);
   updateConditionalFields();
@@ -918,6 +1044,7 @@ function formatWhatsapp(value) {
 
 function configurePageMode() {
   if (!isSelfService) {
+    if ($('discount-section')) $('discount-section').hidden = false;
     $('consultantName').value = selectedConsultant.name;
     $('customer-cpf-field').hidden = false;
     $('customerCpf').required = true;
@@ -925,6 +1052,7 @@ function configurePageMode() {
   }
 
   document.body.classList.add('self-service-mode');
+  if ($('discount-section')) $('discount-section').hidden = true;
   $('consultant-field').hidden = true;
   $('consultantName').required = false;
   $('customer-cpf-field').hidden = false;

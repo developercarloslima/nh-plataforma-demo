@@ -469,7 +469,10 @@ async function load() {
     $('title').textContent = body.requestType === 'NEW_INSPECTION'
       ? 'Nova vistoria do veículo'
       : 'Atualização de boleto';
-    $('subtitle').textContent = `Associado: ${body.associateName} · ${vehiclePlateLabel(body.plate)}`;
+    const contractedPlanText = body.requestType === 'BILL_UPDATE' && body.contractedPlan
+      ? ` · Plano atual: ${body.contractedPlan}`
+      : '';
+    $('subtitle').textContent = `Associado: ${body.associateName} · ${vehiclePlateLabel(body.plate)}${contractedPlanText}`;
     $('guideline-card').hidden = false;
     await restoreDraftFromCache();
   } catch (error) {
@@ -544,9 +547,21 @@ function showPhotoGuide(index) {
   $('capture-guide-image').src = photo.guide;
   $('capture-guide-image').alt = `Imagem ilustrativa: ${photo.label}`;
   $('capture-guide-image').hidden = false;
-  $('capture-guide-instruction').textContent = photo.label.toLowerCase().includes('selfie')
+  const normalizedLabel = photo.label.toLowerCase();
+  const discountPercent = Number(request?.discountPercent || 0);
+  const rearWindowCondition = normalizedLabel.includes('traseira') && inspectionProfile === VEHICLE_PROFILES.FOUR_WHEELS_OR_MORE
+    ? (
+      discountPercent === 15
+        ? ' Mostre claramente o perfurado do vigia traseiro com as duas logomarcas: Novo Horizonte e a outra empresa. Essa condição será conferida pela equipe de análise para validar o desconto de 15%.'
+        : discountPercent === 30
+          ? ' Mostre claramente o perfurado do vigia traseiro contendo somente a logomarca da Novo Horizonte. Essa condição será conferida pela equipe de análise para validar o desconto de 30%.'
+          : ''
+    )
+    : '';
+
+  $('capture-guide-instruction').textContent = normalizedLabel.includes('selfie')
     ? 'Enquadre o associado e o veículo como no exemplo. Quando houver placa, ela precisa ficar legível. Para veículo 0 km sem placa, mostre claramente a dianteira.'
-    : 'Observe o ângulo, a distância e a área do veículo mostrada no exemplo. Tire a foto com boa iluminação e sem cortar a parte solicitada.';
+    : 'Observe o ângulo, a distância e a área do veículo mostrada no exemplo. Tire a foto com boa iluminação e sem cortar a parte solicitada.' + rearWindowCondition;
   $('capture-guide-continue').textContent = 'Entendi, abrir câmera';
   showGuidePage();
 }

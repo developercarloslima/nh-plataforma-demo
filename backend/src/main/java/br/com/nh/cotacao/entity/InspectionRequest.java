@@ -40,6 +40,9 @@ public class InspectionRequest {
     @Column(name = "residence_address", length = 600)
     private String residenceAddress;
 
+    @Column(name = "contracted_plan", length = 160)
+    private String contractedPlan;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "consultant_id")
     private Consultant consultant;
@@ -102,9 +105,16 @@ public class InspectionRequest {
             String whatsapp,
             String plate,
             InspectionVehicleType vehicleType,
-            Consultant consultant
+            Consultant consultant,
+            String contractedPlan
     ) {
         if (consultant == null) throw new IllegalArgumentException("Informe o consultor responsável.");
+        if (type == InspectionRequestType.NEW_INSPECTION) {
+            throw new IllegalArgumentException("Nova vistoria só pode ser criada a partir de uma cotação aceita.");
+        }
+        if (contractedPlan == null || contractedPlan.isBlank()) {
+            throw new IllegalArgumentException("Informe o plano já contratado para a atualização de boleto.");
+        }
         return createBase(
                 publicToken,
                 type,
@@ -113,6 +123,7 @@ public class InspectionRequest {
                 whatsapp,
                 plate,
                 vehicleType == null ? InspectionVehicleType.FOUR_WHEELS_OR_MORE : vehicleType,
+                contractedPlan,
                 consultant,
                 consultant.getName(),
                 null
@@ -144,6 +155,7 @@ public class InspectionRequest {
                 quotation.getWhatsapp(),
                 quotation.getPlate(),
                 InspectionVehicleType.fromCategoryCode(quotation.getCategoryCode()),
+                null,
                 quotation.getConsultant(),
                 quotation.getConsultantName(),
                 quotation
@@ -158,6 +170,7 @@ public class InspectionRequest {
             String whatsapp,
             String plate,
             InspectionVehicleType vehicleType,
+            String contractedPlan,
             Consultant consultant,
             String consultantName,
             Quotation quotation
@@ -171,6 +184,9 @@ public class InspectionRequest {
         request.cpf = cpf.replaceAll("\\D", "");
         request.whatsapp = whatsapp == null ? null : whatsapp.replaceAll("\\D", "");
         request.plate = normalizePlate(plate);
+        request.contractedPlan = contractedPlan == null || contractedPlan.isBlank()
+                ? null
+                : contractedPlan.trim().replaceAll("\\s+", " ");
         request.consultant = consultant;
         request.consultantName = consultantName;
         request.quotation = quotation;
@@ -362,6 +378,7 @@ public class InspectionRequest {
     public String getWhatsapp() { return whatsapp; }
     public String getPlate() { return plate; }
     public String getResidenceAddress() { return residenceAddress; }
+    public String getContractedPlan() { return contractedPlan; }
     public Consultant getConsultant() { return consultant; }
     public String getConsultantName() { return consultantName; }
     public Quotation getQuotation() { return quotation; }

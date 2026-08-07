@@ -159,34 +159,54 @@ function actionLink(url, label, style = 'outline') {
   return `<a class="button ${style} small-button" href="${esc(url)}" target="_blank" rel="noopener">${esc(label)}</a>`;
 }
 
+function inspectionMatchesFilter(item, filter) {
+  if (!filter) return true;
+  return `${item.associateName} ${item.plate || ''} ${item.consultantName} ${item.status}`
+    .toLowerCase()
+    .includes(filter);
+}
+
+function inspectionRows(items, emptyMessage) {
+  const rows = items.map(item => {
+    const currentPublicUrl = item.publicUrl
+      ? (window.NH_URLS?.retratoUrl(item.publicUrl) || item.publicUrl)
+      : null;
+    const filesAvailable = hasFiles(item);
+    const statusActions = filesAvailable
+      ? `<button class="outline small-button" data-analyze="${item.id}" type="button">Ver documentos enviados</button>`
+      : '';
+    const pendingActions = filesAvailable
+      ? ''
+      : `${actionLink(item.associateInspectionWhatsappUrl, 'Enviar link', 'secondary')}${actionLink(currentPublicUrl, 'Fazer vistoria')}`;
+
+    return `<tr>
+      <td><strong>${esc(item.associateName)}</strong><small class="table-code">${esc(formatPhone(item.whatsapp) || 'Sem WhatsApp')}</small></td>
+      <td>${esc(item.plate || '0 km — sem placa')}</td>
+      <td>${esc(item.consultantName)}</td>
+      <td>${date(item.completedAt || item.createdAt)}</td>
+      <td><div class="status-with-action">${badge(item.status)}${statusActions}</div></td>
+      <td><div class="row-actions">${pendingActions}<button class="secondary small-button" data-analyze="${item.id}" type="button">Analisar</button></div></td>
+    </tr>`;
+  }).join('');
+
+  return rows || `<tr><td colspan="6" class="empty-state">${esc(emptyMessage)}</td></tr>`;
+}
+
+function queueCountLabel(total) {
+  return `${total} ${total === 1 ? 'registro' : 'registros'}`;
+}
+
 function render() {
   const filter = $('filter').value.trim().toLowerCase();
-  const rows = inspections
-    .filter(item => `${item.associateName} ${item.plate || ''} ${item.consultantName} ${item.status}`.toLowerCase().includes(filter))
-    .map(item => {
-      const currentPublicUrl = item.publicUrl
-        ? (window.NH_URLS?.retratoUrl(item.publicUrl) || item.publicUrl)
-        : null;
-      const filesAvailable = hasFiles(item);
-      const statusActions = filesAvailable
-        ? `<button class="outline small-button" data-analyze="${item.id}" type="button">Ver documentos enviados</button>`
-        : '';
-      const pendingActions = filesAvailable
-        ? ''
-        : `${actionLink(item.associateInspectionWhatsappUrl, 'Enviar link', 'secondary')}${actionLink(currentPublicUrl, 'Fazer vistoria')}`;
+  const filtered = inspections.filter(item => inspectionMatchesFilter(item, filter));
+  const newInspections = filtered.filter(item => item.requestType === 'NEW_INSPECTION');
+  const billingUpdates = filtered.filter(item => item.requestType !== 'NEW_INSPECTION');
 
-      return `<tr>
-        <td><strong>${esc(item.associateName)}</strong><small class="table-code">${esc(formatPhone(item.whatsapp) || 'Sem WhatsApp')}</small></td>
-        <td>${esc(item.plate || '0 km — sem placa')}</td>
-        <td>${esc(item.consultantName)}</td>
-        <td>${item.requestType === 'NEW_INSPECTION' ? 'Nova vistoria' : 'Atualização de boleto'}</td>
-        <td>${date(item.completedAt || item.createdAt)}</td>
-        <td><div class="status-with-action">${badge(item.status)}${statusActions}</div></td>
-        <td><div class="row-actions">${pendingActions}<button class="secondary small-button" data-analyze="${item.id}" type="button">Analisar</button></div></td>
-      </tr>`;
-    }).join('');
+  $('new-inspections-body').innerHTML = inspectionRows(newInspections, 'Nenhuma nova vistoria encontrada.');
+  $('billing-inspections-body').innerHTML = inspectionRows(billingUpdates, 'Nenhuma atualização de boleto encontrada.');
+  $('new-inspections-count').textContent = queueCountLabel(newInspections.length);
+  $('billing-inspections-count').textContent = queueCountLabel(billingUpdates.length);
 
-  $('inspections-body').innerHTML = rows || '<tr><td colspan="7" class="empty-state">Nenhuma vistoria encontrada.</td></tr>';
   document.querySelectorAll('[data-analyze]').forEach(button => {
     button.addEventListener('click', () => openInspection(button.dataset.analyze));
   });
@@ -250,19 +270,54 @@ function openInspection(id) {
       ? 'O prazo de 40 dias terminou e os arquivos foram apagados automaticamente.'
       : 'Aguardando envio do associado.');
 
-  $('inspection-details').innerHTML = details([
+  const discountPercent = Number(item.discountPercent || 0);
+  const rearWindowBrandingLabel = item.rearWindowBranding === 'NH_AND_OTHER_COMPANY'
+    ? 'Perfurado com NH + outra empresa'
+    : item.rearWindowBranding === 'NH_ONLY'
+      ? 'Perfurado somente com a logomarca NH'
+      : 'Não se aplica';
+
+  const inspectionDetails = [
     ['Associado', item.associateName],
     ['CPF', item.maskedCpf],
     ['WhatsApp', formatPhone(item.whatsapp) || '—'],
     ['Consultor', item.consultantName],
     ['Placa', item.plate || '0 km — sem placa'],
-    ['Tipo', item.requestType === 'NEW_INSPECTION' ? 'Nova vistoria' : 'Atualização de boleto'],
+    ['Tipo', item.requestType === 'NEW_INSPECTION' ? 'Nova vistoria' : 'Atualização de boleto']
+  ];
+
+  if (item.requestType === 'BILL_UPDATE') {
+    inspectionDetails.push(['Plano já contratado', item.contractedPlan || '—']);
+  }
+
+  if (item.requestType === 'NEW_INSPECTION' && discountPercent > 0) {
+    inspectionDetails.push(['Desconto da cotação', `${discountPercent}%`]);
+    if (discountPercent === 15 || discountPercent === 30) {
+      inspectionDetails.push(['Condição do vigia traseiro', rearWindowBrandingLabel]);
+    }
+  }
+
+  inspectionDetails.push(
     ['Criada em', date(item.createdAt)],
     ['Concluída em', date(item.completedAt)],
     ['Arquivos disponíveis', item.assetCount],
     ['Situação dos arquivos', retentionText],
     ['Endereço', item.residenceAddress || '—']
-  ]);
+  );
+
+  $('inspection-details').innerHTML = details(inspectionDetails);
+
+  const discountNote = $('discount-validation-note');
+  if (item.requestType === 'NEW_INSPECTION' && (discountPercent === 15 || discountPercent === 30)) {
+    discountNote.hidden = false;
+    discountNote.className = 'message';
+    discountNote.textContent = discountPercent === 15
+      ? 'Validação do desconto de 15%: antes de aprovar, confira na foto da traseira se o perfurado do vigia possui a logomarca da Novo Horizonte e a logomarca da outra empresa.'
+      : 'Validação do desconto de 30%: antes de aprovar, confira na foto da traseira se o perfurado do vigia possui somente a logomarca da Novo Horizonte.';
+  } else {
+    discountNote.hidden = true;
+    discountNote.textContent = '';
+  }
 
   $('inspection-links').innerHTML = links(filesAvailable ? [
     [currentPublicUrl, 'Abrir link da vistoria']

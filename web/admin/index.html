@@ -6,9 +6,9 @@
   <meta name="theme-color" content="#070c40">
   <title>Painel Administrativo NH</title>
   <link rel="icon" href="/assets/favicon-nh.png">
-  <link rel="stylesheet" href="/shared/portal.css?v=20260806-selfie-font-v2">
-  <link rel="stylesheet" href="/shared/responsive.css?v=20260806-all-devices-v2">
-  <link rel="stylesheet" href="/shared/brand-system.css?v=20260806-font-buttons-v2">
+  <link rel="stylesheet" href="/shared/portal.css?v=20260807-admin-users-v1">
+  <link rel="stylesheet" href="/shared/responsive.css?v=20260807-table-scroll-v1">
+  <link rel="stylesheet" href="/shared/brand-system.css?v=20260807-admin-users-v1">
 </head>
 <body class="admin-page">
 <header class="portal-header">
@@ -43,7 +43,7 @@
 <main id="admin-view" class="shell" hidden>
   <section class="hero-panel">
     <h1>Gestão da operação Novo Horizonte</h1>
-    <p>Controle consultores, cotações, Retrato NH, planos, valores, coberturas, opcionais, destinos de envio e auditoria.</p>
+    <p>Controle usuários, consultores, cotações, Retrato NH, planos, valores, coberturas, opcionais, destinos de envio, retenção e auditoria.</p>
   </section>
   <div id="message" aria-live="polite"></div>
 
@@ -51,6 +51,7 @@
     <button type="button" data-tab="overview" class="active">Visão geral</button>
     <button type="button" data-tab="activities">Atividades</button>
     <button type="button" data-tab="consultants">Consultores</button>
+    <button type="button" data-tab="users">Usuários</button>
     <button type="button" data-tab="quotes">Cotações</button>
     <button type="button" data-tab="inspections">Retrato NH</button>
     <button type="button" data-tab="plans">Planos</button>
@@ -107,10 +108,28 @@
     </table></div>
   </section>
 
+  <section id="tab-users" hidden>
+    <div class="section-head">
+      <div><h2>Usuários e senhas</h2><p>Crie contas para administrador, analista ou consultor e altere senhas diretamente pelo painel.</p></div>
+      <button id="new-user-button" class="primary" type="button">+ Novo usuário</button>
+    </div>
+    <div class="card retention-notice" style="margin-bottom:14px">
+      <strong>Segurança das contas</strong>
+      <p>As senhas são armazenadas com hash BCrypt e nunca são exibidas. Uma conta desativada perde o acesso imediatamente.</p>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Usuário</th><th>Nome</th><th>Perfil</th><th>Status</th><th>Último acesso</th><th>Senha alterada</th><th>Ações</th></tr></thead>
+      <tbody id="users-body"></tbody>
+    </table></div>
+  </section>
+
   <section id="tab-quotes" hidden>
     <div class="section-head">
-      <div><h2>Cotações</h2><p>Analise os dados, altere o status e registre observações administrativas.</p></div>
-      <input id="quote-filter" placeholder="Filtrar por origem, consultor, cliente, placa ou número" style="max-width:360px">
+      <div><h2>Cotações</h2><p>Analise os dados, altere o status e registre observações administrativas. Todas as cotações são removidas automaticamente após 40 dias, inclusive as aceitas.</p></div>
+      <div class="section-head-actions">
+        <input id="quote-filter" placeholder="Filtrar por origem, consultor, cliente, placa ou número" style="max-width:360px">
+        <button id="delete-all-quotes" class="danger" type="button">Excluir todas as cotações</button>
+      </div>
     </div>
     <div class="table-wrap"><table>
       <thead><tr><th>Número</th><th>Origem / responsável</th><th>Cliente</th><th>Placa</th><th>Plano</th><th>Total</th><th>Validade</th><th>Status</th><th>Ações</th></tr></thead>
@@ -120,8 +139,11 @@
 
   <section id="tab-inspections" hidden>
     <div class="section-head">
-      <div><h2>Retrato NH</h2><p>Analise novas vistorias e atualizações de boleto, alterando o status e as observações.</p></div>
-      <input id="inspection-filter" placeholder="Filtrar por consultor, associado ou placa" style="max-width:360px">
+      <div><h2>Retrato NH</h2><p>Analise novas vistorias e atualizações de boleto. A exclusão manual preserva as aprovadas; a limpeza automática de 40 dias remove todas, inclusive as aprovadas.</p></div>
+      <div class="section-head-actions">
+        <input id="inspection-filter" placeholder="Filtrar por consultor, associado ou placa" style="max-width:360px">
+        <button id="delete-all-inspections" class="danger" type="button">Excluir vistorias permitidas</button>
+      </div>
     </div>
     <div class="table-wrap"><table>
       <thead><tr><th>Associado</th><th>Consultor</th><th>Placa</th><th>Tipo</th><th>Arquivos</th><th>Status</th><th>Criada</th><th>Ações</th></tr></thead>
@@ -205,6 +227,33 @@
     <label>Nome completo<input id="consultant-name" maxlength="140" required></label>
     <div id="consultant-active-wrap" class="form-check form-switch" hidden><input id="consultant-active" class="form-check-input" type="checkbox"><label class="form-check-label" for="consultant-active">Consultor ativo</label></div>
     <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="consultant-dialog">Cancelar</button><button class="primary" type="submit">Salvar</button></div>
+  </form>
+</dialog>
+
+<dialog id="user-dialog" class="admin-dialog">
+  <form id="user-form" class="dialog-card">
+    <div class="dialog-head"><div><span class="eyebrow" style="color:#070c40">CONTA DE ACESSO</span><h2 id="user-dialog-title">Novo usuário</h2></div><button class="dialog-close" type="button" data-close-dialog="user-dialog">×</button></div>
+    <input id="user-id" type="hidden">
+    <div class="form-grid">
+      <label class="span-2">Usuário<input id="user-username" autocomplete="off" maxlength="160" required placeholder="Ex.: analista2 ou nome@nh.local"></label>
+      <label class="span-2">Nome de identificação<input id="user-display-name" maxlength="160" placeholder="Ex.: Maria - Análise"></label>
+      <label>Perfil<select id="user-role" required><option value="CONSULTANT">Consultor</option><option value="ANALYST">Analista</option><option value="ADMIN">Administrador</option></select></label>
+      <label id="user-password-wrap">Senha inicial<input id="user-password" type="password" autocomplete="new-password" minlength="8" maxlength="120" placeholder="Mínimo de 8 caracteres"></label>
+    </div>
+    <div id="user-active-wrap" class="form-check form-switch" hidden><input id="user-active" class="form-check-input" type="checkbox"><label class="form-check-label" for="user-active">Conta ativa</label></div>
+    <p class="helper">Contas de consultor acessam a Área do Colaborador; analistas acessam o painel de análise; administradores acessam este painel.</p>
+    <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="user-dialog">Cancelar</button><button class="primary" type="submit">Salvar usuário</button></div>
+  </form>
+</dialog>
+
+<dialog id="password-dialog" class="admin-dialog">
+  <form id="password-form" class="dialog-card">
+    <div class="dialog-head"><div><span class="eyebrow" style="color:#070c40">ALTERAR SENHA</span><h2 id="password-dialog-title">Nova senha</h2></div><button class="dialog-close" type="button" data-close-dialog="password-dialog">×</button></div>
+    <input id="password-user-id" type="hidden">
+    <label>Nova senha<input id="password-new" type="password" autocomplete="new-password" minlength="8" maxlength="120" required></label>
+    <label style="margin-top:14px">Confirmar nova senha<input id="password-confirm" type="password" autocomplete="new-password" minlength="8" maxlength="120" required></label>
+    <p class="helper">A senha anterior deixa de funcionar imediatamente para novos logins.</p>
+    <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="password-dialog">Cancelar</button><button class="primary" type="submit">Alterar senha</button></div>
   </form>
 </dialog>
 
@@ -322,7 +371,7 @@
 <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
 <script src="/shared/money-input.js?v=20260805-brl-mask"></script>
-<script src="/admin/admin.js?v=20260806-documents-v4"></script>
-<script src="/shared/responsive.js?v=20260806-all-devices-v2"></script>
+<script src="/admin/admin.js?v=20260807-discounts-plan-v1"></script>
+<script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
 </body>
 </html>

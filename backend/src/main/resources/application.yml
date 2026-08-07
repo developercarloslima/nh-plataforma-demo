@@ -59,6 +59,9 @@ app:
   inspection-storage:
     retention-days: ${INSPECTION_RETENTION_DAYS:40}
     cleanup-cron: ${INSPECTION_CLEANUP_CRON:0 15 * * * *}
+  operational-retention:
+    retention-days: ${OPERATIONAL_RETENTION_DAYS:40}
+    cleanup-cron: ${OPERATIONAL_RETENTION_CLEANUP_CRON:0 40 * * * *}
   google-drive:
     enabled: ${GOOGLE_DRIVE_ENABLED:false}
     credentials-base64: ${GOOGLE_DRIVE_CREDENTIALS_BASE64:}

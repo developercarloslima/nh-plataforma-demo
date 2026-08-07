@@ -29,6 +29,7 @@ public final class ConsultantDashboardDtos {
             boolean zeroKm,
             String model,
             Integer manufactureYear,
+            String categoryCode,
             String selectedPlanName,
             BigDecimal monthlyValue,
             QuoteStatus status,

@@ -14,6 +14,7 @@ async function api(path, options = {}) {
     const body = await response.json().catch(() => null);
     throw new Error(body?.message || 'Não foi possível concluir a solicitação.');
   }
+  if (response.status === 204) return null;
   return response.json();
 }
 
@@ -23,53 +24,151 @@ function msg(text, type = 'error') {
   element.textContent = text;
 }
 
-function isNewInspection() {
-  return $('requestType').value === 'NEW_INSPECTION';
-}
-
-function isZeroKm() {
-  return isNewInspection() && $('zeroKm').value === 'true';
-}
-
-function syncVehicleFields() {
-  const newInspection = isNewInspection();
-  const zeroKm = isZeroKm();
-
-  $('zeroKm').disabled = !newInspection;
-  if (!newInspection) $('zeroKm').value = 'false';
-
-  $('plate').disabled = zeroKm;
-  $('plate').required = !zeroKm;
-  $('plate').toggleAttribute('required', !zeroKm);
-  $('plate').setAttribute('aria-required', String(!zeroKm));
-  $('plate').setAttribute('aria-disabled', String(zeroKm));
-  $('plate').placeholder = zeroKm ? 'Não necessário para veículo 0 km' : 'ABC1D23';
-  if (zeroKm) $('plate').value = '';
-
-  $('manual-plate-required').hidden = zeroKm;
-  $('manual-plate-help').textContent = zeroKm
-    ? 'A placa poderá ser cadastrada depois do emplacamento.'
-    : newInspection
-      ? 'Obrigatória para veículos que não são 0 km.'
-      : 'Obrigatória para identificar o veículo na atualização de boleto.';
+function normalizeCpf(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  return digits.length === 11 ? digits : null;
 }
 
 function vehicleLabel(data) {
   return data.plate || 'Veículo 0 km — sem placa';
 }
 
+const query = new URLSearchParams(location.search);
+const quoteId = query.get('quoteId');
+const linkedQuoteMode = Boolean(quoteId);
+let linkedQuoteValidated = !linkedQuoteMode;
+
+function isNewInspection() {
+  return linkedQuoteMode;
+}
+
+function isZeroKm() {
+  return linkedQuoteMode && $('zeroKm').value === 'true';
+}
+
+function setLockedInput(element, locked) {
+  if (!element) return;
+  element.readOnly = locked;
+  element.setAttribute('aria-readonly', String(locked));
+}
+
+async function validateLinkedQuote() {
+  if (!linkedQuoteMode) return;
+  linkedQuoteValidated = false;
+  $('submit-inspection').disabled = true;
+  try {
+    const dashboard = await api(`/api/consultant-dashboard/${encodeURIComponent(consultant.id)}`);
+    const quote = (dashboard?.quotes || []).find(item => String(item.id) === String(quoteId));
+    if (!quote) throw new Error('Cotação não encontrada no painel deste consultor.');
+    if (quote.status !== 'ACCEPTED') {
+      throw new Error('Esta cotação ainda não foi aceita. A nova vistoria só pode começar após a aceitação da cotação.');
+    }
+    if (quote.inspectionId) {
+      throw new Error('Esta cotação já possui uma nova vistoria vinculada. Abra a vistoria existente no painel do consultor.');
+    }
+
+    $('associateName').value = quote.customerName || $('associateName').value;
+    $('plate').value = (quote.plate || $('plate').value || '').toUpperCase();
+    $('whatsapp').value = quote.whatsapp || $('whatsapp').value;
+    $('zeroKm').value = String(Boolean(quote.zeroKm));
+    $('vehicleType').value = (String(quote.categoryCode || '').startsWith('MOTORCYCLE') || String(quote.categoryCode || '') === 'SCOOTER_ELECTRIC')
+      ? 'MOTORCYCLE'
+      : 'FOUR_WHEELS_OR_MORE';
+    syncVehicleFields();
+    linkedQuoteValidated = true;
+    $('submit-inspection').disabled = false;
+    msg('Cotação aceita confirmada. Agora você pode gerar o Retrato NH.', 'success');
+  } catch (error) {
+    msg(error.message);
+    $('submit-inspection').disabled = true;
+  }
+}
+
+function configureFlow() {
+  if (linkedQuoteMode && !$('requestType').querySelector('option[value="NEW_INSPECTION"]')) {
+    const option = document.createElement('option');
+    option.value = 'NEW_INSPECTION';
+    option.textContent = 'Nova vistoria — vinculada à cotação aceita';
+    $('requestType').append(option);
+  }
+  $('requestType').value = linkedQuoteMode ? 'NEW_INSPECTION' : 'BILL_UPDATE';
+  $('requestType').disabled = true;
+
+  if (linkedQuoteMode) {
+    $('page-title').textContent = 'Nova vistoria vinculada à cotação';
+    $('page-description').textContent = 'Esta vistoria será criada a partir da cotação aceita. Os dados comerciais permanecem vinculados à cotação.';
+    $('flow-notice').textContent = 'Fluxo autorizado: Cotação aceita → Retrato NH → Nova vistoria → Equipe de análise.';
+    $('contracted-plan-field').hidden = true;
+    $('contractedPlan').required = false;
+    $('contractedPlan').disabled = true;
+    $('submit-inspection').textContent = 'Gerar link da nova vistoria';
+
+    setLockedInput($('associateName'), true);
+    setLockedInput($('whatsapp'), true);
+    $('vehicleType').disabled = true;
+    $('zeroKm').disabled = true;
+
+    $('cpf').required = false;
+    $('cpf').placeholder = 'Preencha somente se a cotação ainda não possuir CPF';
+    $('cpf').closest('label')?.insertAdjacentHTML(
+      'beforeend',
+      '<small class="field-helper">Se o CPF já estiver salvo na cotação, este campo pode ficar em branco.</small>'
+    );
+  } else {
+    $('page-title').textContent = 'Atualização de boleto';
+    $('page-description').textContent = 'Cadastre os dados atuais do associado e informe o plano que ele já possui.';
+    $('flow-notice').textContent = 'Fluxo: Retrato NH → Atualização de boleto → Equipe de análise.';
+    $('contracted-plan-field').hidden = false;
+    $('contractedPlan').disabled = false;
+    $('contractedPlan').required = true;
+    $('submit-inspection').textContent = 'Gerar link para atualização de boleto';
+
+    setLockedInput($('associateName'), false);
+    setLockedInput($('whatsapp'), false);
+    $('vehicleType').disabled = false;
+    $('zeroKm').value = 'false';
+    $('zeroKm').disabled = true;
+    $('cpf').required = true;
+  }
+}
+
+function syncVehicleFields() {
+  const zeroKm = isZeroKm();
+
+  $('zero-km-field').hidden = !linkedQuoteMode;
+  if (!linkedQuoteMode) $('zeroKm').value = 'false';
+
+  $('plate').disabled = linkedQuoteMode ? true : zeroKm;
+  $('plate').readOnly = linkedQuoteMode && !zeroKm;
+  $('plate').required = !linkedQuoteMode && !zeroKm;
+  $('plate').toggleAttribute('required', !linkedQuoteMode && !zeroKm);
+  $('plate').setAttribute('aria-required', String(!linkedQuoteMode && !zeroKm));
+  $('plate').setAttribute('aria-disabled', String(linkedQuoteMode || zeroKm));
+
+  if (linkedQuoteMode) {
+    $('plate').placeholder = zeroKm ? 'Veículo 0 km — sem placa' : 'Placa vinculada à cotação';
+    $('manual-plate-required').hidden = true;
+    $('manual-plate-help').textContent = zeroKm
+      ? 'Veículo 0 km vinculado à cotação aceita.'
+      : 'A placa vem da cotação aceita e não pode ser alterada aqui.';
+  } else {
+    $('plate').placeholder = 'ABC1D23';
+    $('manual-plate-required').hidden = false;
+    $('manual-plate-help').textContent = 'Obrigatória para identificar o veículo na atualização de boleto.';
+  }
+}
+
 $('consultant-info').textContent = `Consultor responsável: ${consultant.name}`;
 
-const query = new URLSearchParams(location.search);
 $('associateName').value = query.get('name') || '';
 $('plate').value = (query.get('plate') || '').toUpperCase();
 $('whatsapp').value = query.get('whatsapp') || '';
 if (query.get('zeroKm') === 'true') $('zeroKm').value = 'true';
 if (query.get('vehicleType')) $('vehicleType').value = query.get('vehicleType');
-syncVehicleFields();
 
-$('requestType').addEventListener('change', syncVehicleFields);
-$('zeroKm').addEventListener('change', syncVehicleFields);
+configureFlow();
+syncVehicleFields();
+validateLinkedQuote();
 
 $('cpf').addEventListener('input', (event) => {
   const digits = event.target.value.replace(/\D/g, '').slice(0, 11);
@@ -83,60 +182,117 @@ $('plate').addEventListener('input', (event) => {
   event.target.value = event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
 });
 
+function publicUrlFrom(data) {
+  if (data?.publicToken) {
+    return window.NH_URLS?.retratoUrl(data.publicToken) || data.publicUrl;
+  }
+  if (data?.publicUrl) {
+    return window.NH_URLS?.retratoUrl(data.publicUrl) || data.publicUrl;
+  }
+  return '';
+}
+
+function communicationUrlFrom(data) {
+  return data?.associateInspectionWhatsappUrl || data?.whatsappUrl || data?.teamWhatsappUrl || null;
+}
+
 $('inspection-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   syncVehicleFields();
 
-  const zeroKm = isZeroKm();
+  if (linkedQuoteMode && !linkedQuoteValidated) {
+    msg('Aguarde a validação da cotação aceita antes de gerar a nova vistoria.');
+    return;
+  }
 
-  if (!zeroKm && !$('plate').value.trim()) {
+  if (!linkedQuoteMode && !$('plate').value.trim()) {
     msg('Informe a placa do veículo.');
     $('plate').focus();
     return;
   }
 
-  try {
-    const data = await api('/api/inspections', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        consultantId: consultant.id,
-        requestType: $('requestType').value,
-        vehicleType: $('vehicleType').value,
-        associateName: $('associateName').value.trim(),
-        cpf: $('cpf').value,
-        plate: zeroKm ? null : $('plate').value.trim(),
-        zeroKm,
-        whatsapp: $('whatsapp').value
-      })
-    });
+  if (!linkedQuoteMode && !$('contractedPlan').value.trim()) {
+    msg('Informe o plano já contratado pelo associado.');
+    $('contractedPlan').focus();
+    return;
+  }
 
-    const currentPublicUrl = window.NH_URLS?.retratoUrl(data.publicToken || data.publicUrl) || data.publicUrl;
+  const typedCpf = normalizeCpf($('cpf').value);
+  if (!linkedQuoteMode && !typedCpf) {
+    msg('Informe um CPF válido.');
+    $('cpf').focus();
+    return;
+  }
+
+  try {
+    let data;
+
+    if (linkedQuoteMode) {
+      const body = typedCpf ? { cpf: typedCpf } : {};
+      data = await api(
+        `/api/consultant-dashboard/${encodeURIComponent(consultant.id)}/quotes/${encodeURIComponent(quoteId)}/inspection`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        }
+      );
+    } else {
+      data = await api('/api/inspections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          consultantId: consultant.id,
+          requestType: 'BILL_UPDATE',
+          vehicleType: $('vehicleType').value,
+          associateName: $('associateName').value.trim(),
+          cpf: typedCpf,
+          plate: $('plate').value.trim(),
+          zeroKm: false,
+          whatsapp: $('whatsapp').value,
+          contractedPlan: $('contractedPlan').value.trim()
+        })
+      });
+    }
+
+    const currentPublicUrl = publicUrlFrom(data);
 
     $('result').hidden = false;
     $('public-link').value = currentPublicUrl;
     $('open-link').href = currentPublicUrl;
 
     const sendWhatsapp = $('send-whatsapp');
-    if (data.teamWhatsappUrl) {
+    const communicationUrl = communicationUrlFrom(data);
+    if (communicationUrl) {
       sendWhatsapp.href = window.NH_URLS?.replaceLinkInCommunicationUrl(
-        data.teamWhatsappUrl,
+        communicationUrl,
         data.publicUrl,
         currentPublicUrl
-      ) || data.teamWhatsappUrl;
+      ) || communicationUrl;
       sendWhatsapp.removeAttribute('aria-disabled');
       sendWhatsapp.classList.remove('disabled');
-      sendWhatsapp.title = 'Enviar a solicitação ao WhatsApp configurado pelo administrador';
+      sendWhatsapp.textContent = linkedQuoteMode ? 'Enviar link ao associado' : 'Enviar pelo WhatsApp';
+      sendWhatsapp.title = linkedQuoteMode
+        ? 'Enviar o link da nova vistoria ao associado'
+        : 'Abrir a comunicação configurada para esta solicitação';
     } else {
       sendWhatsapp.removeAttribute('href');
       sendWhatsapp.setAttribute('aria-disabled', 'true');
       sendWhatsapp.classList.add('disabled');
-      sendWhatsapp.title = 'Configure o WhatsApp da equipe no painel administrativo';
+      sendWhatsapp.title = 'Não há WhatsApp válido configurado para esta solicitação';
     }
 
-    $('result-summary').textContent = `${data.associateName} · ${vehicleLabel(data)} · link válido até ${new Date(data.expiresAt).toLocaleDateString('pt-BR')}`;
+    const planText = !linkedQuoteMode && data.contractedPlan ? ` · Plano: ${data.contractedPlan}` : '';
+    $('result-summary').textContent =
+      `${data.associateName} · ${vehicleLabel(data)}${planText} · link válido até ${new Date(data.expiresAt).toLocaleDateString('pt-BR')}`;
+
     $('result').scrollIntoView({ behavior: 'smooth' });
-    msg('Solicitação registrada no painel administrativo.', 'success');
+    msg(
+      linkedQuoteMode
+        ? 'Nova vistoria criada a partir da cotação aceita.'
+        : 'Atualização de boleto registrada e encaminhada para o fluxo de análise.',
+      'success'
+    );
   } catch (error) {
     msg(error.message);
   }
@@ -145,7 +301,7 @@ $('inspection-form').addEventListener('submit', async (event) => {
 $('send-whatsapp').addEventListener('click', (event) => {
   if (!$('send-whatsapp').hasAttribute('href')) {
     event.preventDefault();
-    msg('Configure o WhatsApp da equipe no painel administrativo.');
+    msg('Não há WhatsApp válido configurado para esta solicitação.');
   }
 });
 
@@ -155,5 +311,5 @@ $('copy-link').addEventListener('click', async () => {
 });
 
 $('new-request').addEventListener('click', () => {
-  location.href = '/colaborador/retrato.html';
+  location.href = linkedQuoteMode ? '/cota/' : '/colaborador/retrato.html';
 });

@@ -256,8 +256,19 @@ function quoteActions(item) {
     || `/api/quotes/${item.id}/pdf`;
   const review = `<a class="button outline small-button" href="${escapeHtml(pdfUrl)}" target="_blank" rel="noopener">Rever cotação</a>`;
   const edit = `<button class="outline small-button" data-edit-quote="${item.id}" type="button">Editar dados</button>`;
+  const inspectionVehicleType = (String(item.categoryCode || '').startsWith('MOTORCYCLE') || String(item.categoryCode || '') === 'SCOOTER_ELECTRIC')
+    ? 'MOTORCYCLE'
+    : 'FOUR_WHEELS_OR_MORE';
+  const inspectionParams = new URLSearchParams({
+    quoteId: item.id,
+    name: item.customerName || '',
+    plate: item.plate || '',
+    zeroKm: String(Boolean(item.zeroKm)),
+    vehicleType: inspectionVehicleType,
+    whatsapp: item.whatsapp || ''
+  });
   const startInspection = item.status === 'ACCEPTED' && !item.inspectionId
-    ? `<button class="secondary small-button" data-start-quote-inspection="${item.id}" type="button">Iniciar vistoria</button>`
+    ? `<a class="button secondary small-button" href="/colaborador/retrato.html?${inspectionParams.toString()}">Abrir Retrato NH</a>`
     : '';
   const redo = item.expired
     ? `<button class="secondary small-button" data-redo-quote="${item.id}" type="button">Refazer cotação</button>`
@@ -279,29 +290,6 @@ function askCpf(customerName) {
     return null;
   }
   return value;
-}
-
-async function startQuoteInspection(id, button) {
-  const item = findQuote(id);
-  if (!item || !selectedConsultant?.id) return;
-  const cpf = item.hasCustomerCpf ? null : askCpf(item.customerName);
-  if (!item.hasCustomerCpf && cpf === null) return;
-  button.disabled = true;
-  button.textContent = 'Iniciando...';
-  try {
-    await api(`/api/consultant-dashboard/${encodeURIComponent(selectedConsultant.id)}/quotes/${encodeURIComponent(id)}/inspection`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(cpf ? { cpf } : {})
-    });
-    await loadDashboard(selectedConsultant, { silent: true });
-    message('Vistoria iniciada e vinculada ao painel do consultor.', 'success');
-  } catch (error) {
-    message(error.message);
-  } finally {
-    button.disabled = false;
-    button.textContent = 'Iniciar vistoria';
-  }
 }
 
 async function redoQuote(id, button) {
@@ -485,9 +473,6 @@ function renderDashboard(data) {
   });
   document.querySelectorAll('[data-edit-quote]').forEach(button => {
     button.addEventListener('click', () => openQuoteEditDialog(button.dataset.editQuote));
-  });
-  document.querySelectorAll('[data-start-quote-inspection]').forEach(button => {
-    button.addEventListener('click', () => startQuoteInspection(button.dataset.startQuoteInspection, button));
   });
   document.querySelectorAll('[data-redo-quote]').forEach(button => {
     button.addEventListener('click', () => redoQuote(button.dataset.redoQuote, button));

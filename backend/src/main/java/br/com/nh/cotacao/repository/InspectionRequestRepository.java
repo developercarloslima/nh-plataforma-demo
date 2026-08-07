@@ -1,19 +1,24 @@
 package br.com.nh.cotacao.repository;
 
 import br.com.nh.cotacao.entity.InspectionRequest;
+import br.com.nh.cotacao.entity.InspectionRequestStatus;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import jakarta.persistence.LockModeType;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 public interface InspectionRequestRepository extends JpaRepository<InspectionRequest, UUID> {
     long countByConsultantId(UUID consultantId);
+    long countByCreatedAtBefore(OffsetDateTime cutoff);
+    long countByStatus(InspectionRequestStatus status);
 
     @EntityGraph(attributePaths = {"assets", "consultant", "quotation"})
     Optional<InspectionRequest> findByPublicToken(String publicToken);
@@ -36,6 +41,14 @@ public interface InspectionRequestRepository extends JpaRepository<InspectionReq
 
     @EntityGraph(attributePaths = {"assets", "consultant", "quotation"})
     List<InspectionRequest> findAllByConsultantNameIgnoreCaseOrderByCreatedAtDesc(String consultantName);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from InspectionRequest i where i.createdAt < :cutoff")
+    int deleteCreatedBefore(@Param("cutoff") OffsetDateTime cutoff);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from InspectionRequest i where i.status <> :protectedStatus")
+    int deleteAllExceptStatus(@Param("protectedStatus") InspectionRequestStatus protectedStatus);
 
     @Override
     @EntityGraph(attributePaths = {"assets", "consultant", "quotation"})

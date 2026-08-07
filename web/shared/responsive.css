@@ -2090,3 +2090,76 @@ object {
     padding: 11px 12px;
   }
 }
+
+/* =========================================================
+   TABELAS — SCROLL HORIZONTAL FIXO LOGO ABAIXO DO CABEÇALHO
+   A barra é sincronizada com a rolagem real da tabela e evita
+   a necessidade de descer até o fim para navegar nas colunas.
+   ========================================================= */
+.table-wrap.has-head-scrollbar {
+  scrollbar-width: none;
+}
+
+.table-wrap.has-head-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.table-scrollbar-row > .table-scrollbar-cell {
+  position: sticky;
+  top: var(--table-primary-header-height, 42px);
+  z-index: 8;
+  padding: 0 !important;
+  border-bottom: 1px solid var(--line, #e2e6ef);
+  background: #fff;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.table-head-scrollbar {
+  position: sticky;
+  left: 0;
+  display: block;
+  height: 16px;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: auto;
+  scrollbar-color: #070c40 #eef0f7;
+  background: #fff;
+  overscroll-behavior-inline: contain;
+}
+
+.table-head-scrollbar::-webkit-scrollbar {
+  height: 12px;
+}
+
+.table-head-scrollbar::-webkit-scrollbar-track {
+  background: #eef0f7;
+  border-radius: 999px;
+}
+
+.table-head-scrollbar::-webkit-scrollbar-thumb {
+  background: #070c40;
+  border: 2px solid #eef0f7;
+  border-radius: 999px;
+}
+
+.table-head-scrollbar-inner {
+  height: 1px;
+  pointer-events: none;
+}
+
+.table-scrollbar-row [hidden] {
+  display: none !important;
+}
+
+@media (max-width: 920px) {
+  .table-scrollbar-row {
+    display: none !important;
+  }
+
+  .table-wrap.has-head-scrollbar {
+    scrollbar-width: auto;
+  }
+}

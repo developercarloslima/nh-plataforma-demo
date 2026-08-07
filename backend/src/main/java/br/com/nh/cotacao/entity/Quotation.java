@@ -3,6 +3,7 @@ package br.com.nh.cotacao.entity;
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -79,6 +80,16 @@ public class Quotation {
 
     @Column(name = "monthly_value", nullable = false, precision = 14, scale = 2)
     private BigDecimal monthlyValue;
+
+    @Column(name = "pre_discount_monthly_value", nullable = false, precision = 14, scale = 2)
+    private BigDecimal preDiscountMonthlyValue;
+
+    @Column(name = "discount_percent", nullable = false)
+    private Integer discountPercent;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "rear_window_branding", nullable = false, length = 40)
+    private RearWindowBranding rearWindowBranding;
 
     @Column(name = "mandatory_monthly_fee", nullable = false, precision = 14, scale = 2)
     private BigDecimal mandatoryMonthlyFee;
@@ -277,7 +288,10 @@ public class Quotation {
         q.mandatoryMonthlyFee = mandatoryMonthlyFee == null ? BigDecimal.ZERO : mandatoryMonthlyFee;
         q.oneTimeFee = oneTimeFee == null ? BigDecimal.ZERO : oneTimeFee;
         q.mandatoryFeeDescription = mandatoryFeeDescription;
-        q.monthlyValue = baseMonthlyValue.add(q.mandatoryMonthlyFee);
+        q.preDiscountMonthlyValue = baseMonthlyValue.add(q.mandatoryMonthlyFee);
+        q.discountPercent = 0;
+        q.rearWindowBranding = RearWindowBranding.NOT_APPLICABLE;
+        q.monthlyValue = q.preDiscountMonthlyValue;
         q.status = QuoteStatus.CREATED;
         q.createdAt = OffsetDateTime.now();
         q.validUntil = q.createdAt.plusDays(5);
@@ -337,7 +351,53 @@ public class Quotation {
                 detail,
                 monthlyPrice
         ));
-        monthlyValue = monthlyValue.add(monthlyPrice);
+        preDiscountMonthlyValue = preDiscountMonthlyValue.add(monthlyPrice);
+        recalculateDiscountedMonthlyValue();
+    }
+
+    public void applyDiscount(Integer requestedPercent, RearWindowBranding requestedBranding) {
+        int percent = requestedPercent == null ? 0 : requestedPercent;
+        if (percent != 0 && percent != 5 && percent != 10 && percent != 15 && percent != 30) {
+            throw new IllegalArgumentException("O desconto deve ser 0%, 5%, 10%, 15% ou 30%.");
+        }
+
+        RearWindowBranding branding = requestedBranding == null
+                ? RearWindowBranding.NOT_APPLICABLE
+                : requestedBranding;
+
+        boolean motorcycleCategory = categoryCode != null
+                && (categoryCode.startsWith("MOTORCYCLE") || categoryCode.equals("SCOOTER_ELECTRIC"));
+        if ((percent == 15 || percent == 30) && motorcycleCategory) {
+            throw new IllegalArgumentException(
+                    "Os descontos de 15% e 30% exigem perfurado no vigia traseiro e não se aplicam a motos, scooters ou motos elétricas."
+            );
+        }
+
+        if (percent == 15 && branding != RearWindowBranding.NH_AND_OTHER_COMPANY) {
+            throw new IllegalArgumentException(
+                    "O desconto de 15% exige perfurado no vigia traseiro com as logomarcas da Novo Horizonte e da outra empresa."
+            );
+        }
+        if (percent == 30 && branding != RearWindowBranding.NH_ONLY) {
+            throw new IllegalArgumentException(
+                    "O desconto de 30% exige perfurado no vigia traseiro somente com a logomarca da Novo Horizonte."
+            );
+        }
+        if (percent != 15 && percent != 30) {
+            branding = RearWindowBranding.NOT_APPLICABLE;
+        }
+
+        this.discountPercent = percent;
+        this.rearWindowBranding = branding;
+        recalculateDiscountedMonthlyValue();
+    }
+
+    private void recalculateDiscountedMonthlyValue() {
+        BigDecimal source = preDiscountMonthlyValue == null ? BigDecimal.ZERO : preDiscountMonthlyValue;
+        int percent = discountPercent == null ? 0 : discountPercent;
+        BigDecimal factor = BigDecimal.valueOf(100 - percent)
+                .divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
+        this.monthlyValue = source.multiply(factor).setScale(2, RoundingMode.HALF_UP);
     }
 
 
@@ -482,6 +542,11 @@ public class Quotation {
     public String getSelectedPlanName() { return selectedPlanName; }
     public BigDecimal getBaseMonthlyValue() { return baseMonthlyValue; }
     public BigDecimal getMonthlyValue() { return monthlyValue; }
+    public BigDecimal getPreDiscountMonthlyValue() { return preDiscountMonthlyValue; }
+    public Integer getDiscountPercent() { return discountPercent == null ? 0 : discountPercent; }
+    public RearWindowBranding getRearWindowBranding() {
+        return rearWindowBranding == null ? RearWindowBranding.NOT_APPLICABLE : rearWindowBranding;
+    }
     public BigDecimal getMandatoryMonthlyFee() { return mandatoryMonthlyFee; }
     public BigDecimal getOneTimeFee() { return oneTimeFee; }
     public String getMandatoryFeeDescription() { return mandatoryFeeDescription; }

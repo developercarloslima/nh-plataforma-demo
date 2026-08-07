@@ -216,6 +216,17 @@ public class QuotePdfService {
             values.addCell(valueDescriptionCell("Adicional contratado: " + optional.getCoverageName()));
             values.addCell(currencyCell(optional.getMonthlyPrice(), false));
         }
+        if (quotation.getDiscountPercent() > 0) {
+            values.addCell(valueDescriptionCell("Subtotal mensal antes do desconto"));
+            values.addCell(currencyCell(quotation.getPreDiscountMonthlyValue(), false));
+            BigDecimal discountValue = quotation.getPreDiscountMonthlyValue().subtract(quotation.getMonthlyValue());
+            PdfPCell discountLabel = valueDescriptionCell("Desconto comercial (" + quotation.getDiscountPercent() + "%)");
+            discountLabel.setBackgroundColor(GREEN_LIGHT);
+            values.addCell(discountLabel);
+            PdfPCell discountCell = currencyCell(discountValue.negate(), false);
+            discountCell.setBackgroundColor(GREEN_LIGHT);
+            values.addCell(discountCell);
+        }
         PdfPCell totalLabel = valueDescriptionCell("VALOR TOTAL MENSAL");
         totalLabel.setPhrase(new Phrase("VALOR TOTAL MENSAL", font(8.5f, Font.BOLD, NAVY)));
         totalLabel.setBackgroundColor(LIGHT);
@@ -280,10 +291,17 @@ public class QuotePdfService {
         Paragraph heading = new Paragraph("CONDIÇÕES DA PROPOSTA", font(8.5f, Font.BOLD, NAVY));
         heading.setSpacingAfter(5);
         note.addElement(heading);
+        String discountCondition = "";
+        if (quotation.getDiscountPercent() == 15) {
+            discountCondition = " O desconto de 15% está condicionado à confirmação, na vistoria, de perfurado no vigia traseiro com as logomarcas da Novo Horizonte e da outra empresa.";
+        } else if (quotation.getDiscountPercent() == 30) {
+            discountCondition = " O desconto de 30% está condicionado à confirmação, na vistoria, de perfurado no vigia traseiro somente com a logomarca da Novo Horizonte.";
+        }
         Paragraph text = new Paragraph(
                 "Esta cotação possui caráter comercial e foi elaborada com base nos dados fornecidos. "
                         + "A ativação da proteção está condicionada à conferência cadastral, ao aceite da proposta, "
-                        + "à conclusão da vistoria veicular e às regras vigentes da Novo Horizonte Proteção Veicular.",
+                        + "à conclusão da vistoria veicular e às regras vigentes da Novo Horizonte Proteção Veicular."
+                        + discountCondition,
                 font(8, Font.NORMAL, TEXT)
         );
         text.setLeading(12);

@@ -1,5 +1,6 @@
 package br.com.nh.cotacao.security;
 
+import br.com.nh.cotacao.service.PortalUserService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,9 +17,11 @@ import java.util.List;
 @Component
 public class BearerTokenFilter extends OncePerRequestFilter {
     private final AccessTokenService tokenService;
+    private final PortalUserService portalUserService;
 
-    public BearerTokenFilter(AccessTokenService tokenService) {
+    public BearerTokenFilter(AccessTokenService tokenService, PortalUserService portalUserService) {
         this.tokenService = tokenService;
+        this.portalUserService = portalUserService;
     }
 
     @Override
@@ -27,6 +30,9 @@ public class BearerTokenFilter extends OncePerRequestFilter {
         String authorization = request.getHeader("Authorization");
         if (authorization != null && authorization.startsWith("Bearer ")) {
             tokenService.verify(authorization.substring(7).trim()).ifPresent(principal -> {
+                // Uma conta desativada ou que teve o perfil alterado perde acesso imediatamente,
+                // mesmo que ainda possua um token assinado dentro do prazo de validade.
+                if (!portalUserService.isActiveWithRole(principal.username(), principal.role())) return;
                 var authentication = new UsernamePasswordAuthenticationToken(
                         principal,
                         null,

@@ -4,6 +4,7 @@ import br.com.nh.cotacao.entity.InspectionAssetType;
 import br.com.nh.cotacao.entity.InspectionRequestStatus;
 import br.com.nh.cotacao.entity.InspectionRequestType;
 import br.com.nh.cotacao.entity.InspectionVehicleType;
+import br.com.nh.cotacao.entity.RearWindowBranding;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -24,7 +25,8 @@ public final class InspectionDtos {
             @NotBlank @Pattern(regexp = "^[0-9.\\-]{11,14}$", message = "CPF inválido") String cpf,
             @Size(max = 30) String whatsapp,
             @Size(max = 10) String plate,
-            boolean zeroKm
+            boolean zeroKm,
+            @Size(max = 160) String contractedPlan
     ) {}
 
     public record InspectionAssetResponse(
@@ -52,6 +54,9 @@ public final class InspectionDtos {
             String whatsapp,
             String plate,
             String residenceAddress,
+            String contractedPlan,
+            Integer discountPercent,
+            RearWindowBranding rearWindowBranding,
             UUID consultantId,
             String consultantName,
             InspectionRequestStatus status,

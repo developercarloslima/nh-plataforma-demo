@@ -7,7 +7,7 @@
   <title>Criar Retrato NH</title>
   <link rel="icon" href="/assets/favicon-nh.png">
   <link rel="stylesheet" href="/shared/portal.css?v=20260806-selfie-font-v2">
-  <link rel="stylesheet" href="/shared/responsive.css?v=20260806-all-devices-v2">
+  <link rel="stylesheet" href="/shared/responsive.css?v=20260807-table-scroll-v1">
   <link rel="stylesheet" href="/shared/brand-system.css?v=20260806-font-buttons-v2">
 </head>
 <body>
@@ -22,8 +22,8 @@
 <main class="shell">
   <section class="hero-panel">
     <span class="eyebrow">RETRATO NH</span>
-    <h1>Gerar link de vistoria</h1>
-    <p>Cadastre os dados manualmente.</p>
+    <h1 id="page-title">Gerar link do Retrato NH</h1>
+    <p id="page-description">Use este formulário para atualização de boleto. A nova vistoria deve ser iniciada por uma cotação aceita.</p>
   </section>
 
   <section class="card" style="margin-top:22px">
@@ -32,11 +32,14 @@
     </div>
 
     <form id="inspection-form" class="form-grid">
+      <div id="flow-notice" class="message success span-2" style="margin:0">
+        Atualização de boleto: informe os dados atuais do associado e o plano já contratado.
+      </div>
       <label class="span-2">Tipo de solicitação
-        <select id="requestType" required>
-          <option value="NEW_INSPECTION">Nova vistoria — fotos completas e vídeo</option>
-          <option value="BILL_UPDATE">Atualização de boleto — somente vídeo</option>
+        <select id="requestType" required disabled>
+          <option value="BILL_UPDATE" selected>Atualização de boleto</option>
         </select>
+        <small class="field-helper">Nova vistoria não pode ser criada por esta tela diretamente. Ela é liberada exclusivamente a partir de uma cotação aceita.</small>
       </label>
       <label class="span-2">Tipo de veículo
         <select id="vehicleType" required>
@@ -62,10 +65,14 @@
         <input id="plate" required maxlength="10" placeholder="ABC1D23">
         <small id="manual-plate-help" class="field-helper">Obrigatória para veículos que não são 0 km.</small>
       </label>
+      <label id="contracted-plan-field" class="span-2">Plano já contratado *
+        <input id="contractedPlan" maxlength="160" placeholder="Ex.: Plano Completo, Plano Proteção Total..." required>
+        <small class="field-helper">Informe o nome do plano que o associado já possui. Essa informação seguirá para a equipe de análise.</small>
+      </label>
       <label class="span-2">WhatsApp do associado
         <input id="whatsapp" inputmode="tel" placeholder="(82) 99999-9999">
       </label>
-      <button class="primary span-2" type="submit">Gerar link do Retrato NH</button>
+      <button id="submit-inspection" class="primary span-2" type="submit">Gerar link para atualização de boleto</button>
     </form>
     <div id="message"></div>
   </section>
@@ -88,7 +95,7 @@
 
 <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
-<script src="/colaborador/retrato-create.js?v=20260805-guided-capture"></script>
-<script src="/shared/responsive.js?v=20260806-all-devices-v2"></script>
+<script src="/colaborador/retrato-create.js?v=20260807-strict-quote-flow-v2"></script>
+<script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
 </body>
 </html>

@@ -9,9 +9,9 @@
   <meta name="theme-color" content="#070c40">
   
   <link rel="icon" href="./favicon-nh.png">
-  <link rel="stylesheet" href="./styles.css?v=20260804-brand-manual">
+  <link rel="stylesheet" href="./styles.css?v=20260807-discounts-electric-v2">
   <title>NH Cotação Digital</title>
-  <link rel="stylesheet" href="/shared/responsive.css?v=20260806-all-devices-v2">
+  <link rel="stylesheet" href="/shared/responsive.css?v=20260807-table-scroll-v1">
   <link rel="stylesheet" href="/shared/brand-system.css?v=20260806-font-buttons-v2">
 </head>
 <body>
@@ -73,8 +73,9 @@
         <fieldset class="vehicle-selector span-2">
           <legend>Categoria do veículo *</legend>
           <div id="vehicle-options" class="vehicle-options">
-            <button type="button" data-type="MOTORCYCLE_UP_TO_300" class="vehicle-option">Motocicletas até 300Cc</button>
-            <button type="button" data-type="MOTORCYCLE_OVER_300" class="vehicle-option">Motocicletas acima de 300Cc</button>
+            <button type="button" data-type="MOTORCYCLE_UP_TO_300" class="vehicle-option">Motos até 300cc</button>
+            <button type="button" data-type="MOTORCYCLE_OVER_300" class="vehicle-option">Motos acima de 300cc</button>
+            <button type="button" data-type="SCOOTER_ELECTRIC" class="vehicle-option">Scooters e elétricas</button>
             <button type="button" data-type="CAR" class="vehicle-option active">Carros</button>
             <button type="button" data-type="UTILITY" class="vehicle-option">Utilitários</button>
             <button type="button" data-type="TRUCK" class="vehicle-option">Caminhões</button>
@@ -107,11 +108,31 @@
         <div id="optional-list" class="optional-list"></div>
       </div>
 
+      <section id="discount-section" class="discount-section" aria-labelledby="discount-title">
+        <div class="discount-heading">
+          <div><span class="step-tag">DESCONTO COMERCIAL</span><h3 id="discount-title">Escolha o desconto da proposta</h3></div>
+          <p>5% e 10% podem ser definidos pelo consultor. 15% e 30% dependem da identificação visual no perfurado do vigia traseiro.</p>
+        </div>
+        <div id="discount-options" class="discount-options" role="group" aria-label="Percentual de desconto">
+          <button type="button" class="discount-button" data-discount="5">5%</button>
+          <button type="button" class="discount-button" data-discount="10">10%</button>
+          <button type="button" class="discount-button" data-discount="15">15%</button>
+          <button type="button" class="discount-button" data-discount="30">30%</button>
+          <button id="clear-discount" type="button" class="discount-clear">Sem desconto</button>
+        </div>
+        <label id="discount-condition" class="discount-condition" hidden>
+          <input id="discount-confirmation" type="checkbox">
+          <span id="discount-condition-text"></span>
+        </label>
+      </section>
+
       <div class="selection-summary">
         <div><span>Plano escolhido</span><strong id="selected-plan-name">—</strong></div>
         <div><span>Valor da tabela</span><strong id="selected-plan-base-value">—</strong></div>
         <div id="selected-mandatory-row" hidden><span>Acréscimo obrigatório</span><strong id="selected-mandatory-value">—</strong></div>
         <div><span>Opcionais selecionados</span><strong id="selected-optionals-value">—</strong></div>
+        <div id="selected-pre-discount-row" hidden><span>Subtotal mensal</span><strong id="selected-pre-discount-value">—</strong></div>
+        <div id="selected-discount-row" hidden><span id="selected-discount-label">Desconto</span><strong id="selected-discount-value">—</strong></div>
         <div id="selected-one-time-row" hidden><span>Taxa única</span><strong id="selected-one-time-value">—</strong></div>
         <div class="selection-total"><span>Total mensal</span><strong id="selected-plan-value">—</strong></div>
         <button id="confirm-plan" class="primary-button" type="button">Confirmar plano e gerar cotação →</button>
@@ -193,7 +214,7 @@
   <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
   <script src="/shared/money-input.js?v=20260805-brl-mask"></script>
-  <script src="./app.js?v=20260806-cpf-consultant-v4" defer></script>
-<script src="/shared/responsive.js?v=20260806-all-devices-v2"></script>
+  <script src="./app.js?v=20260807-discounts-electric-v2" defer></script>
+<script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
 </body>
 </html>

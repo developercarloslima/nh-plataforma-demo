@@ -63,6 +63,11 @@ public class QuoteService {
                 .toList();
 
         if (options.isEmpty()) {
+            if ("SCOOTER_ELECTRIC".equalsIgnoreCase(request.categoryCode())) {
+                throw new IllegalArgumentException(
+                        "O valor FIPE informado está fora da tabela cadastrada para scooters e motos elétricas."
+                );
+            }
             throw new IllegalArgumentException("Nenhum plano possui faixa de preço para os dados informados.");
         }
 
@@ -107,6 +112,7 @@ public class QuoteService {
                 selection.pricing().mandatoryFeeDescription()
         );
         applyCatalogSnapshot(quotation, selection.plan(), selection.optionals());
+        quotation.applyDiscount(request.discountPercent(), request.rearWindowBranding());
         return toResponse(quotationRepository.save(quotation));
     }
 
@@ -209,6 +215,7 @@ public class QuoteService {
                 selection.pricing().mandatoryFeeDescription()
         );
         applyCatalogSnapshot(recreated, selection.plan(), selection.optionals());
+        recreated.applyDiscount(source.getDiscountPercent(), source.getRearWindowBranding());
         return quotationRepository.save(recreated);
     }
 
@@ -435,6 +442,9 @@ public class QuoteService {
                 quotation.getBaseMonthlyValue(),
                 quotation.getMandatoryMonthlyFee(),
                 optionalMonthlyValue,
+                quotation.getPreDiscountMonthlyValue(),
+                quotation.getDiscountPercent(),
+                quotation.getRearWindowBranding(),
                 quotation.getMonthlyValue(),
                 quotation.getOneTimeFee(),
                 quotation.getMandatoryFeeDescription(),

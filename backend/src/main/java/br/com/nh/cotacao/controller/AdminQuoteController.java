@@ -1,6 +1,7 @@
 package br.com.nh.cotacao.controller;
 
 import br.com.nh.cotacao.dto.AdminDtos.AdminQuoteResponse;
+import br.com.nh.cotacao.dto.AdminDtos.DeleteSummary;
 import br.com.nh.cotacao.dto.AdminDtos.UpdateQuoteStatusRequest;
 import br.com.nh.cotacao.security.PortalPrincipal;
 import br.com.nh.cotacao.service.AdminActivityService;
@@ -28,6 +29,17 @@ public class AdminQuoteController {
             Authentication auth
     ) {
         return service.updateQuoteStatus(id, request, username(auth));
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable UUID id, Authentication auth) {
+        service.deleteQuote(id, username(auth));
+    }
+
+    @DeleteMapping
+    public DeleteSummary deleteAll(Authentication auth) {
+        return service.deleteAllQuotes(username(auth));
     }
 
     private String username(Authentication auth) {

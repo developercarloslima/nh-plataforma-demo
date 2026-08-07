@@ -61,6 +61,18 @@ public class RetratoPdfService {
             addPair(data, "Tipo", request.getRequestType().name().equals("NEW_INSPECTION") ? "Nova vistoria" : "Atualização de boleto");
             addPair(data, "Veículo", request.getVehicleType().displayName());
             addPair(data, "Criada em", request.getCreatedAt().format(DATE_TIME));
+            if (request.getContractedPlan() != null && !request.getContractedPlan().isBlank()) {
+                addFullWidthPair(data, "Plano já contratado", request.getContractedPlan());
+            }
+            if (request.getQuotation() != null && request.getQuotation().getDiscountPercent() > 0) {
+                addPair(data, "Desconto da cotação", request.getQuotation().getDiscountPercent() + "%");
+                String branding = request.getQuotation().getDiscountPercent() == 15
+                        ? "Perfurado no vigia traseiro: NH + outra empresa"
+                        : request.getQuotation().getDiscountPercent() == 30
+                        ? "Perfurado no vigia traseiro: somente NH"
+                        : "Não se aplica";
+                addPair(data, "Condição do desconto", branding);
+            }
             if (request.getResidenceAddress() != null && !request.getResidenceAddress().isBlank()) {
                 addFullWidthPair(data, "Endereço residencial", request.getResidenceAddress());
             }

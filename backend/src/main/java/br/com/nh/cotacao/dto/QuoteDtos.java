@@ -3,6 +3,7 @@ package br.com.nh.cotacao.dto;
 import br.com.nh.cotacao.entity.CoverageStatus;
 import br.com.nh.cotacao.entity.MotorcycleOrigin;
 import br.com.nh.cotacao.entity.QuoteOrigin;
+import br.com.nh.cotacao.entity.RearWindowBranding;
 import br.com.nh.cotacao.entity.QuoteStatus;
 import br.com.nh.cotacao.entity.Region;
 import jakarta.validation.constraints.*;
@@ -75,7 +76,9 @@ public final class QuoteDtos {
             Region region,
             MotorcycleOrigin motorcycleOrigin,
             @NotBlank String selectedPlanCode,
-            @Size(max = 20) List<@NotBlank String> selectedOptionalCodes
+            @Size(max = 20) List<@NotBlank String> selectedOptionalCodes,
+            @Min(0) @Max(30) Integer discountPercent,
+            RearWindowBranding rearWindowBranding
     ) {
         public CreateQuoteRequest {
             selectedOptionalCodes = selectedOptionalCodes == null ? List.of() : List.copyOf(selectedOptionalCodes);
@@ -155,6 +158,9 @@ public final class QuoteDtos {
             BigDecimal baseMonthlyValue,
             BigDecimal mandatoryMonthlyFee,
             BigDecimal optionalMonthlyValue,
+            BigDecimal preDiscountMonthlyValue,
+            Integer discountPercent,
+            RearWindowBranding rearWindowBranding,
             BigDecimal monthlyValue,
             BigDecimal oneTimeFee,
             String mandatoryFeeDescription,
