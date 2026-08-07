@@ -354,6 +354,62 @@ function syncQuoteEditPlateRequirement() {
   plateInput.placeholder = zeroKm ? 'Opcional para veículo 0 km' : 'Informe a placa';
 }
 
+function quoteInspectionHref(item) {
+  if (!item) return '#';
+  if (item.inspectionPublicUrl) return item.inspectionPublicUrl;
+  const inspectionVehicleType = (String(item.categoryCode || '').startsWith('MOTORCYCLE') || String(item.categoryCode || '') === 'SCOOTER_ELECTRIC')
+    ? 'MOTORCYCLE'
+    : 'FOUR_WHEELS_OR_MORE';
+  const params = new URLSearchParams({
+    quoteId: item.id,
+    name: item.customerName || '',
+    plate: item.plate || '',
+    zeroKm: String(Boolean(item.zeroKm)),
+    vehicleType: inspectionVehicleType,
+    whatsapp: item.whatsapp || ''
+  });
+  return `/colaborador/retrato.html?${params.toString()}`;
+}
+
+function renderQuoteEditDecision(item) {
+  const decision = $('consultant-quote-decision');
+  const accepted = $('consultant-quote-accepted');
+  const declineButton = $('consultant-quote-decline');
+  const canDecide = item && ['CREATED', 'UNDER_REVIEW', 'DECLINED'].includes(item.status) && !item.expired;
+  decision.hidden = !canDecide;
+  accepted.hidden = item?.status !== 'ACCEPTED';
+  declineButton.classList.toggle('selected', item?.status === 'DECLINED');
+  if (item?.status === 'ACCEPTED') {
+    $('consultant-quote-open-retrato').href = quoteInspectionHref(item);
+  }
+}
+
+function collectQuoteEditPayload() {
+  const customerName = $('consultant-quote-edit-name').value.trim();
+  const cpf = $('consultant-quote-edit-cpf').value.trim();
+  const whatsapp = $('consultant-quote-edit-whatsapp').value.trim();
+  const plateValue = $('consultant-quote-edit-plate').value.trim();
+  const model = $('consultant-quote-edit-model').value.trim();
+  const manufactureYear = Number($('consultant-quote-edit-year').value);
+  const zeroKm = $('consultant-quote-edit-zero-km').value === 'true';
+  if (!customerName) { setQuoteEditMessage('Informe o nome do associado.'); return null; }
+  const cpfDigits = cpf.replace(/\D/g, '');
+  if (cpfDigits && cpfDigits.length !== 11) { setQuoteEditMessage('O CPF deve possuir 11 números.'); return null; }
+  const phoneDigits = whatsapp.replace(/\D/g, '');
+  if (phoneDigits && (phoneDigits.length < 10 || phoneDigits.length > 13)) { setQuoteEditMessage('Informe um WhatsApp válido com DDD.'); return null; }
+  if (!model) { setQuoteEditMessage('Informe o modelo do veículo.'); return null; }
+  if (!Number.isInteger(manufactureYear) || manufactureYear < 1950 || manufactureYear > 2100) { setQuoteEditMessage('Informe um ano de fabricação válido.'); return null; }
+  const plateDigits = plateValue.replace(/[^A-Za-z0-9]/g, '');
+  if (!zeroKm && (plateDigits.length < 7 || plateDigits.length > 10)) { setQuoteEditMessage('Informe uma placa válida.'); return null; }
+  return { customerName, cpf, whatsapp, plate: plateValue, model, manufactureYear, zeroKm };
+}
+
+async function persistQuoteEdit(item, payload) {
+  return api(`/api/consultant-dashboard/${encodeURIComponent(selectedConsultant.id)}/quotes/${encodeURIComponent(item.id)}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+  });
+}
+
 function openQuoteEditDialog(id) {
   const item = findQuote(id);
   if (!item) return;
@@ -371,6 +427,7 @@ function openQuoteEditDialog(id) {
   $('consultant-quote-edit-plan').textContent = item.selectedPlanName || '—';
   $('consultant-quote-edit-value').textContent = money(item.monthlyValue);
   setQuoteEditMessage();
+  renderQuoteEditDecision(item);
   $('consultant-quote-edit-dialog').showModal();
   $('consultant-quote-edit-name').focus();
 }
@@ -379,61 +436,56 @@ async function saveQuoteEdit(event) {
   event.preventDefault();
   const item = findQuote(activeQuoteEditId || $('consultant-quote-edit-id').value);
   if (!item || !selectedConsultant?.id) return;
-
+  const payload = collectQuoteEditPayload();
+  if (!payload) return;
   const button = $('consultant-quote-edit-save');
-  const customerName = $('consultant-quote-edit-name').value.trim();
-  const cpf = $('consultant-quote-edit-cpf').value.trim();
-  const whatsapp = $('consultant-quote-edit-whatsapp').value.trim();
-  const plateValue = $('consultant-quote-edit-plate').value.trim();
-  const model = $('consultant-quote-edit-model').value.trim();
-  const manufactureYear = Number($('consultant-quote-edit-year').value);
-  const zeroKm = $('consultant-quote-edit-zero-km').value === 'true';
-
-  if (!customerName) {
-    setQuoteEditMessage('Informe o nome do associado.');
-    return;
-  }
-  const cpfDigits = cpf.replace(/\D/g, '');
-  if (cpfDigits && cpfDigits.length !== 11) {
-    setQuoteEditMessage('O CPF deve possuir 11 números.');
-    return;
-  }
-  const phoneDigits = whatsapp.replace(/\D/g, '');
-  if (phoneDigits && (phoneDigits.length < 10 || phoneDigits.length > 13)) {
-    setQuoteEditMessage('Informe um WhatsApp válido com DDD.');
-    return;
-  }
-  if (!model) {
-    setQuoteEditMessage('Informe o modelo do veículo.');
-    return;
-  }
-  if (!Number.isInteger(manufactureYear) || manufactureYear < 1950 || manufactureYear > 2100) {
-    setQuoteEditMessage('Informe um ano de fabricação válido.');
-    return;
-  }
-  const plateDigits = plateValue.replace(/[^A-Za-z0-9]/g, '');
-  if (!zeroKm && (plateDigits.length < 7 || plateDigits.length > 10)) {
-    setQuoteEditMessage('Informe uma placa válida.');
-    return;
-  }
-
   button.disabled = true;
   button.textContent = 'Salvando...';
   setQuoteEditMessage();
   try {
-    await api(`/api/consultant-dashboard/${encodeURIComponent(selectedConsultant.id)}/quotes/${encodeURIComponent(item.id)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ customerName, cpf, whatsapp, plate: plateValue, model, manufactureYear, zeroKm })
-    });
-    closeQuoteEditDialog();
+    await persistQuoteEdit(item, payload);
     await loadDashboard(selectedConsultant, { silent: true });
-    message('Dados cadastrais atualizados. Plano, coberturas e valores permaneceram inalterados.', 'success');
+    const updated = findQuote(item.id);
+    if (updated) renderQuoteEditDecision(updated);
+    setQuoteEditMessage('Dados cadastrais atualizados. Plano, coberturas e valores permaneceram inalterados.', 'success');
   } catch (error) {
     setQuoteEditMessage(error.message);
   } finally {
     button.disabled = false;
     button.textContent = 'Salvar dados cadastrais';
+  }
+}
+
+async function decideEditedQuote(decision) {
+  const item = findQuote(activeQuoteEditId || $('consultant-quote-edit-id').value);
+  if (!item || !selectedConsultant?.id) return;
+  const payload = collectQuoteEditPayload();
+  if (!payload) return;
+  const acceptButton = $('consultant-quote-accept');
+  const declineButton = $('consultant-quote-decline');
+  acceptButton.disabled = true;
+  declineButton.disabled = true;
+  setQuoteEditMessage();
+  try {
+    await persistQuoteEdit(item, payload);
+    await api(`/api/consultant-dashboard/${encodeURIComponent(selectedConsultant.id)}/quotes/${encodeURIComponent(item.id)}/decision`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision })
+    });
+    await loadDashboard(selectedConsultant, { silent: true });
+    const updated = findQuote(item.id);
+    if (updated) renderQuoteEditDecision(updated);
+    if (decision === 'ACCEPTED') {
+      $('consultant-quote-accepted').hidden = false;
+      $('consultant-quote-open-retrato').href = quoteInspectionHref(updated || item);
+      setQuoteEditMessage('Proposta aceita. Agora você pode abrir o Retrato NH para gerar a nova vistoria.', 'success');
+    } else {
+      setQuoteEditMessage('Proposta marcada como recusada. Ela poderá ser aceita depois enquanto estiver válida.', 'success');
+    }
+  } catch (error) {
+    setQuoteEditMessage(error.message);
+  } finally {
+    acceptButton.disabled = false;
+    declineButton.disabled = false;
   }
 }
 
@@ -771,6 +823,8 @@ boot();
 
 $('consultant-quote-edit-form').addEventListener('submit', saveQuoteEdit);
 $('consultant-quote-edit-zero-km').addEventListener('change', syncQuoteEditPlateRequirement);
+$('consultant-quote-accept').addEventListener('click', () => decideEditedQuote('ACCEPTED'));
+$('consultant-quote-decline').addEventListener('click', () => decideEditedQuote('DECLINED'));
 $('consultant-quote-edit-close').addEventListener('click', closeQuoteEditDialog);
 $('consultant-quote-edit-cancel').addEventListener('click', closeQuoteEditDialog);
 $('consultant-quote-edit-dialog').addEventListener('close', () => {

@@ -90,6 +90,10 @@ public final class ConsultantDashboardDtos {
             @NotNull Boolean zeroKm
     ) {}
 
+    public record ConsultantQuoteDecisionRequest(
+            @NotNull QuoteStatus decision
+    ) {}
+
     public record ConsultantDashboardResponse(
             UUID consultantId,
             String consultantName,

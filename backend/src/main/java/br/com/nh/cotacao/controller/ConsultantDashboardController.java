@@ -3,6 +3,7 @@ package br.com.nh.cotacao.controller;
 import br.com.nh.cotacao.dto.ConsultantDashboardDtos.ConsultantDashboardResponse;
 import br.com.nh.cotacao.dto.ConsultantDashboardDtos.ConsultantInspectionSummary;
 import br.com.nh.cotacao.dto.ConsultantDashboardDtos.ConsultantQuoteSummary;
+import br.com.nh.cotacao.dto.ConsultantDashboardDtos.ConsultantQuoteDecisionRequest;
 import br.com.nh.cotacao.dto.ConsultantDashboardDtos.RedoQuoteRequest;
 import br.com.nh.cotacao.dto.ConsultantDashboardDtos.StartInspectionRequest;
 import br.com.nh.cotacao.dto.ConsultantDashboardDtos.UpdateQuoteDetailsRequest;
@@ -61,6 +62,15 @@ public class ConsultantDashboardController {
             @Valid @RequestBody UpdateQuoteDetailsRequest request
     ) {
         return service.updateQuoteDetails(consultantId, quoteId, request);
+    }
+
+    @PostMapping("/{consultantId}/quotes/{quoteId}/decision")
+    public ConsultantQuoteSummary decideQuote(
+            @PathVariable UUID consultantId,
+            @PathVariable UUID quoteId,
+            @Valid @RequestBody ConsultantQuoteDecisionRequest request
+    ) {
+        return service.decideQuote(consultantId, quoteId, request.decision());
     }
 
     @DeleteMapping("/{consultantId}/quotes/{quoteId}")

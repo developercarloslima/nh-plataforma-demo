@@ -1,4 +1,4 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#070c40"><title>Área do Colaborador | Novo Horizonte</title><link rel="icon" href="/assets/favicon-nh.png"><link rel="stylesheet" href="/shared/portal.css?v=20260807-responsive-final-v2">  <link rel="stylesheet" href="/shared/responsive.css?v=20260807-responsive-audit-v4">
+<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#070c40"><title>Área do Colaborador | Novo Horizonte</title><link rel="icon" href="/assets/favicon-nh.png"><link rel="stylesheet" href="/shared/portal.css?v=20260807-edit-decision-v2">  <link rel="stylesheet" href="/shared/responsive.css?v=20260807-responsive-audit-v4">
   <link rel="stylesheet" href="/shared/brand-system.css?v=20260806-font-buttons-v2">
 </head><body>
 <header class="portal-header"><a class="portal-brand" href="/"><img src="/assets/logo-nh-simbolo.png" alt="Novo Horizonte"><span><strong>Novo Horizonte</strong><small>Área do Colaborador</small></span></a><div class="header-actions"><a href="/">Site principal</a><button id="logout" hidden>Sair</button></div></header>
@@ -66,6 +66,25 @@
       <label class="span-2">Placa<input id="consultant-quote-edit-plate" maxlength="10" autocomplete="off"></label>
     </div>
     <div class="quote-edit-protection"><strong>Dados bloqueados:</strong> categoria, valor FIPE, origem da motocicleta, plano, coberturas, opcionais, taxas e valor mensal não podem ser editados por este formulário.</div>
+    <section id="consultant-quote-decision" class="quote-edit-decision" hidden>
+      <div class="quote-edit-decision-copy">
+        <strong>O cliente aceita a proposta?</strong>
+        <small>Ao responder, os dados cadastrais acima serão salvos primeiro. Plano, coberturas e valores continuam protegidos.</small>
+      </div>
+      <div class="quote-edit-decision-actions" role="group" aria-label="Decisão da proposta">
+        <button id="consultant-quote-accept" class="quote-decision-yes" type="button">Sim</button>
+        <button id="consultant-quote-decline" class="quote-decision-no" type="button">Não</button>
+      </div>
+    </section>
+
+    <section id="consultant-quote-accepted" class="quote-edit-accepted" hidden>
+      <div>
+        <strong>Proposta aceita — gerar Retrato NH</strong>
+        <p>Crie o link de vistoria e envie ao associado. As fotos, o vídeo e os documentos serão armazenados com segurança no PostgreSQL.</p>
+      </div>
+      <a id="consultant-quote-open-retrato" class="primary quote-edit-retrato-link" href="#">Abrir Retrato NH →</a>
+    </section>
+
     <div id="consultant-quote-edit-message"></div>
     <div class="actions dialog-actions">
       <button id="consultant-quote-edit-cancel" class="outline" type="button">Cancelar</button>
@@ -95,5 +114,5 @@
     </div>
   </div>
 </dialog>
-<script src="/shared/config.js?v=20260804-current-origin"></script><script src="/colaborador/portal.js?v=20260807-delete-modal-v4"></script><script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
+<script src="/shared/config.js?v=20260804-current-origin"></script><script src="/colaborador/portal.js?v=20260807-edit-decision-v2"></script><script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
 </body></html>

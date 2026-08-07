@@ -153,6 +153,28 @@ public class ConsultantDashboardService {
     }
 
     @Transactional
+    public ConsultantQuoteSummary decideQuote(UUID consultantId, UUID quoteId, QuoteStatus decision) {
+        Consultant consultant = consultantService.findActive(consultantId);
+        Quotation quotation = findOwnedQuotation(consultant, quoteId);
+        repairOwnership(quotation, consultant);
+
+        if (decision != QuoteStatus.ACCEPTED && decision != QuoteStatus.DECLINED) {
+            throw new IllegalArgumentException("A decisão deve ser ACCEPTED ou DECLINED.");
+        }
+        if (quotation.getStatus() == QuoteStatus.ACCEPTED || quotation.getStatus() == QuoteStatus.CANCELLED) {
+            throw new IllegalArgumentException("Esta cotação não pode receber uma nova decisão pelo painel do consultor.");
+        }
+        if (OffsetDateTime.now().isAfter(quotation.getValidUntil())) {
+            throw new IllegalArgumentException("Esta cotação expirou. Refaça a cotação antes de registrar uma nova decisão.");
+        }
+
+        quotation.decide(decision);
+        quotationRepository.saveAndFlush(quotation);
+        InspectionRequest inspection = inspectionRepository.findByQuotation_Id(quotation.getId()).orElse(null);
+        return toQuote(quotation, inspection);
+    }
+
+    @Transactional
     public void deleteQuote(UUID consultantId, UUID quoteId) {
         Consultant consultant = consultantService.findActive(consultantId);
         Quotation quotation = findOwnedQuotation(consultant, quoteId);
