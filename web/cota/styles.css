@@ -1626,3 +1626,30 @@ footer {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* Ajuste final — botão confirmar plano */
+.selection-summary #confirm-plan {
+  width: 100%;
+  min-width: 0;
+  min-height: 56px;
+  padding: 12px 20px;
+  justify-self: stretch;
+  align-self: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  text-align: center;
+  line-height: 1.2;
+}
+
+@media (min-width: 901px) {
+  .selection-summary #confirm-plan {
+    grid-column: 2 / -1;
+  }
+}
+
+@media (max-width: 900px) {
+  .selection-summary #confirm-plan {
+    grid-column: 1 / -1;
+  }
+}

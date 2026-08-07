@@ -210,6 +210,7 @@ public final class AdminDtos {
             String publicUrl,
             String driveFolderUrl,
             String reportUrl,
+            String quotationPdfUrl,
             String teamWhatsappUrl,
             String teamEmailUrl,
             String associateInspectionWhatsappUrl,

@@ -1792,7 +1792,7 @@ object {
    HEADER INSTITUCIONAL — faixa intermediária (tablet/notebook)
    Evita sobreposição, scroll horizontal e menus espremidos.
    ========================================================= */
-@media (min-width: 761px) and (max-width: 1240px) {
+@media (min-width: 761px) and (max-width: 1500px) {
   .site-header {
     overflow-x: clip;
   }
@@ -2161,5 +2161,476 @@ object {
 
   .table-wrap.has-head-scrollbar {
     scrollbar-width: auto;
+  }
+}
+
+
+/* =========================================================
+   AJUSTES FINAIS DE RESPONSIVIDADE GLOBAL
+   Corrige estouro de botões, textos e cartões em mobile,
+   tablet, mini mobile e desktops compactos.
+   ========================================================= */
+
+button,
+.button,
+.small-button,
+.primary,
+.secondary,
+.outline,
+.danger {
+  max-width: 100%;
+}
+
+.row-actions > *,
+.status-with-action > *,
+.actions > * {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .portal-header {
+    padding-left: max(12px, env(safe-area-inset-left, 0px));
+    padding-right: max(12px, env(safe-area-inset-right, 0px));
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .section-head,
+  .analysis-queue-title,
+  .inspection-media-head,
+  .dialog-head,
+  .signature-heading {
+    min-width: 0;
+  }
+
+  .detail-grid,
+  .overview-grid,
+  .kpi-grid,
+  .communication-summary,
+  .quote-edit-locked-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .small-button,
+  .button.small-button,
+  button.small-button,
+  .actions .button,
+  .actions button,
+  .row-actions > .button,
+  .row-actions > button,
+  .status-with-action > .button,
+  .status-with-action > button,
+  .inspection-links .button,
+  .inspection-links button {
+    width: 100%;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    text-align: center;
+    line-height: 1.22;
+    padding-top: 11px;
+    padding-bottom: 11px;
+  }
+
+  .row-actions,
+  .status-with-action,
+  .actions,
+  #inspection-links,
+  .communication-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    align-items: stretch !important;
+    gap: 8px;
+    width: 100%;
+  }
+
+  table.responsive-table tbody td,
+  #activity-dashboard table.consultant-dashboard-table tbody td {
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+  }
+
+  table.responsive-table tbody td::before,
+  #activity-dashboard table.consultant-dashboard-table tbody td::before {
+    margin-bottom: 2px;
+  }
+
+  .badge,
+  #activity-dashboard .badge,
+  .analysis-queue-count {
+    width: fit-content;
+    max-width: 100%;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.18;
+  }
+
+  .inspection-media-grid,
+  .upload-grid,
+  .tool-grid,
+  .form-grid,
+  .filter-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .card,
+  .tool-card,
+  .dialog-card,
+  .login-card,
+  .communication-card,
+  .inspection-media-card,
+  .analysis-queue-card {
+    overflow: hidden;
+  }
+
+  .table-code,
+  small,
+  strong,
+  p,
+  span,
+  a {
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 420px) {
+  .shell,
+  .container,
+  .login-wrap {
+    width: calc(100% - 20px);
+  }
+
+  .hero-panel,
+  .card,
+  .tool-card,
+  .dialog-card,
+  .communication-card {
+    padding: 16px;
+    border-radius: 18px;
+  }
+
+  .portal-header {
+    min-height: 60px;
+  }
+
+  .portal-brand img {
+    width: 40px;
+    height: 40px;
+  }
+
+  .analysis-queue-title,
+  .section-head {
+    gap: 10px;
+  }
+}
+
+
+/* =========================================================
+   RESPONSIVIDADE FINAL V4 — revisão por larguras reais
+   320px+ mobile, tablets, notebooks e desktop amplo.
+   ========================================================= */
+
+/* O link de assistência é duplicado apenas para o menu compacto. */
+.main-menu .assistance-menu-link {
+  display: none;
+}
+
+/* Notebook e desktop compacto: nunca manter navegação completa espremida. */
+@media (min-width: 761px) and (max-width: 1720px) {
+  .site-header {
+    overflow: visible !important;
+  }
+
+  .site-header .nav-wrapper {
+    width: min(1440px, calc(100% - 32px)) !important;
+    min-height: 82px !important;
+    display: flex !important;
+    align-items: center !important;
+    flex-wrap: nowrap !important;
+    gap: 12px !important;
+    margin-inline: auto !important;
+  }
+
+  .site-header .brand {
+    order: 1 !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    margin-right: auto !important;
+  }
+
+  .site-header .brand-symbol {
+    flex: 0 0 auto !important;
+    width: clamp(48px, 4vw, 58px) !important;
+  }
+
+  .site-header .brand-name {
+    min-width: 0 !important;
+  }
+
+  .site-header .brand-name strong,
+  .site-header .brand-name small {
+    white-space: nowrap !important;
+  }
+
+  .site-header .main-menu {
+    display: none !important;
+  }
+
+  .site-header .main-menu.open {
+    position: fixed !important;
+    inset: 86px 18px auto 18px !important;
+    z-index: 9999 !important;
+    display: grid !important;
+    width: auto !important;
+    max-width: calc(100vw - 36px) !important;
+    max-height: calc(100dvh - 106px) !important;
+    overflow-y: auto !important;
+    gap: 4px !important;
+    padding: 14px !important;
+    border: 1px solid rgba(240,240,0,.35) !important;
+    border-radius: 16px !important;
+    background: #070c40 !important;
+    box-shadow: 0 22px 60px rgba(7,12,64,.3) !important;
+  }
+
+  .site-header .main-menu.open a {
+    display: flex !important;
+    width: 100% !important;
+    min-height: 44px !important;
+    align-items: center !important;
+    padding: 10px 12px !important;
+    white-space: normal !important;
+  }
+
+  .site-header .main-menu.open a::after {
+    display: none !important;
+  }
+
+  .site-header .main-menu.open .assistance-menu-link {
+    display: flex !important;
+    color: var(--brand-yellow, #f0f000) !important;
+  }
+
+  .site-header .header-phone {
+    order: 2 !important;
+    flex: 0 0 auto !important;
+    min-height: 44px !important;
+    padding-inline: 14px !important;
+    white-space: nowrap !important;
+  }
+
+  .site-header .header-cta {
+    order: 3 !important;
+    display: inline-flex !important;
+    flex: 0 0 auto !important;
+    min-height: 44px !important;
+    padding-inline: 15px !important;
+    white-space: nowrap !important;
+  }
+
+  .site-header .header-collaborator {
+    display: none !important;
+  }
+
+  .site-header .menu-toggle {
+    order: 4 !important;
+    display: grid !important;
+    flex: 0 0 46px !important;
+    width: 46px !important;
+    height: 46px !important;
+    padding: 0 !important;
+    place-content: center !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+}
+
+/* Em tablets, a assistência fica no menu para preservar o cabeçalho. */
+@media (min-width: 761px) and (max-width: 1120px) {
+  .site-header .header-phone {
+    display: none !important;
+  }
+}
+
+/* Cabeçalho dos portais: manter nome em tablet e notebook pequeno. */
+@media (min-width: 481px) and (max-width: 900px) {
+  .portal-header {
+    min-height: 72px !important;
+    flex-wrap: nowrap !important;
+    padding: 10px 14px !important;
+    gap: 12px !important;
+  }
+
+  .portal-brand {
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+  }
+
+  .portal-brand span {
+    display: block !important;
+    min-width: 0 !important;
+  }
+
+  .portal-brand strong {
+    font-size: clamp(14px, 2.2vw, 17px) !important;
+    white-space: nowrap !important;
+  }
+
+  .portal-brand small {
+    font-size: clamp(11px, 1.8vw, 13px) !important;
+    white-space: nowrap !important;
+  }
+
+  .header-actions {
+    width: auto !important;
+    flex: 0 0 auto !important;
+    justify-content: flex-end !important;
+    flex-wrap: nowrap !important;
+  }
+
+  .header-actions a,
+  .header-actions button {
+    min-height: 40px !important;
+    padding: 8px 12px !important;
+    white-space: nowrap !important;
+  }
+}
+
+/* Mobile: uma linha limpa com logo e ações; evita header alto e desalinhado. */
+@media (max-width: 480px) {
+  .portal-header {
+    min-height: 66px !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    padding: 8px 10px !important;
+    gap: 8px !important;
+  }
+
+  .portal-brand {
+    flex: 0 0 auto !important;
+  }
+
+  .portal-brand span {
+    display: none !important;
+  }
+
+  .portal-brand img {
+    width: 38px !important;
+    height: 38px !important;
+  }
+
+  .header-actions {
+    width: auto !important;
+    margin-left: auto !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+  }
+
+  .header-actions a,
+  .header-actions button {
+    min-height: 38px !important;
+    padding: 7px 10px !important;
+    font-size: 11px !important;
+    white-space: nowrap !important;
+  }
+}
+
+/* Abas administrativas: nenhuma aba fica pela metade ou fora da tela. */
+@media (max-width: 1000px) {
+  .admin-page .admin-tabs {
+    position: static !important;
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)) !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 20px 0 !important;
+    padding: 0 !important;
+    gap: 8px !important;
+    overflow: visible !important;
+  }
+
+  .admin-page .admin-tabs button {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 44px !important;
+    padding: 9px 10px !important;
+    white-space: normal !important;
+    line-height: 1.15 !important;
+    text-align: center !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .admin-page .admin-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+  }
+
+  .admin-page .admin-tabs button {
+    font-size: 12px !important;
+  }
+
+  .admin-page .hero-panel h1,
+  #analysis-view .hero-panel h1,
+  #consultant-view .hero-panel h1 {
+    font-size: clamp(24px, 8.5vw, 34px) !important;
+    line-height: 1.05 !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+  }
+}
+
+/* Limite inferior prático para os primeiros smartphones usuais. */
+@media (max-width: 340px) {
+  .shell,
+  .login-wrap,
+  .container {
+    width: calc(100% - 12px) !important;
+  }
+
+  .admin-page .admin-tabs {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Emulação extrema abaixo de 280px: evita qualquer estouro horizontal. */
+@media (max-width: 280px) {
+  .portal-header {
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+  }
+
+  .portal-brand {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  .header-actions {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+  }
+
+  .header-actions a,
+  .header-actions button {
+    min-width: 0 !important;
+    padding-inline: 7px !important;
+    font-size: 10px !important;
+  }
+
+  .hero-panel {
+    padding: 14px 12px !important;
   }
 }

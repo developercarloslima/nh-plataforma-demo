@@ -178,6 +178,9 @@ public class AdminActivityService {
 
     private AdminInspectionResponse toInspection(InspectionRequest item) {
         String publicUrl = publicWebUrl + "/retrato/?token=" + item.getPublicToken();
+        String quotationPdfUrl = item.getQuotation() == null
+                ? null
+                : publicApiUrl + "/api/quotes/" + item.getQuotation().getId() + "/pdf";
         String whatsapp = settingsService.teamWhatsapp();
         String email = settingsService.teamEmail();
         String type = item.getRequestType() == InspectionRequestType.NEW_INSPECTION
@@ -232,7 +235,7 @@ public class AdminActivityService {
                 item.getQuotation() == null ? RearWindowBranding.NOT_APPLICABLE : item.getQuotation().getRearWindowBranding(), null,
                 item.getConsultant() == null ? null : item.getConsultant().getId(), item.getConsultantName(), displayStatus,
                 item.getCreatedAt(), item.getExpiresAt(), item.getCompletedAt(), item.getAdminNote(), item.getReviewedAt(),
-                publicUrl, null, null, whatsappUrl(whatsapp, message), emailUrl(email, subject, message), associateInspectionUrl,
+                publicUrl, null, null, quotationPdfUrl, whatsappUrl(whatsapp, message), emailUrl(email, subject, message), associateInspectionUrl,
                 associateDecisionUrl, item.getDecisionMessageSentAt(), decisionMessagePending,
                 availableCount, expiredCount, filesExpireAt, assets
         );

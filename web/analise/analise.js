@@ -290,6 +290,10 @@ function openInspection(id) {
     inspectionDetails.push(['Plano já contratado', item.contractedPlan || '—']);
   }
 
+  if (item.requestType === 'NEW_INSPECTION') {
+    inspectionDetails.push(['PDF da cotação', item.quotationPdfUrl ? 'Disponível para visualização' : '—']);
+  }
+
   if (item.requestType === 'NEW_INSPECTION' && discountPercent > 0) {
     inspectionDetails.push(['Desconto da cotação', `${discountPercent}%`]);
     if (discountPercent === 15 || discountPercent === 30) {
@@ -320,10 +324,12 @@ function openInspection(id) {
   }
 
   $('inspection-links').innerHTML = links(filesAvailable ? [
-    [currentPublicUrl, 'Abrir link da vistoria']
+    [currentPublicUrl, 'Abrir link da vistoria'],
+    [item.requestType === 'NEW_INSPECTION' ? item.quotationPdfUrl : null, 'Ver PDF da cotação']
   ] : [
     [item.associateInspectionWhatsappUrl, 'Enviar link ao associado', 'secondary'],
     [currentPublicUrl, 'Fazer vistoria agora'],
+    [item.requestType === 'NEW_INSPECTION' ? item.quotationPdfUrl : null, 'Ver PDF da cotação'],
     [item.teamWhatsappUrl, 'Comunicar equipe pelo WhatsApp']
   ]);
 
