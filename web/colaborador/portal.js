@@ -94,6 +94,25 @@ function clearMessage() {
   element.textContent = '';
 }
 
+function confirmConsultantAction(title, text, confirmLabel = 'Confirmar') {
+  return new Promise(resolve => {
+    const dialog = $('consultant-confirm-dialog');
+    const action = $('consultant-confirm-action');
+    $('consultant-confirm-title').textContent = title;
+    $('consultant-confirm-text').textContent = text;
+    action.textContent = confirmLabel;
+    dialog.returnValue = 'cancel';
+
+    const onClose = () => {
+      dialog.removeEventListener('close', onClose);
+      resolve(dialog.returnValue === 'default');
+    };
+
+    dialog.addEventListener('close', onClose);
+    if (!dialog.open) dialog.showModal();
+  });
+}
+
 function logout() {
   stopDashboardPolling();
   localStorage.removeItem(TOKEN_KEY);
@@ -421,7 +440,11 @@ async function saveQuoteEdit(event) {
 async function deleteQuote(id, button) {
   const item = findQuote(id);
   if (!item || !selectedConsultant?.id) return;
-  const confirmed = window.confirm(`Excluir a cotação ${item.quoteNumber}? A vistoria existente, quando houver, continuará preservada.`);
+  const confirmed = await confirmConsultantAction(
+    'Excluir cotação?',
+    `A cotação ${item.quoteNumber} de ${item.customerName || 'este cliente'} será excluída do painel. A vistoria existente, quando houver, continuará preservada. Esta ação não pode ser desfeita.`,
+    'Excluir cotação'
+  );
   if (!confirmed) return;
   button.disabled = true;
   button.textContent = 'Excluindo...';
