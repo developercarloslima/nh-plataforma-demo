@@ -286,7 +286,7 @@ function quoteActions(item) {
     vehicleType: inspectionVehicleType,
     whatsapp: item.whatsapp || ''
   });
-  const startInspection = item.status === 'ACCEPTED' && !item.inspectionId
+  const startInspection = item.status === 'ACCEPTED' && !item.expired && !item.inspectionId
     ? `<a class="button secondary small-button" href="/colaborador/retrato.html?${inspectionParams.toString()}">Abrir Retrato NH</a>`
     : '';
   const redo = item.expired
@@ -377,7 +377,7 @@ function renderQuoteEditDecision(item) {
   const declineButton = $('consultant-quote-decline');
   const canDecide = item && ['CREATED', 'UNDER_REVIEW', 'DECLINED'].includes(item.status) && !item.expired;
   decision.hidden = !canDecide;
-  accepted.hidden = item?.status !== 'ACCEPTED';
+  accepted.hidden = item?.status !== 'ACCEPTED' || Boolean(item?.expired);
   declineButton.classList.toggle('selected', item?.status === 'DECLINED');
   if (item?.status === 'ACCEPTED') {
     $('consultant-quote-open-retrato').href = quoteInspectionHref(item);
@@ -392,6 +392,7 @@ function collectQuoteEditPayload() {
   const model = $('consultant-quote-edit-model').value.trim();
   const manufactureYear = Number($('consultant-quote-edit-year').value);
   const zeroKm = $('consultant-quote-edit-zero-km').value === 'true';
+  const observation = $('consultant-quote-edit-observation').value.trim();
   if (!customerName) { setQuoteEditMessage('Informe o nome do associado.'); return null; }
   const cpfDigits = cpf.replace(/\D/g, '');
   if (cpfDigits && cpfDigits.length !== 11) { setQuoteEditMessage('O CPF deve possuir 11 números.'); return null; }
@@ -401,7 +402,7 @@ function collectQuoteEditPayload() {
   if (!Number.isInteger(manufactureYear) || manufactureYear < 1950 || manufactureYear > 2100) { setQuoteEditMessage('Informe um ano de fabricação válido.'); return null; }
   const plateDigits = plateValue.replace(/[^A-Za-z0-9]/g, '');
   if (!zeroKm && (plateDigits.length < 7 || plateDigits.length > 10)) { setQuoteEditMessage('Informe uma placa válida.'); return null; }
-  return { customerName, cpf, whatsapp, plate: plateValue, model, manufactureYear, zeroKm };
+  return { customerName, cpf, whatsapp, plate: plateValue, model, manufactureYear, zeroKm, observation };
 }
 
 async function persistQuoteEdit(item, payload) {
@@ -423,6 +424,7 @@ function openQuoteEditDialog(id) {
   $('consultant-quote-edit-model').value = item.model || '';
   $('consultant-quote-edit-year').value = item.manufactureYear || '';
   $('consultant-quote-edit-zero-km').value = String(Boolean(item.zeroKm));
+  $('consultant-quote-edit-observation').value = item.observation || '';
   syncQuoteEditPlateRequirement();
   $('consultant-quote-edit-plan').textContent = item.selectedPlanName || '—';
   $('consultant-quote-edit-value').textContent = money(item.monthlyValue);

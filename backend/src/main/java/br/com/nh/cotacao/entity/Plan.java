@@ -137,18 +137,21 @@ public class Plan {
             throw new IllegalArgumentException("Todos os planos e pacotes devem possuir abrangência nacional.");
         }
         boolean motorcycle = category.getCode() != null && category.getCode().startsWith("MOTORCYCLE");
-        if (motorcycle && motorcycleOrigin == null) {
+        boolean promotionalMotorcycle = "MOTORCYCLE_PROMO_2026".equals(category.getCode());
+        if (motorcycle && !promotionalMotorcycle && motorcycleOrigin == null) {
             throw new IllegalArgumentException("Informe a origem da moto para aplicar a tabela correta.");
         }
-        if (!motorcycle && motorcycleOrigin != null) {
-            throw new IllegalArgumentException("A origem da moto só pode ser usada em categorias de motocicletas.");
+        if ((!motorcycle || promotionalMotorcycle) && motorcycleOrigin != null) {
+            throw new IllegalArgumentException(promotionalMotorcycle
+                    ? "A tabela promocional não utiliza origem da moto."
+                    : "A origem da moto só pode ser usada em categorias de motocicletas.");
         }
         if (displayOrder == null || displayOrder < 0) {
             throw new IllegalArgumentException("A ordem do plano deve ser zero ou maior.");
         }
         this.category = category;
         this.region = Region.NATIONAL;
-        this.motorcycleOrigin = motorcycle ? motorcycleOrigin : null;
+        this.motorcycleOrigin = motorcycle && !promotionalMotorcycle ? motorcycleOrigin : null;
         this.displayOrder = displayOrder;
         this.active = active == null || active;
 

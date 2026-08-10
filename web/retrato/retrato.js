@@ -67,7 +67,8 @@ let recordingStartedAt = null;
 let discardRecording = false;
 let signatureHasInk = false;
 let vehicleDocumentFile = null;
-let identityDocumentFile = null;
+let identityDocumentFrontFile = null;
+let identityDocumentBackFile = null;
 let signatureDrawing = false;
 let signatureLastPoint = null;
 
@@ -235,7 +236,8 @@ async function persistDraftSnapshot(reason = '') {
       photos: photoFiles.map(serializedFile),
       video: serializedFile(videoFile),
       vehicleDocument: serializedFile(vehicleDocumentFile),
-      identityDocument: serializedFile(identityDocumentFile),
+      identityDocumentFront: serializedFile(identityDocumentFrontFile),
+      identityDocumentBack: serializedFile(identityDocumentBackFile),
       residenceAddress: $('residence-address').value.trim(),
       signature: signatureBlob,
       updatedAt: Date.now()
@@ -282,13 +284,15 @@ async function restoreDraftFromCache() {
   ));
   videoFile = restoredFile(draft.video, 'video-vistoria.webm', 'video/webm');
   vehicleDocumentFile = restoredFile(draft.vehicleDocument, 'crlv-veiculo.pdf', 'application/pdf');
-  identityDocumentFile = restoredFile(draft.identityDocument, 'rg-cnh-associado.pdf', 'application/pdf');
+  identityDocumentFrontFile = restoredFile(draft.identityDocumentFront || draft.identityDocument, 'rg-cnh-frente.pdf', 'application/pdf');
+  identityDocumentBackFile = restoredFile(draft.identityDocumentBack, 'rg-cnh-verso.pdf', 'application/pdf');
   $('residence-address').value = draft.residenceAddress || '';
   restoredSignatureBlob = draft.signature || null;
   hasRestoredDraft = photoFiles.some(Boolean)
     || Boolean(videoFile)
     || Boolean(vehicleDocumentFile)
-    || Boolean(identityDocumentFile)
+    || Boolean(identityDocumentFrontFile)
+    || Boolean(identityDocumentBackFile)
     || Boolean(restoredSignatureBlob)
     || Boolean(draft.residenceAddress);
 
@@ -331,8 +335,11 @@ async function applyRestoredDraftToUi() {
   if (vehicleDocumentFile) {
     updateDocumentStatus('vehicle-document', vehicleDocumentFile, true);
   }
-  if (identityDocumentFile) {
-    updateDocumentStatus('identity-document', identityDocumentFile, true);
+  if (identityDocumentFrontFile) {
+    updateDocumentStatus('identity-document-front', identityDocumentFrontFile, true);
+  }
+  if (identityDocumentBackFile) {
+    updateDocumentStatus('identity-document-back', identityDocumentBackFile, true);
   }
   if (restoredSignatureBlob) {
     await drawSignatureBlob(restoredSignatureBlob);
@@ -372,10 +379,11 @@ function databaseCompletionConfirmed(body) {
 
   const expectedPhotos = (VEHICLE_PROFILES[body.vehicleType] || VEHICLE_PROFILES.FOUR_WHEELS_OR_MORE).photos.length;
   const confirmedPhotos = assetTypes.filter(type => type === 'PHOTO').length;
+  const confirmedIdentityDocuments = assetTypes.filter(type => type === 'IDENTITY_DOCUMENT').length;
   return confirmedPhotos >= expectedPhotos
     && assetTypes.includes('SIGNATURE')
     && assetTypes.includes('VEHICLE_DOCUMENT')
-    && assetTypes.includes('IDENTITY_DOCUMENT');
+    && confirmedIdentityDocuments >= 2;
 }
 
 async function checkIfServerCompleted() {
@@ -403,7 +411,8 @@ function configureInspectionProfile(vehicleType) {
   photoFiles = new Array(labels.length).fill(null);
   photoPreviewUrls = new Array(labels.length).fill(null);
   vehicleDocumentFile = null;
-  identityDocumentFile = null;
+  identityDocumentFrontFile = null;
+  identityDocumentBackFile = null;
 
   $('vehicle-guide-title').textContent = inspectionProfile.title;
   $('vehicle-guide-count').textContent = `${labels.length} fotos obrigatórias + 1 vídeo`;
@@ -964,7 +973,8 @@ function updateCaptureSummary() {
   const registrationStatus = requiredPhotos
     ? ` · endereço ${$('residence-address').value.trim() ? 'preenchido' : 'pendente'}`
       + ` · CRLV ${vehicleDocumentFile ? 'enviado' : 'pendente'}`
-      + ` · RG/CNH ${identityDocumentFile ? 'enviado' : 'pendente'}`
+      + ` · RG/CNH frente ${identityDocumentFrontFile ? 'enviada' : 'pendente'}`
+      + ` · RG/CNH verso ${identityDocumentBackFile ? 'enviado' : 'pendente'}`
       + ` · assinatura ${signatureHasInk ? 'registrada' : 'pendente'}`
     : '';
   $('capture-summary').textContent = requiredPhotos
@@ -1199,9 +1209,15 @@ $('upload-form').addEventListener('submit', async (event) => {
     return;
   }
 
-  if (fullInspection && !identityDocumentFile) {
-    msg('Envie o RG ou a CNH do associado antes de concluir.');
-    $('identity-document').focus();
+  if (fullInspection && !identityDocumentFrontFile) {
+    msg('Envie a frente do RG ou da CNH do associado antes de concluir.');
+    $('identity-document-front').focus();
+    return;
+  }
+
+  if (fullInspection && !identityDocumentBackFile) {
+    msg('Envie o verso do RG ou da CNH do associado antes de concluir.');
+    $('identity-document-back').focus();
     return;
   }
 
@@ -1255,8 +1271,14 @@ $('upload-form').addEventListener('submit', async (event) => {
       assets.push({
         assetType: 'IDENTITY_DOCUMENT',
         sortOrder: labels.length + 4,
-        label: 'RG ou CNH do associado',
-        file: identityDocumentFile
+        label: 'RG ou CNH — frente',
+        file: identityDocumentFrontFile
+      });
+      assets.push({
+        assetType: 'IDENTITY_DOCUMENT',
+        sortOrder: labels.length + 5,
+        label: 'RG ou CNH — verso',
+        file: identityDocumentBackFile
       });
     }
 
@@ -1389,14 +1411,16 @@ function handleDocumentSelection(inputId, label) {
     try {
       const file = validateDocumentFile(input.files?.[0] || null, label);
       if (inputId === 'vehicle-document') vehicleDocumentFile = file;
-      else identityDocumentFile = file;
+      else if (inputId === 'identity-document-front') identityDocumentFrontFile = file;
+      else if (inputId === 'identity-document-back') identityDocumentBackFile = file;
       updateDocumentStatus(inputId, file);
       updateCaptureSummary();
       scheduleDraftSave(0, `${label} salvo neste aparelho.`);
     } catch (error) {
       input.value = '';
       if (inputId === 'vehicle-document') vehicleDocumentFile = null;
-      else identityDocumentFile = null;
+      else if (inputId === 'identity-document-front') identityDocumentFrontFile = null;
+      else if (inputId === 'identity-document-back') identityDocumentBackFile = null;
       updateDocumentStatus(inputId, null);
       updateCaptureSummary();
       msg(error.message);
@@ -1405,7 +1429,8 @@ function handleDocumentSelection(inputId, label) {
 }
 
 handleDocumentSelection('vehicle-document', 'o CRLV do veículo');
-handleDocumentSelection('identity-document', 'o RG ou a CNH do associado');
+handleDocumentSelection('identity-document-front', 'a frente do RG ou da CNH do associado');
+handleDocumentSelection('identity-document-back', 'o verso do RG ou da CNH do associado');
 
 function fileExtension(file) {
   const match = String(file?.name || '').toLowerCase().match(/\.([a-z0-9]+)$/);

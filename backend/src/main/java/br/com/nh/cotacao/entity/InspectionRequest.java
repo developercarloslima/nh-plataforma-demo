@@ -141,6 +141,9 @@ public class InspectionRequest {
         if (quotation == null || quotation.getStatus() != QuoteStatus.ACCEPTED) {
             throw new IllegalArgumentException("A cotação precisa estar aceita para iniciar a vistoria.");
         }
+        if (OffsetDateTime.now().isAfter(quotation.getValidUntil())) {
+            throw new IllegalArgumentException("Esta cotação expirou e não pode mais iniciar uma nova vistoria.");
+        }
         if (quotation.getCustomerCpf() == null || quotation.getCustomerCpf().isBlank()) {
             throw new IllegalArgumentException("A cotação não possui CPF para gerar o link da vistoria.");
         }
@@ -331,7 +334,13 @@ public class InspectionRequest {
             }
             requireAsset(InspectionAssetType.SIGNATURE, "a assinatura do associado");
             requireAsset(InspectionAssetType.VEHICLE_DOCUMENT, "o CRLV do veículo");
-            requireAsset(InspectionAssetType.IDENTITY_DOCUMENT, "o RG ou a CNH do associado");
+            long identityDocumentCount = assets.stream()
+                    .filter(asset -> asset.getAssetType() == InspectionAssetType.IDENTITY_DOCUMENT)
+                    .filter(InspectionAsset::isAvailable)
+                    .count();
+            if (identityDocumentCount < 2) {
+                throw new IllegalArgumentException("Ainda falta enviar a frente e o verso do RG ou da CNH do associado.");
+            }
         }
         requireAsset(InspectionAssetType.VIDEO, "o vídeo da vistoria");
         if (requireReport) {

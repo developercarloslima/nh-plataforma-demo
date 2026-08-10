@@ -147,7 +147,9 @@ public class AdminActivityService {
     }
 
     private AdminQuoteResponse toQuote(Quotation item) {
-        boolean expired = (item.getStatus() == QuoteStatus.CREATED || item.getStatus() == QuoteStatus.UNDER_REVIEW)
+        boolean expired = (item.getStatus() == QuoteStatus.CREATED
+                || item.getStatus() == QuoteStatus.UNDER_REVIEW
+                || item.getStatus() == QuoteStatus.ACCEPTED)
                 && OffsetDateTime.now().isAfter(item.getValidUntil());
         String pdfUrl = publicApiUrl + "/api/quotes/" + item.getId() + "/pdf";
         String whatsapp = settingsService.teamWhatsapp();
@@ -168,7 +170,7 @@ public class AdminActivityService {
                 item.getConsultant() == null ? null : item.getConsultant().getId(),
                 item.getConsultantName(), item.getCustomerName(), maskCpf(item.getCustomerCpf()), item.getWhatsapp(),
                 item.getPlate(), item.getModel(), item.getManufactureYear(), item.isZeroKm(), item.getFipeValue(),
-                item.getCategoryCode(), item.getRegion(), item.getMotorcycleOrigin(), item.getSelectedPlanName(),
+                item.getCategoryCode(), item.getRegion(), item.getMotorcycleOrigin(), item.getMotorcycleCc(), item.getObservation(), item.getSelectedPlanName(),
                 item.getPreDiscountMonthlyValue(), item.getDiscountPercent(), item.getRearWindowBranding(), item.getMonthlyValue(), item.getOneTimeFee(),
                 item.getStatus(), item.getCreatedAt(), item.getValidUntil(), expired, item.getDecidedAt(), item.getAdminNote(),
                 item.getReviewedAt(), pdfUrl, item.getDriveFolderUrl(), item.getDrivePdfUrl(), inspectionUrl,

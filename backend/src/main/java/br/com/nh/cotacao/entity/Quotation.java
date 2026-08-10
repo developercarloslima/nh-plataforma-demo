@@ -69,6 +69,12 @@ public class Quotation {
     @Column(name = "motorcycle_origin", length = 20)
     private MotorcycleOrigin motorcycleOrigin;
 
+    @Column(name = "motorcycle_cc")
+    private Integer motorcycleCc;
+
+    @Column(name = "observation", length = 1200)
+    private String observation;
+
     @Column(name = "selected_plan_code", nullable = false, length = 80)
     private String selectedPlanCode;
 
@@ -170,6 +176,38 @@ public class Quotation {
             BigDecimal oneTimeFee,
             String mandatoryFeeDescription
     ) {
+        Integer legacyCc = "MOTORCYCLE_UP_TO_300".equals(categoryCode) ? 300
+                : ("MOTORCYCLE_OVER_300".equals(categoryCode) ? 301 : null);
+        return createForConsultant(
+                quoteNumber, consultant, customerName, customerCpf, whatsapp, plate, model, manufactureYear, zeroKm,
+                fipeValue, categoryCode, region, motorcycleOrigin, legacyCc, null, selectedPlanCode, selectedPlanName,
+                baseMonthlyValue, mandatoryMonthlyFee, oneTimeFee, mandatoryFeeDescription
+        );
+    }
+
+    public static Quotation createForConsultant(
+            String quoteNumber,
+            Consultant consultant,
+            String customerName,
+            String customerCpf,
+            String whatsapp,
+            String plate,
+            String model,
+            Integer manufactureYear,
+            boolean zeroKm,
+            BigDecimal fipeValue,
+            String categoryCode,
+            Region region,
+            MotorcycleOrigin motorcycleOrigin,
+            Integer motorcycleCc,
+            String observation,
+            String selectedPlanCode,
+            String selectedPlanName,
+            BigDecimal baseMonthlyValue,
+            BigDecimal mandatoryMonthlyFee,
+            BigDecimal oneTimeFee,
+            String mandatoryFeeDescription
+    ) {
         if (consultant == null) throw new IllegalArgumentException("Informe o consultor responsável.");
         return createBase(
                 quoteNumber,
@@ -187,6 +225,8 @@ public class Quotation {
                 categoryCode,
                 region,
                 motorcycleOrigin,
+                motorcycleCc,
+                observation,
                 selectedPlanCode,
                 selectedPlanName,
                 baseMonthlyValue,
@@ -217,6 +257,38 @@ public class Quotation {
             BigDecimal oneTimeFee,
             String mandatoryFeeDescription
     ) {
+        Integer legacyCc = "MOTORCYCLE_UP_TO_300".equals(categoryCode) ? 300
+                : ("MOTORCYCLE_OVER_300".equals(categoryCode) ? 301 : null);
+        return createSelfService(
+                quoteNumber, consultant, customerName, customerCpf, whatsapp, plate, model, manufactureYear, zeroKm,
+                fipeValue, categoryCode, region, motorcycleOrigin, legacyCc, null, selectedPlanCode, selectedPlanName,
+                baseMonthlyValue, mandatoryMonthlyFee, oneTimeFee, mandatoryFeeDescription
+        );
+    }
+
+    public static Quotation createSelfService(
+            String quoteNumber,
+            Consultant consultant,
+            String customerName,
+            String customerCpf,
+            String whatsapp,
+            String plate,
+            String model,
+            Integer manufactureYear,
+            boolean zeroKm,
+            BigDecimal fipeValue,
+            String categoryCode,
+            Region region,
+            MotorcycleOrigin motorcycleOrigin,
+            Integer motorcycleCc,
+            String observation,
+            String selectedPlanCode,
+            String selectedPlanName,
+            BigDecimal baseMonthlyValue,
+            BigDecimal mandatoryMonthlyFee,
+            BigDecimal oneTimeFee,
+            String mandatoryFeeDescription
+    ) {
         return createBase(
                 quoteNumber,
                 QuoteOrigin.SELF_SERVICE,
@@ -233,6 +305,8 @@ public class Quotation {
                 categoryCode,
                 region,
                 motorcycleOrigin,
+                motorcycleCc,
+                observation,
                 selectedPlanCode,
                 selectedPlanName,
                 baseMonthlyValue,
@@ -258,6 +332,8 @@ public class Quotation {
             String categoryCode,
             Region region,
             MotorcycleOrigin motorcycleOrigin,
+            Integer motorcycleCc,
+            String observation,
             String selectedPlanCode,
             String selectedPlanName,
             BigDecimal baseMonthlyValue,
@@ -282,6 +358,8 @@ public class Quotation {
         q.categoryCode = categoryCode;
         q.region = Region.NATIONAL;
         q.motorcycleOrigin = motorcycleOrigin;
+        q.motorcycleCc = validateMotorcycleCc(categoryCode, motorcycleCc);
+        q.observation = cleanObservation(observation);
         q.selectedPlanCode = selectedPlanCode;
         q.selectedPlanName = selectedPlanName;
         q.baseMonthlyValue = baseMonthlyValue;
@@ -300,6 +378,30 @@ public class Quotation {
 
     private static String cleanName(String value) {
         return value.trim().replaceAll("\\s+", " ");
+    }
+
+    private static Integer validateMotorcycleCc(String categoryCode, Integer motorcycleCc) {
+        boolean motorcycle = categoryCode != null && categoryCode.startsWith("MOTORCYCLE");
+        if (!motorcycle) return null;
+        if (motorcycleCc == null || motorcycleCc < 1 || motorcycleCc > 2500) {
+            throw new IllegalArgumentException("Informe a cilindrada da moto.");
+        }
+        if ("MOTORCYCLE_UP_TO_300".equals(categoryCode) && motorcycleCc > 300) {
+            throw new IllegalArgumentException("Para Motos até 300cc, informe uma cilindrada de até 300cc.");
+        }
+        if ("MOTORCYCLE_OVER_300".equals(categoryCode) && motorcycleCc <= 300) {
+            throw new IllegalArgumentException("Para Motos acima de 300cc, informe uma cilindrada acima de 300cc.");
+        }
+        return motorcycleCc;
+    }
+
+    private static String cleanObservation(String value) {
+        if (value == null || value.isBlank()) return null;
+        String clean = value.trim();
+        if (clean.length() > 1200) {
+            throw new IllegalArgumentException("A observação da cotação deve possuir no máximo 1.200 caracteres.");
+        }
+        return clean;
     }
 
 
@@ -353,6 +455,16 @@ public class Quotation {
         ));
         preDiscountMonthlyValue = preDiscountMonthlyValue.add(monthlyPrice);
         recalculateDiscountedMonthlyValue();
+    }
+
+    public void defineValidity(OffsetDateTime requestedValidUntil) {
+        if (requestedValidUntil == null) {
+            throw new IllegalArgumentException("Informe a validade da cotação.");
+        }
+        if (createdAt == null || !requestedValidUntil.isAfter(createdAt)) {
+            throw new IllegalArgumentException("A validade da cotação precisa ser posterior à emissão.");
+        }
+        this.validUntil = requestedValidUntil;
     }
 
     public void applyDiscount(Integer requestedPercent, RearWindowBranding requestedBranding) {
@@ -418,6 +530,10 @@ public class Quotation {
      * Plano, categoria, FIPE, coberturas e valores permanecem imutáveis.
      */
     public void updateNonPricingData(String customerName, String customerCpf, String whatsapp, String plate, String model, Integer manufactureYear, boolean zeroKm) {
+        updateNonPricingData(customerName, customerCpf, whatsapp, plate, model, manufactureYear, zeroKm, this.observation);
+    }
+
+    public void updateNonPricingData(String customerName, String customerCpf, String whatsapp, String plate, String model, Integer manufactureYear, boolean zeroKm, String observation) {
         if (customerName == null || customerName.isBlank()) {
             throw new IllegalArgumentException("Informe o nome do associado.");
         }
@@ -454,6 +570,11 @@ public class Quotation {
         this.manufactureYear = manufactureYear;
         this.zeroKm = zeroKm;
         this.plate = normalizePlate(plate, zeroKm);
+        this.observation = cleanObservation(observation);
+    }
+
+    public void updateObservation(String observation) {
+        this.observation = cleanObservation(observation);
     }
 
     public void registerDriveFolder(String folderId, String folderUrl) {
@@ -538,6 +659,8 @@ public class Quotation {
     public String getCategoryCode() { return categoryCode; }
     public Region getRegion() { return region; }
     public MotorcycleOrigin getMotorcycleOrigin() { return motorcycleOrigin; }
+    public Integer getMotorcycleCc() { return motorcycleCc; }
+    public String getObservation() { return observation; }
     public String getSelectedPlanCode() { return selectedPlanCode; }
     public String getSelectedPlanName() { return selectedPlanName; }
     public BigDecimal getBaseMonthlyValue() { return baseMonthlyValue; }

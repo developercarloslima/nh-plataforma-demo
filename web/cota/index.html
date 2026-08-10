@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#070c40">
   
   <link rel="icon" href="./favicon-nh.png">
-  <link rel="stylesheet" href="./styles.css?v=20260807-discounts-electric-v2">
+  <link rel="stylesheet" href="./styles.css?v=20260810-validity-v32">
   <title>NH Cotação Digital</title>
   <link rel="stylesheet" href="/shared/responsive.css?v=20260807-responsive-audit-v4">
   <link rel="stylesheet" href="/shared/brand-system.css?v=20260807-modals-v5">
@@ -70,6 +70,27 @@
         <label>Ano de fabricação *<input id="manufactureYear" required type="number" min="1950"></label>
         <label>Valor FIPE *<input id="fipeValue" data-money required inputmode="decimal" maxlength="18" placeholder="Ex.: 65.000,00"></label>
 
+
+        <fieldset id="motorcycle-selector" class="zero-km-selector span-2">
+          <legend>O veículo é moto? *</legend>
+          <div class="binary-options" role="radiogroup" aria-label="Veículo motocicleta">
+            <label class="binary-option">
+              <input type="radio" name="motorcycle" value="true">
+              <span>Sim</span>
+            </label>
+            <label class="binary-option selected">
+              <input type="radio" name="motorcycle" value="false" checked>
+              <span>Não</span>
+            </label>
+          </div>
+          <small class="field-help">Para scooters e motos elétricas, selecione a categoria específica; a cilindrada não é exigida.</small>
+        </fieldset>
+
+        <label id="motorcycle-cc-field" hidden>Cilindrada da moto (cc) *
+          <input id="motorcycleCc" type="number" min="1" max="2500" inputmode="numeric" placeholder="Ex.: 160">
+          <small class="field-help">Se a tabela promocional estiver ativa em Planos, o sistema verifica automaticamente se a moto se enquadra.</small>
+        </label>
+
         <fieldset class="vehicle-selector span-2">
           <legend>Categoria do veículo *</legend>
           <div id="vehicle-options" class="vehicle-options">
@@ -88,6 +109,18 @@
         <label id="region-field" hidden>Origem da moto *
           <select id="region"><option value="NORTHEAST">Demais cidades do Nordeste</option><option value="CAPITAL">Capital</option></select>
           <small class="field-help">A origem da moto define somente a tabela comercial. Todos os planos possuem abrangência nacional.</small>
+        </label>
+
+        <label class="span-2">Observação da cotação
+          <textarea id="observation" maxlength="1200" rows="4" placeholder="Ex.: informações importantes sobre o cliente, veículo ou negociação."></textarea>
+          <small class="field-help">Opcional. A observação ficará registrada na cotação e também aparecerá no PDF.</small>
+        </label>
+
+        <label id="validity-date-field" class="span-2">Validade da cotação *
+          <select id="validityDate" required>
+            <option value="">Selecione a data de vencimento</option>
+          </select>
+          <small class="field-help">Permitido entre 30 e 40 dias à frente, somente nos vencimentos dos dias 5, 10, 15, 20, 25 e 30. Após essa data, a cotação não poderá mais iniciar o Retrato NH.</small>
         </label>
 
         <div class="form-actions span-2"><button id="simulate-button" class="primary-button" type="submit">Calcular planos disponíveis →</button></div>
@@ -214,7 +247,7 @@
   <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
   <script src="/shared/money-input.js?v=20260805-brl-mask"></script>
-  <script src="./app.js?v=20260807-discounts-electric-v2" defer></script>
+  <script src="./app.js?v=20260810-v31" defer></script>
 <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
 </body>
 </html>

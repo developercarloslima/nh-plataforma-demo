@@ -550,6 +550,8 @@ function openQuoteAnalysis(id) {
     ['Placa', item.plate], ['Modelo', item.model], ['Ano', item.manufactureYear], ['Veículo 0 km', item.zeroKm ? 'Sim' : 'Não'],
     ['Valor FIPE', brl.format(item.fipeValue)], ['Abrangência', regionLabel(item.region)],
     ['Origem da moto', item.motorcycleOrigin ? motorcycleOriginLabel(item.motorcycleOrigin) : 'Não se aplica'],
+    ['Cilindrada', item.motorcycleCc ? `${item.motorcycleCc} cc` : 'Não se aplica'],
+    ['Observação da cotação', item.observation || '—'],
     ['Plano', item.selectedPlanName]
   ];
   if (quoteDiscount > 0) {
@@ -805,7 +807,8 @@ function openPlanModal(id = null) {
 function syncPlanMotorcycleOrigin() {
   const categoryId = Number($('plan-category').value);
   const category = categories.find(item => Number(item.id) === categoryId);
-  const motorcycle = Boolean(category?.code?.startsWith('MOTORCYCLE'));
+  const promotionalMotorcycle = category?.code === 'MOTORCYCLE_PROMO_2026';
+  const motorcycle = Boolean(category?.code?.startsWith('MOTORCYCLE')) && !promotionalMotorcycle;
   $('plan-motorcycle-origin-field').hidden = !motorcycle;
   $('plan-motorcycle-origin').required = motorcycle;
   if (!motorcycle) $('plan-motorcycle-origin').value = 'NORTHEAST';

@@ -10,6 +10,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.OffsetDateTime;
 import java.util.*;
 
 @Service
@@ -99,6 +100,9 @@ public class RetratoService {
         if (quotation.getStatus() != QuoteStatus.ACCEPTED) {
             throw new IllegalArgumentException("A cotação precisa estar aceita para iniciar a nova vistoria.");
         }
+        if (OffsetDateTime.now().isAfter(quotation.getValidUntil())) {
+            throw new IllegalArgumentException("Esta cotação expirou e não pode mais ser utilizada para iniciar o Retrato NH.");
+        }
         return repository.findByQuotation_Id(quotation.getId())
                 .map(this::toResponse)
                 .orElseGet(() -> toResponse(repository.save(
@@ -113,7 +117,9 @@ public class RetratoService {
 
     @Transactional(readOnly = true)
     public InspectionResponse publicGet(String token) {
-        return toResponse(findByToken(token));
+        InspectionRequest request = findByToken(token);
+        validateQuotationValidityForCollection(request);
+        return toResponse(request);
     }
 
     @Transactional(readOnly = true)
@@ -130,11 +136,13 @@ public class RetratoService {
             String residenceAddress,
             MultipartFile signature,
             MultipartFile vehicleDocument,
-            MultipartFile identityDocument,
+            MultipartFile identityDocumentFront,
+            MultipartFile identityDocumentBack,
             List<MultipartFile> additionalFiles,
             List<String> additionalLabels
     ) {
         InspectionRequest request = findByToken(token);
+        validateQuotationValidityForCollection(request);
         if (request.getStatus() != InspectionRequestStatus.WAITING_FILES
                 && request.getStatus() != InspectionRequestStatus.UPLOADING_FILES
                 && request.getStatus() != InspectionRequestStatus.CREATED
@@ -159,11 +167,15 @@ public class RetratoService {
             if (vehicleDocument == null || vehicleDocument.isEmpty()) {
                 throw new IllegalArgumentException("O CRLV do veículo é obrigatório.");
             }
-            if (identityDocument == null || identityDocument.isEmpty()) {
-                throw new IllegalArgumentException("O RG ou a CNH do associado é obrigatório.");
+            if (identityDocumentFront == null || identityDocumentFront.isEmpty()) {
+                throw new IllegalArgumentException("A frente do RG ou da CNH do associado é obrigatória.");
+            }
+            if (identityDocumentBack == null || identityDocumentBack.isEmpty()) {
+                throw new IllegalArgumentException("O verso do RG ou da CNH do associado é obrigatório.");
             }
             validateDocument(vehicleDocument, "CRLV do veículo");
-            validateDocument(identityDocument, "RG ou CNH do associado");
+            validateDocument(identityDocumentFront, "frente do RG ou da CNH do associado");
+            validateDocument(identityDocumentBack, "verso do RG ou da CNH do associado");
         }
 
         List<MultipartFile> safePhotos = photos == null ? List.of() : photos.stream()
@@ -214,10 +226,15 @@ public class RetratoService {
                     String.format(Locale.ROOT, "%02d-crlv-veiculo%s", vehicleDocumentOrder, extension(vehicleDocument.getContentType(), ".pdf")),
                     vehicleDocument, vehicleDocumentOrder);
 
-            int identityDocumentOrder = requiredPhotoCount + 4;
-            storeMultipart(request, InspectionAssetType.IDENTITY_DOCUMENT, "RG ou CNH do associado",
-                    String.format(Locale.ROOT, "%02d-rg-cnh-associado%s", identityDocumentOrder, extension(identityDocument.getContentType(), ".pdf")),
-                    identityDocument, identityDocumentOrder);
+            int identityDocumentFrontOrder = requiredPhotoCount + 4;
+            storeMultipart(request, InspectionAssetType.IDENTITY_DOCUMENT, "RG ou CNH — frente",
+                    String.format(Locale.ROOT, "%02d-rg-cnh-frente%s", identityDocumentFrontOrder, extension(identityDocumentFront.getContentType(), ".pdf")),
+                    identityDocumentFront, identityDocumentFrontOrder);
+
+            int identityDocumentBackOrder = requiredPhotoCount + 5;
+            storeMultipart(request, InspectionAssetType.IDENTITY_DOCUMENT, "RG ou CNH — verso",
+                    String.format(Locale.ROOT, "%02d-rg-cnh-verso%s", identityDocumentBackOrder, extension(identityDocumentBack.getContentType(), ".pdf")),
+                    identityDocumentBack, identityDocumentBackOrder);
         }
 
         for (int index = 0; index < safeAdditionalFiles.size(); index++) {
@@ -243,7 +260,7 @@ public class RetratoService {
 
         repository.flush();
         byte[] reportBytes = pdfService.generate(request);
-        int reportOrder = newInspection ? requiredPhotoCount + 5 : 2;
+        int reportOrder = newInspection ? requiredPhotoCount + 6 : 2;
         storageService.storeBytes(request, InspectionAssetType.REPORT, "Relatório da vistoria",
                 "relatorio-retrato-nh.pdf", "application/pdf", reportOrder, reportBytes);
         request.complete();
@@ -275,6 +292,20 @@ public class RetratoService {
             throw exception;
         } catch (Exception exception) {
             throw new IllegalStateException("Não foi possível armazenar um dos arquivos da vistoria no PostgreSQL.", exception);
+        }
+    }
+
+    private void validateQuotationValidityForCollection(InspectionRequest request) {
+        if (request == null || request.getRequestType() != InspectionRequestType.NEW_INSPECTION) return;
+        if (request.getStatus() != InspectionRequestStatus.WAITING_FILES
+                && request.getStatus() != InspectionRequestStatus.UPLOADING_FILES
+                && request.getStatus() != InspectionRequestStatus.CREATED
+                && request.getStatus() != InspectionRequestStatus.UNDER_REVIEW) return;
+        Quotation quotation = request.getQuotation();
+        if (quotation != null && OffsetDateTime.now().isAfter(quotation.getValidUntil())) {
+            throw new IllegalArgumentException(
+                    "A cotação vinculada a esta vistoria expirou. Gere uma nova cotação para continuar."
+            );
         }
     }
 

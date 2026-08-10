@@ -1,6 +1,6 @@
 const pageParams = new URLSearchParams(window.location.search);
 const isSelfService = pageParams.get('origem') === 'site' || pageParams.get('modo') === 'cliente';
-const SESSION_KEY = isSelfService ? 'nh-cotacao-cliente-session-v1' : 'nh-cotacao-session-v7';
+const SESSION_KEY = isSelfService ? 'nh-cotacao-cliente-session-v2' : 'nh-cotacao-session-v8';
 const PORTAL_TOKEN_KEY = 'nhPortalToken';
 const CONSULTANT_KEY = 'nhSelectedConsultant';
 const portalToken = localStorage.getItem(PORTAL_TOKEN_KEY);
@@ -24,6 +24,41 @@ const state = {
 
 const $ = (id) => document.getElementById(id);
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+const ALLOWED_VALIDITY_DAYS = new Set([5, 10, 15, 20, 25, 30]);
+
+function localIsoDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function validityOptions() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const options = [];
+  for (let offset = 30; offset <= 40; offset += 1) {
+    const candidate = new Date(today);
+    candidate.setDate(today.getDate() + offset);
+    if (!ALLOWED_VALIDITY_DAYS.has(candidate.getDate())) continue;
+    options.push({
+      value: localIsoDate(candidate),
+      label: `${candidate.toLocaleDateString('pt-BR')} — ${offset} dias`
+    });
+  }
+  return options;
+}
+
+function populateValidityOptions(preferredValue = '') {
+  const select = $('validityDate');
+  if (!select) return;
+  const current = preferredValue || select.value;
+  const options = validityOptions();
+  select.innerHTML = '<option value="">Selecione a data de vencimento</option>'
+    + options.map(item => `<option value="${item.value}">${item.label}</option>`).join('');
+  if (options.some(item => item.value === current)) select.value = current;
+}
+
 
 function apiPath(path) { return window.NH_API?.backend(path) || path; }
 function quoteApiPath(suffix = '') {
@@ -57,6 +92,45 @@ function effectiveMotorcycleOrigin() {
 
 function isZeroKm() {
   return document.querySelector('input[name="zeroKm"]:checked')?.value === 'true';
+}
+
+function isMotorcycle() {
+  return String(state.vehicleType || '').startsWith('MOTORCYCLE');
+}
+
+function motorcycleCcValue() {
+  if (!isMotorcycle()) return null;
+  const value = Number($('motorcycleCc')?.value || 0);
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function syncMotorcycleOptions() {
+  const motorcycle = isMotorcycle();
+  document.querySelectorAll('input[name="motorcycle"]').forEach(input => {
+    input.checked = input.value === String(motorcycle);
+    input.closest('.binary-option')?.classList.toggle('selected', input.checked);
+  });
+  const field = $('motorcycle-cc-field');
+  const input = $('motorcycleCc');
+  if (field) field.hidden = !motorcycle;
+  if (input) {
+    input.required = motorcycle;
+    input.disabled = !motorcycle;
+    if (!motorcycle) input.value = '';
+  }
+}
+
+function validateMotorcycleForm() {
+  if (!isMotorcycle()) return null;
+  const cc = motorcycleCcValue();
+  if (!cc) throw new Error('Informe a cilindrada da moto.');
+  if (state.vehicleType === 'MOTORCYCLE_UP_TO_300' && cc > 300) {
+    throw new Error('Para Motos até 300cc, informe uma cilindrada de até 300cc.');
+  }
+  if (state.vehicleType === 'MOTORCYCLE_OVER_300' && cc <= 300) {
+    throw new Error('Para Motos acima de 300cc, informe uma cilindrada acima de 300cc.');
+  }
+  return cc;
 }
 
 function syncZeroKmOptions() {
@@ -194,6 +268,10 @@ function formSnapshot() {
     manufactureYear: $('manufactureYear').value,
     fipeValue: $('fipeValue').value,
     zeroKm: isZeroKm(),
+    motorcycle: isMotorcycle(),
+    motorcycleCc: $('motorcycleCc')?.value || '',
+    observation: $('observation')?.value || '',
+    validityDate: $('validityDate')?.value || '',
     carOrigin: $('carOrigin').value,
     region: $('region').value
   };
@@ -240,10 +318,11 @@ async function restoreSession() {
     syncZeroKmOptions();
 
     Object.entries(saved.form || {}).forEach(([id, value]) => {
-      if (id !== 'consultantName' && id !== 'zeroKm' && $(id) && value != null) $(id).value = value;
+      if (id !== 'consultantName' && id !== 'zeroKm' && id !== 'motorcycle' && $(id) && value != null) $(id).value = value;
     });
     window.NHMoney?.refresh($('fipeValue'));
     syncZeroKmOptions();
+    syncMotorcycleOptions();
 
     if (saved.quoteId) {
       const quote = await api(quoteApiPath(`/${saved.quoteId}`));
@@ -273,6 +352,7 @@ function resetResults() {
 function updateConditionalFields() {
   $('car-origin-field').hidden = state.vehicleType !== 'CAR';
   $('region-field').hidden = !state.vehicleType.startsWith('MOTORCYCLE');
+  syncMotorcycleOptions();
   updateDiscountAvailability();
 }
 
@@ -293,7 +373,7 @@ function renderPlans() {
   cards.style.setProperty('--plan-count', state.plans.length);
   cards.innerHTML = state.plans.map(plan => `
     <article class="plan-card ${plan.code === state.selectedPlanCode ? 'selected' : ''}" data-code="${plan.code}">
-      ${plan.name.toLowerCase().includes('completo') ? '<span class="recommended">MAIS COMPLETO</span>' : ''}
+      ${plan.code === 'MOTO_PROMO_2026' ? '<span class="recommended">TABELA PROMOCIONAL</span>' : (plan.name.toLowerCase().includes('completo') ? '<span class="recommended">MAIS COMPLETO</span>' : '')}
       <div class="plan-card-head">
         <h3>${escapeHtml(plan.name)}</h3><p>${escapeHtml(plan.subtitle || '')}</p><span class="national-scope-badge">🌎 Abrangência nacional</span><strong>${brl.format(plan.monthlyValue)}</strong><span>valor mensal${Number(plan.mandatoryMonthlyFee || 0) > 0 ? ' com rastreador obrigatório' : ''}</span>
         ${Number(plan.oneTimeFee || 0) > 0 ? `<small class="mandatory-fee-note">Taxa única de instalação: ${brl.format(plan.oneTimeFee)}</small>` : ''}
@@ -428,11 +508,15 @@ function formPayload() {
     categoryCode: categoryCode(),
     region: effectiveRegion(),
     motorcycleOrigin: effectiveMotorcycleOrigin(),
+    motorcycle: isMotorcycle(),
+    motorcycleCc: motorcycleCcValue(),
+    observation: $('observation')?.value.trim() || null,
     selectedPlanCode: state.selectedPlanCode,
     selectedOptionalCodes: [...state.selectedOptionalCodes]
   };
   if (!isSelfService) {
     payload.consultantId = selectedConsultant.id;
+    payload.validityDate = $('validityDate')?.value || null;
     payload.discountPercent = Number(state.discountPercent || 0);
     payload.rearWindowBranding = state.rearWindowBranding || 'NOT_APPLICABLE';
   }
@@ -467,6 +551,8 @@ function renderQuote(quote, scroll = true) {
     <div><span>FIPE</span><strong>${brl.format(quote.fipeValue)}</strong></div>
     <div><span>Abrangência</span><strong>Nacional</strong></div>
     ${quote.motorcycleOrigin ? `<div><span>Origem da moto</span><strong>${quote.motorcycleOrigin === 'CAPITAL' ? 'Capital' : 'Demais cidades do Nordeste'}</strong></div>` : ''}
+    ${quote.motorcycleCc ? `<div><span>Cilindrada</span><strong>${escapeHtml(quote.motorcycleCc)} cc</strong></div>` : ''}
+    ${quote.observation ? `<div><span>Observação</span><strong>${escapeHtml(quote.observation)}</strong></div>` : ''}
     <div><span>Veículo 0 km</span><strong>${quote.zeroKm ? 'Sim' : 'Não'}</strong></div>
     <div><span>Valor da tabela</span><strong>${brl.format(baseValue)}</strong></div>
     ${mandatoryValue > 0 ? `<div><span>Acréscimo obrigatório</span><strong>${brl.format(mandatoryValue)}</strong></div>` : ''}
@@ -477,7 +563,7 @@ function renderQuote(quote, scroll = true) {
     ${discountPercent === 30 ? '<div><span>Condição do desconto</span><strong>Perfurado traseiro: somente NH</strong></div>' : ''}
     <div><span>Total mensal</span><strong>${brl.format(quote.monthlyValue)}</strong></div>
     ${oneTimeFee > 0 ? `<div><span>Taxa única de instalação</span><strong>${brl.format(oneTimeFee)}</strong></div>` : ''}
-    <div><span>Validade</span><strong>${quote.validUntil ? new Date(quote.validUntil).toLocaleString('pt-BR') : '5 dias'}</strong></div>
+    <div><span>Validade</span><strong>${quote.validUntil ? new Date(quote.validUntil).toLocaleDateString('pt-BR') : '—'}</strong></div>
     <div><span>Status</span><strong>${quoteStatusLabel(quote.status, quote.expired)}</strong></div>`;
 
   $('quote-optionals').innerHTML = selectedOptionals.length
@@ -512,6 +598,11 @@ function renderDecisionArea(quote) {
 }
 
 function renderInspectionStage(quote) {
+  if (quote.expired) {
+    $('decision-result').innerHTML = `
+      <div class="declined-box"><strong>Cotação expirada.</strong> Esta proposta não pode mais iniciar o Retrato NH. Gere uma nova cotação para continuar.</div>`;
+    return;
+  }
   if (isSelfService) {
     const currentInspectionUrl = quote.inspectionUrl
       ? (window.NH_URLS?.retratoUrl(quote.inspectionUrl) || quote.inspectionUrl)
@@ -867,9 +958,32 @@ $('vehicle-options').querySelectorAll('.vehicle-option').forEach(button => {
   });
 });
 
-['consultantName','customerName','customerCpf','whatsapp','plate','model','manufactureYear','fipeValue','carOrigin','region'].forEach(id => {
+['consultantName','customerName','customerCpf','whatsapp','plate','model','manufactureYear','fipeValue','carOrigin','region','motorcycleCc','observation'].forEach(id => {
   if (!$(id)) return;
   $(id).addEventListener('input', () => { resetResults(); clearError(); persistSession(); });
+});
+
+$('validityDate')?.addEventListener('change', () => {
+  clearError();
+  persistSession();
+});
+
+document.querySelectorAll('input[name="motorcycle"]').forEach(input => {
+  input.addEventListener('change', () => {
+    const wantsMotorcycle = input.value === 'true';
+    if (wantsMotorcycle && !isMotorcycle()) {
+      state.vehicleType = 'MOTORCYCLE_UP_TO_300';
+    } else if (!wantsMotorcycle && isMotorcycle()) {
+      state.vehicleType = 'CAR';
+    }
+    $('vehicle-options').querySelectorAll('.vehicle-option').forEach(item =>
+      item.classList.toggle('active', item.dataset.type === state.vehicleType)
+    );
+    updateConditionalFields();
+    resetResults();
+    clearError();
+    persistSession();
+  });
 });
 
 document.querySelectorAll('input[name="zeroKm"]').forEach(input => {
@@ -881,6 +995,7 @@ document.querySelectorAll('input[name="zeroKm"]').forEach(input => {
   });
 });
 syncZeroKmOptions();
+syncMotorcycleOptions();
 
 $('plate').addEventListener('input', event => event.target.value = event.target.value.toUpperCase());
 $('manufactureYear').value = new Date().getFullYear();
@@ -895,12 +1010,15 @@ $('quote-form').addEventListener('submit', async event => {
     if (!isZeroKm() && !$('plate').value.trim()) throw new Error('Informe a placa do veículo.');
     const fipeValue = parseMoney($('fipeValue').value);
     if (!fipeValue || fipeValue <= 0) throw new Error('Informe um valor FIPE válido.');
+    const motorcycleCc = validateMotorcycleForm();
     const result = await api(quoteApiPath('/options'), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         categoryCode: categoryCode(),
         region: effectiveRegion(),
         motorcycleOrigin: effectiveMotorcycleOrigin(),
+        motorcycle: isMotorcycle(),
+        motorcycleCc,
         fipeValue
       })
     });
@@ -921,6 +1039,10 @@ $('confirm-plan').addEventListener('click', async () => {
   setLoading(button, true, 'Salvando...', 'Confirmar plano e gerar cotação →');
   try {
     if (!isZeroKm() && !$('plate').value.trim()) throw new Error('Informe a placa do veículo.');
+    validateMotorcycleForm();
+    if (!isSelfService && !$('validityDate')?.value) {
+      throw new Error('Escolha a validade da cotação.');
+    }
     if (!isSelfService && [15, 30].includes(Number(state.discountPercent)) && !state.discountConfirmed) {
       throw new Error('Confirme a condição do perfurado do vigia traseiro para utilizar este desconto.');
     }
@@ -965,6 +1087,7 @@ $('new-quote').addEventListener('click', () => {
   if (zeroKmNo) zeroKmNo.checked = true;
   syncZeroKmOptions();
   state.vehicleType = 'CAR';
+  syncMotorcycleOptions();
   state.discountPercent = 0;
   state.rearWindowBranding = 'NOT_APPLICABLE';
   state.discountConfirmed = false;
@@ -1045,6 +1168,8 @@ function formatWhatsapp(value) {
 function configurePageMode() {
   if (!isSelfService) {
     if ($('discount-section')) $('discount-section').hidden = false;
+    if ($('validity-date-field')) $('validity-date-field').hidden = false;
+    if ($('validityDate')) { $('validityDate').required = true; $('validityDate').disabled = false; }
     $('consultantName').value = selectedConsultant.name;
     $('customer-cpf-field').hidden = false;
     $('customerCpf').required = true;
@@ -1055,6 +1180,8 @@ function configurePageMode() {
   if ($('discount-section')) $('discount-section').hidden = true;
   $('consultant-field').hidden = true;
   $('consultantName').required = false;
+  if ($('validity-date-field')) $('validity-date-field').hidden = true;
+  if ($('validityDate')) { $('validityDate').required = false; $('validityDate').disabled = true; }
   $('customer-cpf-field').hidden = false;
   $('customerCpf').required = true;
   $('whatsapp').required = true;
@@ -1080,6 +1207,7 @@ $('customerCpf')?.addEventListener('input', event => { event.target.value = form
 $('whatsapp').addEventListener('input', event => { event.target.value = formatWhatsapp(event.target.value); });
 
 configurePageMode();
+populateValidityOptions();
 updateConditionalFields();
 restoreSession().finally(() => {
   if (isSelfService) {

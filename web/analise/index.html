@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#070c40">
   <title>Equipe de Análise | Novo Horizonte</title>
   <link rel="icon" href="/assets/favicon-nh.png">
-  <link rel="stylesheet" href="/shared/portal.css?v=20260807-responsive-final-v2">
+  <link rel="stylesheet" href="/shared/portal.css?v=20260810-v31">
   <link rel="stylesheet" href="/shared/responsive.css?v=20260807-responsive-audit-v4">
   <link rel="stylesheet" href="/shared/brand-system.css?v=20260807-modals-v5">
 </head>
@@ -113,6 +113,20 @@
   </form>
 </dialog>
 
+<dialog id="analysis-confirm-dialog" class="admin-dialog">
+  <form method="dialog" class="dialog-card">
+    <div class="dialog-head">
+      <div><span class="eyebrow" style="color:#070c40">CONFIRMAÇÃO</span><h2 id="analysis-confirm-title">Confirmar ação</h2></div>
+      <button class="dialog-close" value="cancel" aria-label="Fechar">×</button>
+    </div>
+    <p id="analysis-confirm-text" class="muted"></p>
+    <div class="actions dialog-actions">
+      <button class="outline" value="cancel">Cancelar</button>
+      <button id="analysis-confirm-action" class="danger" value="default">Confirmar</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="decision-whatsapp-dialog" class="admin-dialog communication-dialog">
   <div class="dialog-card communication-card">
     <div id="decision-whatsapp-icon" class="communication-icon">!</div>
@@ -129,7 +143,7 @@
 
 <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
-<script src="/analise/analise.js?v=20260807-responsive-pdf-v2"></script>
+<script src="/analise/analise.js?v=20260810-v31"></script>
 <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
 </body>
 </html>

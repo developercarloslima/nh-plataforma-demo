@@ -166,8 +166,10 @@ public class InspectionResumableUploadService {
             requireStoredAsset(request, InspectionAssetType.SIGNATURE, signatureOrder, "Ainda falta enviar a assinatura do associado.");
             int vehicleDocumentOrder = requiredPhotos + 3;
             requireStoredAsset(request, InspectionAssetType.VEHICLE_DOCUMENT, vehicleDocumentOrder, "Ainda falta enviar o CRLV do veículo.");
-            int identityDocumentOrder = requiredPhotos + 4;
-            requireStoredAsset(request, InspectionAssetType.IDENTITY_DOCUMENT, identityDocumentOrder, "Ainda falta enviar o RG ou a CNH do associado.");
+            int identityDocumentFrontOrder = requiredPhotos + 4;
+            requireStoredAsset(request, InspectionAssetType.IDENTITY_DOCUMENT, identityDocumentFrontOrder, "Ainda falta enviar a frente do RG ou da CNH do associado.");
+            int identityDocumentBackOrder = requiredPhotos + 5;
+            requireStoredAsset(request, InspectionAssetType.IDENTITY_DOCUMENT, identityDocumentBackOrder, "Ainda falta enviar o verso do RG ou da CNH do associado.");
         }
 
         int videoOrder = newInspection ? requiredPhotos + 1 : 1;
@@ -185,11 +187,11 @@ public class InspectionResumableUploadService {
         Optional<InspectionAsset> existingReport = findAsset(
                 request,
                 InspectionAssetType.REPORT,
-                newInspection ? requiredPhotos + 5 : 2
+                newInspection ? requiredPhotos + 6 : 2
         );
         if (existingReport.isEmpty() || !storageService.isAvailable(existingReport.get())) {
             byte[] reportBytes = pdfService.generate(request);
-            int reportOrder = newInspection ? requiredPhotos + 5 : 2;
+            int reportOrder = newInspection ? requiredPhotos + 6 : 2;
             storageService.storeBytes(
                     request,
                     InspectionAssetType.REPORT,
@@ -255,6 +257,13 @@ public class InspectionResumableUploadService {
         if (request.isExpired()) {
             throw new IllegalArgumentException("Este link de vistoria expirou. Solicite um novo link ao consultor.");
         }
+        if (request.getRequestType() == InspectionRequestType.NEW_INSPECTION
+                && request.getQuotation() != null
+                && java.time.OffsetDateTime.now().isAfter(request.getQuotation().getValidUntil())) {
+            throw new IllegalArgumentException(
+                    "A cotação vinculada a esta vistoria expirou. Gere uma nova cotação para continuar."
+            );
+        }
     }
 
     private boolean isCompleted(InspectionRequest request) {
@@ -279,7 +288,8 @@ public class InspectionResumableUploadService {
         int videoOrder = newInspection ? requiredPhotos + 1 : 1;
         int signatureOrder = requiredPhotos + 2;
         int vehicleDocumentOrder = requiredPhotos + 3;
-        int identityDocumentOrder = requiredPhotos + 4;
+        int identityDocumentFrontOrder = requiredPhotos + 4;
+        int identityDocumentBackOrder = requiredPhotos + 5;
 
         switch (assetType) {
             case PHOTO -> {
@@ -310,10 +320,12 @@ public class InspectionResumableUploadService {
                 validateDocument(totalSize, contentType, "CRLV do veículo");
             }
             case IDENTITY_DOCUMENT -> {
-                if (!newInspection || sortOrder != identityDocumentOrder) {
+                if (!newInspection || (sortOrder != identityDocumentFrontOrder && sortOrder != identityDocumentBackOrder)) {
                     throw new IllegalArgumentException("A posição do documento pessoal é inválida para esta vistoria.");
                 }
-                validateDocument(totalSize, contentType, "RG ou CNH do associado");
+                validateDocument(totalSize, contentType, sortOrder == identityDocumentFrontOrder
+                        ? "a frente do RG ou da CNH do associado"
+                        : "o verso do RG ou da CNH do associado");
             }
             case OTHER_DOCUMENT -> {
                 if (sortOrder < 100 || sortOrder > 199) {

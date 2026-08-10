@@ -12,8 +12,12 @@ import org.springframework.web.util.UriUtils;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.Year;
+import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -21,8 +25,14 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
+
 @Service
 public class QuoteService {
+
+    private static final ZoneId BUSINESS_ZONE = ZoneId.of("America/Maceio");
+    private static final Set<Integer> ALLOWED_VALIDITY_DAYS = Set.of(5, 10, 15, 20, 25, 30);
+    private static final long MIN_VALIDITY_DAYS = 30;
+    private static final long MAX_VALIDITY_DAYS = 40;
 
     private final PlanRepository planRepository;
     private final QuotationRepository quotationRepository;
@@ -55,12 +65,17 @@ public class QuoteService {
         MotorcycleOrigin motorcycleOrigin = validateMotorcycleOrigin(
                 request.categoryCode(), request.effectiveMotorcycleOrigin()
         );
-        List<PlanOption> options = planRepository
-                .findAvailable(request.categoryCode(), Region.NATIONAL, motorcycleOrigin)
-                .stream()
-                .map(plan -> toPlanOption(plan, request.fipeValue()))
-                .flatMap(java.util.Optional::stream)
-                .toList();
+        Integer motorcycleCc = validateMotorcycleSelection(
+                request.categoryCode(), request.motorcycle(), request.motorcycleCc()
+        );
+        List<PlanOption> options = promotionalMotorcycleOption(request.fipeValue(), motorcycleCc)
+                .map(List::of)
+                .orElseGet(() -> planRepository
+                        .findAvailable(request.categoryCode(), Region.NATIONAL, motorcycleOrigin)
+                        .stream()
+                        .map(plan -> toPlanOption(plan, request.fipeValue()))
+                        .flatMap(java.util.Optional::stream)
+                        .toList());
 
         if (options.isEmpty()) {
             if ("SCOOTER_ELECTRIC".equalsIgnoreCase(request.categoryCode())) {
@@ -84,8 +99,11 @@ public class QuoteService {
         MotorcycleOrigin motorcycleOrigin = validateMotorcycleOrigin(
                 request.categoryCode(), request.effectiveMotorcycleOrigin()
         );
+        Integer motorcycleCc = validateMotorcycleSelection(
+                request.categoryCode(), request.motorcycle(), request.motorcycleCc()
+        );
         PlanSelection selection = resolvePlan(
-                request.selectedPlanCode(), request.categoryCode(), motorcycleOrigin,
+                request.selectedPlanCode(), request.categoryCode(), motorcycleOrigin, motorcycleCc,
                 request.fipeValue(), request.selectedOptionalCodes()
         );
         Consultant consultant = consultantService.findActive(request.consultantId());
@@ -104,6 +122,8 @@ public class QuoteService {
                 request.categoryCode(),
                 Region.NATIONAL,
                 motorcycleOrigin,
+                motorcycleCc,
+                request.observation(),
                 selection.plan().getCode(),
                 selection.plan().getName(),
                 selection.pricing().tableMonthlyValue(),
@@ -111,6 +131,7 @@ public class QuoteService {
                 selection.pricing().oneTimeFee(),
                 selection.pricing().mandatoryFeeDescription()
         );
+        quotation.defineValidity(resolveRequestedValidity(request.validityDate()));
         applyCatalogSnapshot(quotation, selection.plan(), selection.optionals());
         quotation.applyDiscount(request.discountPercent(), request.rearWindowBranding());
         return toResponse(quotationRepository.save(quotation));
@@ -130,8 +151,11 @@ public class QuoteService {
         MotorcycleOrigin motorcycleOrigin = validateMotorcycleOrigin(
                 request.categoryCode(), request.effectiveMotorcycleOrigin()
         );
+        Integer motorcycleCc = validateMotorcycleSelection(
+                request.categoryCode(), request.motorcycle(), request.motorcycleCc()
+        );
         PlanSelection selection = resolvePlan(
-                request.selectedPlanCode(), request.categoryCode(), motorcycleOrigin,
+                request.selectedPlanCode(), request.categoryCode(), motorcycleOrigin, motorcycleCc,
                 request.fipeValue(), request.selectedOptionalCodes()
         );
 
@@ -151,6 +175,8 @@ public class QuoteService {
                 request.categoryCode(),
                 Region.NATIONAL,
                 motorcycleOrigin,
+                motorcycleCc,
+                request.observation(),
                 selection.plan().getCode(),
                 selection.plan().getName(),
                 selection.pricing().tableMonthlyValue(),
@@ -158,6 +184,7 @@ public class QuoteService {
                 selection.pricing().oneTimeFee(),
                 selection.pricing().mandatoryFeeDescription()
         );
+        quotation.defineValidity(defaultValidity());
         applyCatalogSnapshot(quotation, selection.plan(), selection.optionals());
         return toResponse(quotationRepository.save(quotation));
     }
@@ -171,8 +198,7 @@ public class QuoteService {
         if (source == null) throw new IllegalArgumentException("Cotação não encontrada.");
         if (consultant == null) throw new IllegalArgumentException("Informe o consultor responsável.");
 
-        boolean expired = (source.getStatus() == QuoteStatus.CREATED
-                || source.getStatus() == QuoteStatus.UNDER_REVIEW)
+        boolean expired = isUsableStatus(source.getStatus())
                 && OffsetDateTime.now().isAfter(source.getValidUntil());
         if (!expired) {
             throw new IllegalArgumentException("Somente uma cotação vencida pode ser refeita.");
@@ -189,6 +215,7 @@ public class QuoteService {
                 source.getSelectedPlanCode(),
                 source.getCategoryCode(),
                 source.getMotorcycleOrigin(),
+                source.getMotorcycleCc(),
                 source.getFipeValue(),
                 optionalCodes
         );
@@ -207,6 +234,8 @@ public class QuoteService {
                 source.getCategoryCode(),
                 Region.NATIONAL,
                 source.getMotorcycleOrigin(),
+                source.getMotorcycleCc(),
+                source.getObservation(),
                 selection.plan().getCode(),
                 selection.plan().getName(),
                 selection.pricing().tableMonthlyValue(),
@@ -214,6 +243,7 @@ public class QuoteService {
                 selection.pricing().oneTimeFee(),
                 selection.pricing().mandatoryFeeDescription()
         );
+        recreated.defineValidity(defaultValidity());
         applyCatalogSnapshot(recreated, selection.plan(), selection.optionals());
         recreated.applyDiscount(source.getDiscountPercent(), source.getRearWindowBranding());
         return quotationRepository.save(recreated);
@@ -247,7 +277,8 @@ public class QuoteService {
             String requestedPlate,
             String model,
             Integer manufactureYear,
-            boolean zeroKm
+            boolean zeroKm,
+            String observation
     ) {
         if (quotation == null) throw new IllegalArgumentException("Cotação não encontrada.");
         if (customerName == null || customerName.isBlank()) {
@@ -265,7 +296,7 @@ public class QuoteService {
         String plate = validateAndNormalizePlate(requestedPlate, zeroKm);
 
         quotation.updateNonPricingData(
-                customerName, cpf, whatsapp, plate, model, manufactureYear, zeroKm
+                customerName, cpf, whatsapp, plate, model, manufactureYear, zeroKm, observation
         );
     }
 
@@ -273,20 +304,30 @@ public class QuoteService {
             String selectedPlanCode,
             String categoryCode,
             MotorcycleOrigin motorcycleOrigin,
+            Integer motorcycleCc,
             BigDecimal fipeValue,
             List<String> selectedOptionalCodes
     ) {
         Plan selectedPlan = planRepository.findByCodeAndActiveTrue(selectedPlanCode)
                 .orElseThrow(() -> new IllegalArgumentException("Plano selecionado não encontrado."));
 
-        if (!selectedPlan.getCategory().getCode().equals(categoryCode)
-                || selectedPlan.getRegion() != Region.NATIONAL
-                || selectedPlan.getMotorcycleOrigin() != motorcycleOrigin) {
-            throw new IllegalArgumentException("O plano selecionado não pertence à categoria ou origem da moto informada.");
+        boolean promotionalPlan = "MOTO_PROMO_2026".equals(selectedPlan.getCode());
+        PricingService.PricingResult pricing;
+        if (promotionalPlan) {
+            if (!"MOTORCYCLE_UP_TO_300".equals(categoryCode)) {
+                throw new IllegalArgumentException("A tabela promocional só pode ser usada para motos de até 300cc.");
+            }
+            pricing = pricingService.calculatePromotionalMotorcycle(selectedPlan, fipeValue, motorcycleCc)
+                    .orElseThrow(() -> new IllegalArgumentException("A moto não se enquadra nas condições da tabela promocional ativa."));
+        } else {
+            if (!selectedPlan.getCategory().getCode().equals(categoryCode)
+                    || selectedPlan.getRegion() != Region.NATIONAL
+                    || selectedPlan.getMotorcycleOrigin() != motorcycleOrigin) {
+                throw new IllegalArgumentException("O plano selecionado não pertence à categoria ou origem da moto informada.");
+            }
+            pricing = pricingService.calculateBreakdown(selectedPlan, fipeValue)
+                    .orElseThrow(() -> new IllegalArgumentException("O valor FIPE está fora da tabela do plano selecionado."));
         }
-
-        PricingService.PricingResult pricing = pricingService.calculateBreakdown(selectedPlan, fipeValue)
-                .orElseThrow(() -> new IllegalArgumentException("O valor FIPE está fora da tabela do plano selecionado."));
 
         List<PlanCoverage> optionals = resolveSelectedOptionals(selectedPlan, selectedOptionalCodes);
         return new PlanSelection(selectedPlan, pricing, optionals);
@@ -437,6 +478,9 @@ public class QuoteService {
                 quotation.getCategoryCode(),
                 quotation.getRegion(),
                 quotation.getMotorcycleOrigin(),
+                quotation.getCategoryCode() != null && quotation.getCategoryCode().startsWith("MOTORCYCLE"),
+                quotation.getMotorcycleCc(),
+                quotation.getObservation(),
                 quotation.getSelectedPlanCode(),
                 quotation.getSelectedPlanName(),
                 quotation.getBaseMonthlyValue(),
@@ -452,7 +496,7 @@ public class QuoteService {
                 quotation.getStatus(),
                 quotation.getCreatedAt(),
                 quotation.getValidUntil(),
-                (quotation.getStatus() == QuoteStatus.CREATED || quotation.getStatus() == QuoteStatus.UNDER_REVIEW)
+                isUsableStatus(quotation.getStatus())
                         && OffsetDateTime.now().isAfter(quotation.getValidUntil()),
                 quotation.getDecidedAt(),
                 quotation.getDriveFolderUrl(),
@@ -525,6 +569,56 @@ public class QuoteService {
         ));
     }
 
+    private PlanOption toPlanOption(Plan plan, PricingService.PricingResult pricing) {
+        return new PlanOption(
+                plan.getCode(),
+                plan.getName(),
+                plan.getSubtitle(),
+                pricing.tableMonthlyValue(),
+                pricing.mandatoryMonthlyFee(),
+                pricing.totalMonthlyValue(),
+                pricing.oneTimeFee(),
+                pricing.mandatoryFeeDescription(),
+                plan.getCoverages().stream()
+                        .map(item -> new CoverageOption(
+                                item.getCoverage().getCode(),
+                                item.getCoverage().getName(),
+                                item.getStatus(),
+                                item.getDetail(),
+                                item.getMonthlyPrice()
+                        ))
+                        .toList()
+        );
+    }
+
+    private java.util.Optional<PlanOption> promotionalMotorcycleOption(BigDecimal fipeValue, Integer motorcycleCc) {
+        if (motorcycleCc == null || motorcycleCc > 300) return java.util.Optional.empty();
+        return planRepository.findByCodeAndActiveTrue("MOTO_PROMO_2026")
+                .flatMap(plan -> pricingService.calculatePromotionalMotorcycle(plan, fipeValue, motorcycleCc)
+                        .map(pricing -> toPlanOption(plan, pricing)));
+    }
+
+    private Integer validateMotorcycleSelection(String categoryCode, Boolean motorcycle, Integer motorcycleCc) {
+        boolean motorcycleCategory = categoryCode != null && categoryCode.startsWith("MOTORCYCLE");
+        boolean declaredMotorcycle = motorcycle == null ? motorcycleCategory : Boolean.TRUE.equals(motorcycle);
+        if (motorcycleCategory != declaredMotorcycle) {
+            throw new IllegalArgumentException(motorcycleCategory
+                    ? "Marque que o veículo é moto para utilizar uma categoria de motocicleta."
+                    : "A opção 'É moto' só pode ser usada nas categorias de motocicletas.");
+        }
+        if (!motorcycleCategory) return null;
+        if (motorcycleCc == null || motorcycleCc < 1 || motorcycleCc > 2500) {
+            throw new IllegalArgumentException("Informe a cilindrada da moto.");
+        }
+        if ("MOTORCYCLE_UP_TO_300".equals(categoryCode) && motorcycleCc > 300) {
+            throw new IllegalArgumentException("A categoria Motos até 300cc aceita cilindrada de até 300cc.");
+        }
+        if ("MOTORCYCLE_OVER_300".equals(categoryCode) && motorcycleCc <= 300) {
+            throw new IllegalArgumentException("A categoria Motos acima de 300cc exige cilindrada acima de 300cc.");
+        }
+        return motorcycleCc;
+    }
+
     private String buildQuoteNumber() {
         String suffix = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         return "NH-" + Year.now().getValue() + "-" + suffix;
@@ -556,6 +650,42 @@ public class QuoteService {
             throw new IllegalArgumentException("A origem da moto só pode ser informada para motocicletas.");
         }
         return motorcycle ? motorcycleOrigin : null;
+    }
+
+    private OffsetDateTime resolveRequestedValidity(LocalDate requestedDate) {
+        if (requestedDate == null) {
+            throw new IllegalArgumentException("Escolha a validade da cotação.");
+        }
+        LocalDate today = LocalDate.now(BUSINESS_ZONE);
+        long daysAhead = ChronoUnit.DAYS.between(today, requestedDate);
+        if (daysAhead < MIN_VALIDITY_DAYS || daysAhead > MAX_VALIDITY_DAYS
+                || !ALLOWED_VALIDITY_DAYS.contains(requestedDate.getDayOfMonth())) {
+            throw new IllegalArgumentException(
+                    "Escolha um vencimento nos dias 5, 10, 15, 20, 25 ou 30, entre 30 e 40 dias à frente."
+            );
+        }
+        return requestedDate.atTime(LocalTime.MAX).atZone(BUSINESS_ZONE).toOffsetDateTime();
+    }
+
+    private OffsetDateTime defaultValidity() {
+        LocalDate today = LocalDate.now(BUSINESS_ZONE);
+        LocalDate selected = null;
+        for (long offset = MIN_VALIDITY_DAYS; offset <= MAX_VALIDITY_DAYS; offset++) {
+            LocalDate candidate = today.plusDays(offset);
+            if (ALLOWED_VALIDITY_DAYS.contains(candidate.getDayOfMonth())) {
+                selected = candidate;
+            }
+        }
+        if (selected == null) {
+            throw new IllegalStateException("Não foi encontrado um vencimento válido entre 30 e 40 dias.");
+        }
+        return selected.atTime(LocalTime.MAX).atZone(BUSINESS_ZONE).toOffsetDateTime();
+    }
+
+    private boolean isUsableStatus(QuoteStatus status) {
+        return status == QuoteStatus.CREATED
+                || status == QuoteStatus.UNDER_REVIEW
+                || status == QuoteStatus.ACCEPTED;
     }
 
     private void validateYear(Integer year) {

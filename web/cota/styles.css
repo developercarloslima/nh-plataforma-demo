@@ -1653,3 +1653,44 @@ footer {
     grid-column: 1 / -1;
   }
 }
+
+/* V31 — observação e tabela promocional de motocicletas */
+.form-grid textarea {
+  width: 100%;
+  min-height: 110px;
+  padding: 13px 14px;
+  border: 1px solid #cfd5e2;
+  border-radius: 12px;
+  background: #fff;
+  color: var(--navy);
+  outline: none;
+  resize: vertical;
+  line-height: 1.45;
+}
+.form-grid textarea:focus {
+  border-color: var(--navy);
+  box-shadow: 0 0 0 4px rgba(240, 240, 0, 0.24);
+}
+.plan-card[data-code="MOTO_PROMO_2026"] {
+  border-color: rgba(240, 240, 0, 0.85);
+  background: linear-gradient(180deg, #fffef2, #fff);
+}
+.plan-card[data-code="MOTO_PROMO_2026"] .recommended {
+  display: inline-flex;
+}
+@media (max-width: 620px) {
+  .form-grid textarea {
+    font-size: 16px;
+    min-height: 120px;
+  }
+}
+
+/* Validade da cotação — vencimentos comerciais */
+#validity-date-field select {
+  min-height: 50px;
+  background: #fff;
+  color: var(--navy);
+}
+#validity-date-field .field-help {
+  max-width: 760px;
+}

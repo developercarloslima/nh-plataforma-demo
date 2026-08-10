@@ -123,6 +123,22 @@ function releaseMediaUrls() {
   mediaObjectUrls.clear();
 }
 
+function confirmAnalysisAction(title, text, confirmLabel = 'Confirmar') {
+  return new Promise(resolve => {
+    const dialog = $('analysis-confirm-dialog');
+    const action = $('analysis-confirm-action');
+    $('analysis-confirm-title').textContent = title;
+    $('analysis-confirm-text').textContent = text;
+    action.textContent = confirmLabel;
+    const onClose = () => {
+      dialog.removeEventListener('close', onClose);
+      resolve(dialog.returnValue === 'default');
+    };
+    dialog.addEventListener('close', onClose);
+    dialog.showModal();
+  });
+}
+
 async function boot() {
   if (!token) return;
   try {
@@ -367,7 +383,7 @@ function renderInspectionFiles(item) {
         ? `<div class="inspection-media-preview"><div class="inspection-media-placeholder">▶ Vídeo disponível</div><video data-video-preview="${asset.id}" controls hidden></video></div>`
         : `<div class="inspection-media-preview"><div class="inspection-media-placeholder">${asset.type === 'REPORT' ? 'PDF' : 'DOCUMENTO'}</div></div>`;
     const actions = asset.available
-      ? `<div class="inspection-media-actions">${video ? `<button class="outline" data-play-video="${asset.id}" type="button">Reproduzir</button>` : ''}<button class="secondary" data-download-asset="${asset.id}" data-file-name="${esc(asset.fileName)}" type="button">Baixar</button></div>`
+      ? `<div class="inspection-media-actions">${video ? `<button class="outline" data-play-video="${asset.id}" type="button">Reproduzir</button>` : ''}<button class="secondary" data-download-asset="${asset.id}" data-file-name="${esc(asset.fileName)}" type="button">Baixar</button><button class="danger" data-delete-asset="${asset.id}" data-file-name="${esc(title)}" type="button">Excluir</button></div>`
       : '<div class="inspection-media-expired">Arquivo removido após 40 dias.</div>';
     return `<article class="inspection-media-card ${asset.available ? '' : 'expired'}">${preview}<div class="inspection-media-body"><strong>${esc(title)}</strong><small>${esc(asset.fileName)}</small><small>${formatBytes(asset.fileSize)} · ${esc(asset.contentType || 'arquivo')}</small>${actions}</div></article>`;
   }).join('');
@@ -379,6 +395,38 @@ function renderInspectionFiles(item) {
   grid.querySelectorAll('[data-play-video]').forEach(button => {
     button.addEventListener('click', () => playVideo(item.id, button.dataset.playVideo, button));
   });
+  grid.querySelectorAll('[data-delete-asset]').forEach(button => {
+    button.addEventListener('click', () => deleteInspectionAsset(
+      item.id, button.dataset.deleteAsset, button.dataset.fileName || 'arquivo', button
+    ));
+  });
+}
+
+async function deleteInspectionAsset(inspectionId, assetId, label, button) {
+  const confirmed = await confirmAnalysisAction(
+    'Excluir arquivo da vistoria?',
+    `O arquivo “${label}” será excluído definitivamente do banco de dados. Esta ação não pode ser desfeita.`,
+    'Excluir arquivo'
+  );
+  if (!confirmed) return;
+
+  const dialog = $('inspection-dialog');
+  button.disabled = true;
+  const original = button.textContent;
+  button.textContent = 'Excluindo...';
+  try {
+    await api(`/api/analysis/inspections/${encodeURIComponent(inspectionId)}/assets/${encodeURIComponent(assetId)}`, { method: 'DELETE' });
+    releaseMediaUrls();
+    if (dialog.open) dialog.close();
+    await load();
+    const updated = inspections.find(item => item.id === inspectionId);
+    if (updated) openInspection(inspectionId);
+    message('Arquivo excluído do banco de dados.', 'success');
+  } catch (error) {
+    message(error.message);
+    button.disabled = false;
+    button.textContent = original;
+  }
 }
 
 async function loadImagePreview(inspectionId, asset) {

@@ -91,6 +91,9 @@ public class ConsultantDashboardService {
         if (quotation.getStatus() != QuoteStatus.ACCEPTED) {
             throw new IllegalArgumentException("A cotação precisa estar aceita para iniciar a nova vistoria.");
         }
+        if (OffsetDateTime.now().isAfter(quotation.getValidUntil())) {
+            throw new IllegalArgumentException("Esta cotação expirou. Gere uma nova cotação antes de iniciar o Retrato NH.");
+        }
         quoteService.ensureCustomerCpf(quotation, requestedCpf);
 
         InspectionResponse created = retratoService.ensureForQuotation(quotation);
@@ -128,7 +131,8 @@ public class ConsultantDashboardService {
                 request.plate(),
                 request.model(),
                 request.manufactureYear(),
-                request.zeroKm()
+                request.zeroKm(),
+                request.observation()
         );
 
         InspectionRequest inspection = inspectionRepository.findByQuotation_Id(quotation.getId()).orElse(null);
@@ -248,7 +252,9 @@ public class ConsultantDashboardService {
     }
 
     private ConsultantQuoteSummary toQuote(Quotation item, InspectionRequest inspection) {
-        boolean expired = (item.getStatus() == QuoteStatus.CREATED || item.getStatus() == QuoteStatus.UNDER_REVIEW)
+        boolean expired = (item.getStatus() == QuoteStatus.CREATED
+                || item.getStatus() == QuoteStatus.UNDER_REVIEW
+                || item.getStatus() == QuoteStatus.ACCEPTED)
                 && OffsetDateTime.now().isAfter(item.getValidUntil());
         InspectionRequestStatus inspectionStatus = displayStatus(inspection);
         OffsetDateTime inspectionCompletedAt = inspection == null ? item.getInspectionCompletedAt() : inspection.getCompletedAt();
@@ -257,7 +263,7 @@ public class ConsultantDashboardService {
         return new ConsultantQuoteSummary(
                 item.getId(), item.getQuoteNumber(), item.getCustomerName(), item.getCustomerCpf(), item.getWhatsapp(),
                 item.getPlate(), item.isZeroKm(), item.getModel(), item.getManufactureYear(), item.getCategoryCode(),
-                item.getSelectedPlanName(), item.getMonthlyValue(), item.getStatus(), item.getCreatedAt(), item.getValidUntil(),
+                item.getMotorcycleCc(), item.getObservation(), item.getSelectedPlanName(), item.getMonthlyValue(), item.getStatus(), item.getCreatedAt(), item.getValidUntil(),
                 expired,
                 hasStoredCpf(item),
                 "/api/quotes/" + item.getId() + "/pdf",
@@ -282,6 +288,7 @@ public class ConsultantDashboardService {
         snapshot.put("categoryCode", String.valueOf(item.getCategoryCode()));
         snapshot.put("region", String.valueOf(item.getRegion()));
         snapshot.put("motorcycleOrigin", String.valueOf(item.getMotorcycleOrigin()));
+        snapshot.put("motorcycleCc", String.valueOf(item.getMotorcycleCc()));
         snapshot.put("selectedPlanCode", String.valueOf(item.getSelectedPlanCode()));
         snapshot.put("selectedPlanName", String.valueOf(item.getSelectedPlanName()));
         snapshot.put("baseMonthlyValue", String.valueOf(item.getBaseMonthlyValue()));

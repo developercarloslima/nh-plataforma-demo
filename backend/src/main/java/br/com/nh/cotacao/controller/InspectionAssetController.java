@@ -7,6 +7,7 @@ import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -40,6 +41,15 @@ public class InspectionAssetController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
                 .header("X-Content-Type-Options", "nosniff")
                 .body(body);
+    }
+
+    @DeleteMapping("/api/analysis/inspections/{inspectionId}/assets/{assetId}")
+    public ResponseEntity<Void> deleteAnalysisAsset(
+            @PathVariable UUID inspectionId,
+            @PathVariable UUID assetId
+    ) {
+        storageService.deleteAsset(inspectionId, assetId);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping({

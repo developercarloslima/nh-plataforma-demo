@@ -274,6 +274,17 @@ public class InspectionAssetStorageService {
         return asset;
     }
 
+    @Transactional
+    public void deleteAsset(UUID inspectionId, UUID assetId) {
+        InspectionAsset asset = assetRepository.findByIdAndInspectionRequest_Id(assetId, inspectionId)
+                .orElseThrow(() -> new IllegalArgumentException("Arquivo da vistoria não encontrado."));
+        String fileName = asset.getFileName();
+        assetRepository.delete(asset);
+        assetRepository.flush();
+        log.info("Retrato NH: arquivo excluído individualmente inspectionId={} assetId={} fileName={}",
+                inspectionId, assetId, fileName);
+    }
+
     @Transactional(readOnly = true)
     public byte[] readAll(UUID assetId) {
         try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {

@@ -61,6 +61,41 @@ public class PricingService {
         ));
     }
 
+    /**
+     * Regra promocional de motocicletas. A tabela só é considerada quando o
+     * plano MOTO_PROMO_2026 está ativo no catálogo administrativo.
+     * Prioridade: FIPE até R$ 11.000 = R$ 35; depois 151-160cc = R$ 45;
+     * 161-300cc = R$ 75. Fora dessas condições, não há preço promocional.
+     */
+    public Optional<PricingResult> calculatePromotionalMotorcycle(
+            Plan plan, BigDecimal fipeValue, Integer motorcycleCc
+    ) {
+        if (plan == null || !"MOTO_PROMO_2026".equals(plan.getCode()) || !Boolean.TRUE.equals(plan.getActive())) {
+            return Optional.empty();
+        }
+        if (fipeValue == null || fipeValue.signum() <= 0 || motorcycleCc == null || motorcycleCc < 1 || motorcycleCc > 300) {
+            return Optional.empty();
+        }
+
+        BigDecimal monthly;
+        if (fipeValue.compareTo(new BigDecimal("11000.00")) <= 0) {
+            monthly = new BigDecimal("35.00");
+        } else if (motorcycleCc >= 151 && motorcycleCc <= 160) {
+            monthly = new BigDecimal("45.00");
+        } else if (motorcycleCc >= 161 && motorcycleCc <= 300) {
+            monthly = new BigDecimal("75.00");
+        } else {
+            return Optional.empty();
+        }
+
+        return Optional.of(new PricingResult(
+                monthly.setScale(2, RoundingMode.HALF_UP),
+                BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP),
+                BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP),
+                null
+        ));
+    }
+
     private String formatCurrency(BigDecimal value) {
         return NumberFormat.getCurrencyInstance(Locale.forLanguageTag("pt-BR")).format(value);
     }

@@ -30,6 +30,8 @@ public final class ConsultantDashboardDtos {
             String model,
             Integer manufactureYear,
             String categoryCode,
+            Integer motorcycleCc,
+            String observation,
             String selectedPlanName,
             BigDecimal monthlyValue,
             QuoteStatus status,
@@ -87,7 +89,8 @@ public final class ConsultantDashboardDtos {
             @Size(max = 10) String plate,
             @NotBlank @Size(max = 120) String model,
             @NotNull @Min(1950) @Max(2100) Integer manufactureYear,
-            @NotNull Boolean zeroKm
+            @NotNull Boolean zeroKm,
+            @Size(max = 1200) String observation
     ) {}
 
     public record ConsultantQuoteDecisionRequest(

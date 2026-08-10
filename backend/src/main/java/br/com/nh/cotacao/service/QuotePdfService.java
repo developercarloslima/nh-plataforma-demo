@@ -165,10 +165,26 @@ public class QuotePdfService {
         addLabelValue(table, "Ano", quotation.getManufactureYear().toString());
         addLabelValue(table, "Veículo 0 km", quotation.isZeroKm() ? "Sim" : "Não");
         addLabelValue(table, "Valor FIPE", formatCurrency(quotation.getFipeValue()));
+        if (quotation.getMotorcycleCc() != null) {
+            addLabelValue(table, "Cilindrada", quotation.getMotorcycleCc() + " cc");
+        }
         addLabelValue(table, "Emitida em", quotation.getCreatedAt().format(DATE_TIME));
         addLabelValue(table, "Válida até", quotation.getValidUntil().format(DATE_TIME));
         addLabelValue(table, "Validade", "5 dias a partir da emissão");
         document.add(table);
+
+        if (quotation.getObservation() != null && !quotation.getObservation().isBlank()) {
+            document.add(sectionTitle("OBSERVAÇÃO DA COTAÇÃO"));
+            PdfPTable observation = new PdfPTable(1);
+            observation.setWidthPercentage(100);
+            observation.setSpacingAfter(16);
+            PdfPCell cell = new PdfPCell(new Phrase(quotation.getObservation(), font(9, Font.NORMAL, TEXT)));
+            cell.setBackgroundColor(LIGHT);
+            cell.setBorderColor(LINE);
+            cell.setPadding(10);
+            observation.addCell(cell);
+            document.add(observation);
+        }
     }
 
     private void addPlan(Document document, Quotation quotation) throws DocumentException {
@@ -485,7 +501,8 @@ public class QuotePdfService {
 
     private String statusLabel(Quotation quotation) {
         if ((quotation.getStatus() == br.com.nh.cotacao.entity.QuoteStatus.CREATED
-                || quotation.getStatus() == br.com.nh.cotacao.entity.QuoteStatus.UNDER_REVIEW)
+                || quotation.getStatus() == br.com.nh.cotacao.entity.QuoteStatus.UNDER_REVIEW
+                || quotation.getStatus() == br.com.nh.cotacao.entity.QuoteStatus.ACCEPTED)
                 && java.time.OffsetDateTime.now().isAfter(quotation.getValidUntil())) {
             return "EXPIRADA";
         }

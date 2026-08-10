@@ -166,6 +166,8 @@ public final class AdminDtos {
             String categoryCode,
             Region region,
             MotorcycleOrigin motorcycleOrigin,
+            Integer motorcycleCc,
+            String observation,
             String selectedPlanName,
             BigDecimal preDiscountMonthlyValue,
             Integer discountPercent,

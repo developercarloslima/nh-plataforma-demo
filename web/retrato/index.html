@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#070c40">
   <title>Retrato NH | Vistoria Digital</title>
   <link rel="icon" href="/assets/favicon-nh.png">
-  <link rel="stylesheet" href="/shared/portal.css?v=20260807-responsive-final-v2">
+  <link rel="stylesheet" href="/shared/portal.css?v=20260810-v31">
   <link rel="stylesheet" href="/shared/responsive.css?v=20260807-responsive-audit-v4">
   <link rel="stylesheet" href="/shared/brand-system.css?v=20260807-modals-v5">
 </head>
@@ -92,7 +92,7 @@
       <section id="registration-fields" class="registration-fields" hidden>
         <span class="eyebrow" style="color:#070c40">CONCLUSÃO DO CADASTRO</span>
         <h3>Endereço, documentos e assinatura do associado</h3>
-        <p class="muted">Para venda nova, o endereço, o CRLV, o RG ou a CNH e a assinatura são obrigatórios.</p>
+        <p class="muted">Para venda nova, o endereço, o CRLV, a frente e o verso do RG ou da CNH e a assinatura são obrigatórios.</p>
 
         <label for="residence-address">Endereço completo de residência *</label>
         <textarea id="residence-address" rows="4" maxlength="600" placeholder="Rua, número, complemento, bairro, cidade, estado e CEP"></textarea>
@@ -106,11 +106,18 @@
             <strong id="vehicle-document-status">Documento pendente.</strong>
           </label>
 
-          <label class="document-upload-card" for="identity-document">
-            <span>RG ou CNH do associado *</span>
-            <small>Envie uma foto nítida ou o arquivo PDF do documento oficial.</small>
-            <input id="identity-document" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.doc,.docx,.odt,.rtf,.txt">
-            <strong id="identity-document-status">Documento pendente.</strong>
+          <label class="document-upload-card" for="identity-document-front">
+            <span>RG ou CNH — frente *</span>
+            <small>Envie a frente do documento oficial em foto nítida ou arquivo.</small>
+            <input id="identity-document-front" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.doc,.docx,.odt,.rtf,.txt">
+            <strong id="identity-document-front-status">Frente pendente.</strong>
+          </label>
+
+          <label class="document-upload-card" for="identity-document-back">
+            <span>RG ou CNH — verso *</span>
+            <small>Envie o verso do mesmo documento oficial.</small>
+            <input id="identity-document-back" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.doc,.docx,.odt,.rtf,.txt">
+            <strong id="identity-document-back-status">Verso pendente.</strong>
           </label>
         </div>
         <div class="signature-block">
@@ -222,7 +229,7 @@
 </section>
 
 <script src="/shared/config.js?v=20260804-current-origin"></script>
-<script src="/retrato/retrato.js?v=20260807-discount-validation-v1"></script>
+<script src="/retrato/retrato.js?v=20260810-v31"></script>
 <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
 </body>
 </html>
