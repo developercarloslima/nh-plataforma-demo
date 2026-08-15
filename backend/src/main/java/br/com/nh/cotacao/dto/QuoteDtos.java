@@ -9,8 +9,8 @@ import br.com.nh.cotacao.entity.Region;
 import jakarta.validation.constraints.*;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -24,7 +24,8 @@ public final class QuoteDtos {
             MotorcycleOrigin motorcycleOrigin,
             @NotNull @DecimalMin("0.01") BigDecimal fipeValue,
             Boolean motorcycle,
-            @Min(1) @Max(2500) Integer motorcycleCc
+            @Min(1) @Max(2500) Integer motorcycleCc,
+            @Size(max = 40) String promoMotorcycleTier
     ) {
         public MotorcycleOrigin effectiveMotorcycleOrigin() {
             if (motorcycleOrigin != null) return motorcycleOrigin;
@@ -80,8 +81,9 @@ public final class QuoteDtos {
             MotorcycleOrigin motorcycleOrigin,
             Boolean motorcycle,
             @Min(1) @Max(2500) Integer motorcycleCc,
+            @Size(max = 40) String promoMotorcycleTier,
             @Size(max = 1200) String observation,
-            @NotNull LocalDate validityDate,
+            @NotNull LocalDate firstBillingDueDate,
             @NotBlank String selectedPlanCode,
             @Size(max = 20) List<@NotBlank String> selectedOptionalCodes,
             @Min(0) @Max(30) Integer discountPercent,
@@ -113,7 +115,9 @@ public final class QuoteDtos {
             MotorcycleOrigin motorcycleOrigin,
             Boolean motorcycle,
             @Min(1) @Max(2500) Integer motorcycleCc,
+            @Size(max = 40) String promoMotorcycleTier,
             @Size(max = 1200) String observation,
+            @NotNull LocalDate firstBillingDueDate,
             @NotBlank String selectedPlanCode,
             @Size(max = 20) List<@NotBlank String> selectedOptionalCodes
     ) {
@@ -166,6 +170,8 @@ public final class QuoteDtos {
             boolean motorcycle,
             Integer motorcycleCc,
             String observation,
+            Integer billingDueDay,
+            LocalDate firstBillingDueDate,
             String selectedPlanCode,
             String selectedPlanName,
             BigDecimal baseMonthlyValue,

@@ -9,4 +9,5 @@ import java.util.Optional;
 public interface VehicleCategoryRepository extends JpaRepository<VehicleCategory, Long> {
     Optional<VehicleCategory> findByCode(String code);
     List<VehicleCategory> findAllByOrderByNameAsc();
+    List<VehicleCategory> findAllByActiveTrueOrderByNameAsc();
 }

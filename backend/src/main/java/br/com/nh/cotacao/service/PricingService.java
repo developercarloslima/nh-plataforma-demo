@@ -2,11 +2,13 @@ package br.com.nh.cotacao.service;
 
 import br.com.nh.cotacao.entity.Plan;
 import br.com.nh.cotacao.repository.PriceRangeRepository;
+import br.com.nh.cotacao.repository.PromotionalMotorcyclePriceRepository;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.NumberFormat;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -14,10 +16,25 @@ import java.util.Optional;
 public class PricingService {
 
     private final PriceRangeRepository priceRangeRepository;
+    private final PromotionalMotorcyclePriceRepository promotionalMotorcyclePriceRepository;
 
-    public PricingService(PriceRangeRepository priceRangeRepository) {
+    public PricingService(
+            PriceRangeRepository priceRangeRepository,
+            PromotionalMotorcyclePriceRepository promotionalMotorcyclePriceRepository
+    ) {
         this.priceRangeRepository = priceRangeRepository;
+        this.promotionalMotorcyclePriceRepository = promotionalMotorcyclePriceRepository;
     }
+
+    public record PromotionalMotorcyclePriceView(
+            String tierCode,
+            String label,
+            Integer minCc,
+            Integer maxCc,
+            BigDecimal minFipe,
+            BigDecimal maxFipe,
+            BigDecimal monthlyPrice
+    ) {}
 
     public record PricingResult(
             BigDecimal tableMonthlyValue,
@@ -28,6 +45,25 @@ public class PricingService {
         public BigDecimal totalMonthlyValue() {
             return tableMonthlyValue.add(mandatoryMonthlyFee).setScale(2, RoundingMode.HALF_UP);
         }
+    }
+
+    public List<PromotionalMotorcyclePriceView> promotionalMotorcyclePrices() {
+        return promotionalMotorcyclePriceRepository.findAllByOrderBySortOrderAsc().stream()
+                .map(item -> new PromotionalMotorcyclePriceView(
+                        item.getTierCode(), item.getLabel(), item.getMinCc(), item.getMaxCc(), item.getMinFipe(), item.getMaxFipe(),
+                        item.getMonthlyPrice().setScale(2, RoundingMode.HALF_UP)
+                ))
+                .toList();
+    }
+
+    public Optional<String> findMatchingPromotionalTierCode(BigDecimal fipeValue, Integer motorcycleCc) {
+        if (fipeValue == null || fipeValue.signum() <= 0 || motorcycleCc == null || motorcycleCc < 1) {
+            return Optional.empty();
+        }
+        return promotionalMotorcyclePriceRepository.findAllByOrderBySortOrderAsc().stream()
+                .filter(item -> item.matches(fipeValue, motorcycleCc))
+                .map(item -> item.getTierCode())
+                .findFirst();
     }
 
     public Optional<BigDecimal> calculate(Plan plan, BigDecimal fipeValue) {
@@ -64,36 +100,28 @@ public class PricingService {
     /**
      * Regra promocional de motocicletas. A tabela só é considerada quando o
      * plano MOTO_PROMO_2026 está ativo no catálogo administrativo.
-     * Prioridade: FIPE até R$ 11.000 = R$ 35; depois 151-160cc = R$ 45;
-     * 161-300cc = R$ 75. Fora dessas condições, não há preço promocional.
+     * As faixas, limites de cilindrada/FIPE e mensalidades são mantidos na aba Valores do painel administrativo.
+     * A faixa escolhida na cotação é validada contra as condições atualmente salvas pelo Admin.
      */
     public Optional<PricingResult> calculatePromotionalMotorcycle(
-            Plan plan, BigDecimal fipeValue, Integer motorcycleCc
+            Plan plan, BigDecimal fipeValue, Integer motorcycleCc, String tierCode
     ) {
         if (plan == null || !"MOTO_PROMO_2026".equals(plan.getCode()) || !Boolean.TRUE.equals(plan.getActive())) {
             return Optional.empty();
         }
-        if (fipeValue == null || fipeValue.signum() <= 0 || motorcycleCc == null || motorcycleCc < 1 || motorcycleCc > 300) {
+        if (fipeValue == null || fipeValue.signum() <= 0 || motorcycleCc == null || motorcycleCc < 1 || motorcycleCc > 2500) {
             return Optional.empty();
         }
+        if (tierCode == null || tierCode.isBlank()) return Optional.empty();
 
-        BigDecimal monthly;
-        if (fipeValue.compareTo(new BigDecimal("11000.00")) <= 0) {
-            monthly = new BigDecimal("35.00");
-        } else if (motorcycleCc >= 151 && motorcycleCc <= 160) {
-            monthly = new BigDecimal("45.00");
-        } else if (motorcycleCc >= 161 && motorcycleCc <= 300) {
-            monthly = new BigDecimal("75.00");
-        } else {
-            return Optional.empty();
-        }
-
-        return Optional.of(new PricingResult(
-                monthly.setScale(2, RoundingMode.HALF_UP),
-                BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP),
-                BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP),
-                null
-        ));
+        return promotionalMotorcyclePriceRepository.findByTierCode(tierCode.trim())
+                .filter(item -> item.matches(fipeValue, motorcycleCc))
+                .map(item -> new PricingResult(
+                        item.getMonthlyPrice().setScale(2, RoundingMode.HALF_UP),
+                        BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP),
+                        BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP),
+                        null
+                ));
     }
 
     private String formatCurrency(BigDecimal value) {

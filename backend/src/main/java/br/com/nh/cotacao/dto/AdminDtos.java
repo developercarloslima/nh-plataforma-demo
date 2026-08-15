@@ -11,13 +11,16 @@ import jakarta.validation.constraints.*;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
 public final class AdminDtos {
     private AdminDtos() {}
 
-    public record CategoryResponse(Long id, String code, String name) {}
+    public record CategoryResponse(Long id, String code, String name, boolean active) {}
+
+    public record UpdateCategoryStatusRequest(@NotNull Boolean active) {}
 
     public record PriceRangeResponse(
             Long id,
@@ -37,6 +40,17 @@ public final class AdminDtos {
             String planName,
             String coverageName,
             String detail,
+            BigDecimal monthlyPrice
+    ) {}
+
+    public record PromotionalMotorcyclePriceResponse(
+            Long id,
+            String tierCode,
+            String label,
+            Integer minCc,
+            Integer maxCc,
+            BigDecimal minFipe,
+            BigDecimal maxFipe,
             BigDecimal monthlyPrice
     ) {}
 
@@ -139,9 +153,28 @@ public final class AdminDtos {
 
     public record UpdatePriceRequest(@NotNull @DecimalMin("0.00") BigDecimal monthlyPrice) {}
 
+    public record UpdatePromotionalMotorcyclePriceRequest(
+            @NotBlank @Size(max = 120) String label,
+            @NotNull @Min(1) @Max(2500) Integer minCc,
+            @NotNull @Min(1) @Max(2500) Integer maxCc,
+            @NotNull @DecimalMin("0.00") BigDecimal minFipe,
+            @DecimalMin("0.00") BigDecimal maxFipe,
+            @NotNull @DecimalMin("0.00") BigDecimal monthlyPrice
+    ) {}
+
     public record UpdateQuoteStatusRequest(
             @NotNull QuoteStatus status,
             @Size(max = 1200) String adminNote
+    ) {}
+
+    public record UpdateQuoteConsultantRequest(@NotNull UUID consultantId) {}
+
+    public record UpdatePublicQuoteAssignmentSettingsRequest(@NotNull Boolean enabled) {}
+
+    public record PublicQuoteAssignmentSettingsResponse(
+            boolean enabled,
+            String updatedBy,
+            OffsetDateTime updatedAt
     ) {}
 
     public record UpdateInspectionStatusRequest(
@@ -192,12 +225,15 @@ public final class AdminDtos {
     public record AdminInspectionResponse(
             UUID id,
             String requestType,
+            String vehicleType,
             String associateName,
             String maskedCpf,
             String whatsapp,
             String plate,
             String residenceAddress,
             String contractedPlan,
+            Integer billingDueDay,
+            LocalDate firstBillingDueDate,
             Integer discountPercent,
             RearWindowBranding rearWindowBranding,
             String signatureUrl,

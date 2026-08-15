@@ -3,6 +3,7 @@ package br.com.nh.cotacao.controller;
 import br.com.nh.cotacao.dto.AdminDtos.AdminQuoteResponse;
 import br.com.nh.cotacao.dto.AdminDtos.DeleteSummary;
 import br.com.nh.cotacao.dto.AdminDtos.UpdateQuoteStatusRequest;
+import br.com.nh.cotacao.dto.AdminDtos.UpdateQuoteConsultantRequest;
 import br.com.nh.cotacao.security.PortalPrincipal;
 import br.com.nh.cotacao.service.AdminActivityService;
 import jakarta.validation.Valid;
@@ -21,6 +22,15 @@ public class AdminQuoteController {
 
     @GetMapping
     public List<AdminQuoteResponse> list() { return service.quotes(); }
+
+    @PatchMapping("/{id}/consultant")
+    public AdminQuoteResponse updateConsultant(
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateQuoteConsultantRequest request,
+            Authentication auth
+    ) {
+        return service.updateQuoteConsultant(id, request, username(auth));
+    }
 
     @PatchMapping("/{id}/status")
     public AdminQuoteResponse updateStatus(

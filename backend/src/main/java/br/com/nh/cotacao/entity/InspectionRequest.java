@@ -141,9 +141,6 @@ public class InspectionRequest {
         if (quotation == null || quotation.getStatus() != QuoteStatus.ACCEPTED) {
             throw new IllegalArgumentException("A cotação precisa estar aceita para iniciar a vistoria.");
         }
-        if (OffsetDateTime.now().isAfter(quotation.getValidUntil())) {
-            throw new IllegalArgumentException("Esta cotação expirou e não pode mais iniciar uma nova vistoria.");
-        }
         if (quotation.getCustomerCpf() == null || quotation.getCustomerCpf().isBlank()) {
             throw new IllegalArgumentException("A cotação não possui CPF para gerar o link da vistoria.");
         }
@@ -263,6 +260,23 @@ public class InspectionRequest {
                 || status == InspectionRequestStatus.CREATED) {
             status = InspectionRequestStatus.UPLOADING_FILES;
         }
+    }
+
+    /**
+     * Reabre a vistoria quando um arquivo enviado é rejeitado/excluído na análise.
+     * Os demais arquivos válidos permanecem associados à vistoria e o mesmo link
+     * público volta a aceitar somente os slots que estiverem faltando.
+     */
+    public void reopenForMissingFiles() {
+        this.status = InspectionRequestStatus.WAITING_FILES;
+        this.completedAt = null;
+        this.completionMessageSentAt = null;
+        this.decisionMessageSentAt = null;
+        this.driveFolderId = null;
+        this.driveFolderUrl = null;
+        this.reportFileId = null;
+        this.reportUrl = null;
+        this.expiresAt = OffsetDateTime.now().plusDays(7);
     }
 
     public void registerResidenceAddress(String address) {

@@ -758,3 +758,48 @@ button:focus-visible,
 /* V31 — documentos da venda nova: CRLV + identidade frente e verso */
 @media (min-width:901px){.document-upload-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (min-width:681px) and (max-width:900px){.document-upload-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* V38 visual — ações dos arquivos da vistoria responsivas em qualquer largura */
+.inspection-media-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  margin-top: 8px;
+}
+
+.inspection-media-actions > button,
+.inspection-media-actions > a {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0 !important;
+  min-height: 44px;
+  padding: 10px 8px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* Exclusão/solicitação sempre ganha a linha inteira. */
+.inspection-media-actions > .danger {
+  grid-column: 1 / -1;
+}
+
+/* Quando existem apenas Baixar + Excluir, ambos ocupam a largura inteira. */
+.inspection-media-actions > :first-child:nth-last-child(2) {
+  grid-column: 1 / -1;
+}
+
+/* Em cards muito estreitos, nenhuma ação fica lado a lado. */
+@media (max-width: 460px) {
+  .inspection-media-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .inspection-media-actions > * {
+    grid-column: 1 !important;
+  }
+}

@@ -88,11 +88,11 @@ public class ConsultantDashboardService {
         Consultant consultant = consultantService.findActive(consultantId);
         Quotation quotation = findOwnedQuotation(consultant, quoteId);
         repairOwnership(quotation, consultant);
+        if (OffsetDateTime.now().isAfter(quotation.getValidUntil())) {
+            throw new IllegalArgumentException("Esta cotação expirou e não pode mais iniciar uma nova vistoria. Refaça a cotação.");
+        }
         if (quotation.getStatus() != QuoteStatus.ACCEPTED) {
             throw new IllegalArgumentException("A cotação precisa estar aceita para iniciar a nova vistoria.");
-        }
-        if (OffsetDateTime.now().isAfter(quotation.getValidUntil())) {
-            throw new IllegalArgumentException("Esta cotação expirou. Gere uma nova cotação antes de iniciar o Retrato NH.");
         }
         quoteService.ensureCustomerCpf(quotation, requestedCpf);
 
@@ -252,9 +252,7 @@ public class ConsultantDashboardService {
     }
 
     private ConsultantQuoteSummary toQuote(Quotation item, InspectionRequest inspection) {
-        boolean expired = (item.getStatus() == QuoteStatus.CREATED
-                || item.getStatus() == QuoteStatus.UNDER_REVIEW
-                || item.getStatus() == QuoteStatus.ACCEPTED)
+        boolean expired = (item.getStatus() == QuoteStatus.CREATED || item.getStatus() == QuoteStatus.UNDER_REVIEW)
                 && OffsetDateTime.now().isAfter(item.getValidUntil());
         InspectionRequestStatus inspectionStatus = displayStatus(inspection);
         OffsetDateTime inspectionCompletedAt = inspection == null ? item.getInspectionCompletedAt() : inspection.getCompletedAt();

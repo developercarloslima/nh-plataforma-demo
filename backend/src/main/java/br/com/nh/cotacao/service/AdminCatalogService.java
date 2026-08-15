@@ -19,6 +19,7 @@ public class AdminCatalogService {
     private final CoverageRepository coverageRepository;
     private final VehicleCategoryRepository categoryRepository;
     private final CatalogChangeAuditRepository auditRepository;
+    private final PromotionalMotorcyclePriceRepository promotionalMotorcyclePriceRepository;
 
     public AdminCatalogService(
             PriceRangeRepository priceRepository,
@@ -26,7 +27,8 @@ public class AdminCatalogService {
             PlanRepository planRepository,
             CoverageRepository coverageRepository,
             VehicleCategoryRepository categoryRepository,
-            CatalogChangeAuditRepository auditRepository
+            CatalogChangeAuditRepository auditRepository,
+            PromotionalMotorcyclePriceRepository promotionalMotorcyclePriceRepository
     ) {
         this.priceRepository = priceRepository;
         this.planCoverageRepository = planCoverageRepository;
@@ -34,13 +36,30 @@ public class AdminCatalogService {
         this.coverageRepository = coverageRepository;
         this.categoryRepository = categoryRepository;
         this.auditRepository = auditRepository;
+        this.promotionalMotorcyclePriceRepository = promotionalMotorcyclePriceRepository;
     }
 
     @Transactional(readOnly = true)
     public List<CategoryResponse> categories() {
         return categoryRepository.findAllByOrderByNameAsc().stream()
-                .map(item -> new CategoryResponse(item.getId(), item.getCode(), item.getName()))
+                .map(this::toCategoryResponse)
                 .toList();
+    }
+
+    @Transactional
+    public CategoryResponse updateCategoryStatus(Long id, UpdateCategoryStatusRequest request, String username) {
+        VehicleCategory category = findCategory(id);
+        boolean oldActive = Boolean.TRUE.equals(category.getActive());
+        boolean newActive = Boolean.TRUE.equals(request.active());
+        if (oldActive == newActive) return toCategoryResponse(category);
+
+        category.updateActive(newActive);
+        categoryRepository.save(category);
+        auditRepository.save(CatalogChangeAudit.createText(
+                "VEHICLE_CATEGORY", category.getId(), category.getName() + (newActive ? " ativada" : " desativada"),
+                "ativo=" + oldActive, "ativo=" + newActive, username
+        ));
+        return toCategoryResponse(category);
     }
 
     @Transactional(readOnly = true)
@@ -86,6 +105,45 @@ public class AdminCatalogService {
         priceRepository.delete(range);
         auditRepository.save(CatalogChangeAudit.createText(
                 "PRICE_RANGE", id, description, old, null, username
+        ));
+    }
+
+    @Transactional(readOnly = true)
+    public List<PromotionalMotorcyclePriceResponse> promotionalMotorcyclePrices() {
+        return promotionalMotorcyclePriceRepository.findAllByOrderBySortOrderAsc().stream()
+                .map(this::toPromotionalMotorcyclePriceResponse)
+                .toList();
+    }
+
+    @Transactional
+    public PromotionalMotorcyclePriceResponse updatePromotionalMotorcyclePrice(
+            Long id, UpdatePromotionalMotorcyclePriceRequest request, String username
+    ) {
+        PromotionalMotorcyclePrice item = promotionalMotorcyclePriceRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Faixa promocional de motocicleta não encontrada."));
+        String old = promotionalMotorcyclePriceSummary(item);
+        item.updateConfiguration(
+                request.label(), request.minFipe(), request.maxFipe(),
+                request.minCc(), request.maxCc(), request.monthlyPrice()
+        );
+        promotionalMotorcyclePriceRepository.save(item);
+        auditRepository.save(CatalogChangeAudit.createText(
+                "PROMO_MOTORCYCLE_PRICE", item.getId(),
+                "Faixa promocional alterada — " + item.getLabel(),
+                old, promotionalMotorcyclePriceSummary(item), username
+        ));
+        return toPromotionalMotorcyclePriceResponse(item);
+    }
+
+    @Transactional
+    public void deletePromotionalMotorcyclePrice(Long id, String username) {
+        PromotionalMotorcyclePrice item = promotionalMotorcyclePriceRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Faixa promocional de motocicleta não encontrada."));
+        String old = promotionalMotorcyclePriceSummary(item);
+        String description = "Faixa promocional excluída — " + item.getLabel();
+        promotionalMotorcyclePriceRepository.delete(item);
+        auditRepository.save(CatalogChangeAudit.createText(
+                "PROMO_MOTORCYCLE_PRICE", id, description, old, null, username
         ));
     }
 
@@ -256,11 +314,29 @@ public class AdminCatalogService {
         )).toList();
     }
 
+    private CategoryResponse toCategoryResponse(VehicleCategory item) {
+        return new CategoryResponse(item.getId(), item.getCode(), item.getName(), Boolean.TRUE.equals(item.getActive()));
+    }
+
     private PriceRangeResponse toPriceResponse(PriceRange item) {
         return new PriceRangeResponse(
                 item.getId(), item.getPlan().getId(), item.getPlan().getName(), item.getPlan().getCategory().getName(),
                 item.getPlan().getRegion().name(), item.getPlan().getMotorcycleOrigin(),
                 item.getMinValue(), item.getMaxValue(), item.getMonthlyPrice()
+        );
+    }
+
+    private String promotionalMotorcyclePriceSummary(PromotionalMotorcyclePrice item) {
+        return "faixa=" + item.getLabel()
+                + "; cc=" + item.getMinCc() + "-" + item.getMaxCc()
+                + "; fipe=" + item.getMinFipe() + "-" + (item.getMaxFipe() == null ? "sem limite" : item.getMaxFipe())
+                + "; mensalidade=" + item.getMonthlyPrice();
+    }
+
+    private PromotionalMotorcyclePriceResponse toPromotionalMotorcyclePriceResponse(PromotionalMotorcyclePrice item) {
+        return new PromotionalMotorcyclePriceResponse(
+                item.getId(), item.getTierCode(), item.getLabel(), item.getMinCc(), item.getMaxCc(),
+                item.getMinFipe(), item.getMaxFipe(), item.getMonthlyPrice()
         );
     }
 

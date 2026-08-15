@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#070c40">
   <title>Retrato NH | Vistoria Digital</title>
-  <link rel="icon" href="/assets/favicon-nh.png">
-  <link rel="stylesheet" href="/shared/portal.css?v=20260810-v31">
+  <link rel="icon" type="image/png" href="web/assets/simbolo-fundo-azul.png" />
+  <link rel="stylesheet" href="/shared/portal.css?v=20260810-v32-media-actions">
   <link rel="stylesheet" href="/shared/responsive.css?v=20260807-responsive-audit-v4">
   <link rel="stylesheet" href="/shared/brand-system.css?v=20260807-modals-v5">
 </head>
@@ -81,7 +81,7 @@
     <form id="upload-form">
       <div id="photos" class="upload-grid"></div>
 
-      <article class="upload-item camera-upload-item video-capture-card" style="margin-top:14px">
+      <article id="video-capture-card" class="upload-item camera-upload-item video-capture-card" style="margin-top:14px">
         <strong id="video-title">Vídeo da vistoria *</strong>
         <small id="video-card-instruction">Antes de gravar, as diretrizes específicas do vídeo serão exibidas.</small>
         <video id="video-preview" class="capture-preview video-preview" controls playsinline hidden></video>
@@ -94,33 +94,35 @@
         <h3>Endereço, documentos e assinatura do associado</h3>
         <p class="muted">Para venda nova, o endereço, o CRLV, a frente e o verso do RG ou da CNH e a assinatura são obrigatórios.</p>
 
-        <label for="residence-address">Endereço completo de residência *</label>
-        <textarea id="residence-address" rows="4" maxlength="600" placeholder="Rua, número, complemento, bairro, cidade, estado e CEP"></textarea>
-        <small class="field-helper">Informe o endereço completo onde o associado reside.</small>
+        <div id="residence-address-field" class="registration-field-block">
+          <label for="residence-address">Endereço completo de residência *</label>
+          <textarea id="residence-address" rows="4" maxlength="600" placeholder="Rua, número, complemento, bairro, cidade, estado e CEP"></textarea>
+          <small class="field-helper">Informe o endereço completo onde o associado reside.</small>
+        </div>
 
         <div class="document-upload-grid">
-          <label class="document-upload-card" for="vehicle-document">
+          <label id="vehicle-document-card" class="document-upload-card" for="vehicle-document">
             <span>CRLV do veículo *</span>
             <small>Envie uma foto nítida ou o arquivo PDF do documento.</small>
             <input id="vehicle-document" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.doc,.docx,.odt,.rtf,.txt">
             <strong id="vehicle-document-status">Documento pendente.</strong>
           </label>
 
-          <label class="document-upload-card" for="identity-document-front">
+          <label id="identity-document-front-card" class="document-upload-card" for="identity-document-front">
             <span>RG ou CNH — frente *</span>
             <small>Envie a frente do documento oficial em foto nítida ou arquivo.</small>
             <input id="identity-document-front" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.doc,.docx,.odt,.rtf,.txt">
             <strong id="identity-document-front-status">Frente pendente.</strong>
           </label>
 
-          <label class="document-upload-card" for="identity-document-back">
+          <label id="identity-document-back-card" class="document-upload-card" for="identity-document-back">
             <span>RG ou CNH — verso *</span>
             <small>Envie o verso do mesmo documento oficial.</small>
             <input id="identity-document-back" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.doc,.docx,.odt,.rtf,.txt">
             <strong id="identity-document-back-status">Verso pendente.</strong>
           </label>
         </div>
-        <div class="signature-block">
+        <div id="signature-block" class="signature-block">
           <div class="signature-heading">
             <div>
               <strong>Assinatura do associado *</strong>
@@ -229,7 +231,7 @@
 </section>
 
 <script src="/shared/config.js?v=20260804-current-origin"></script>
-<script src="/retrato/retrato.js?v=20260810-v31"></script>
+<script src="/retrato/retrato.js?v=20260810-v34"></script>
 <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
 </body>
 </html>

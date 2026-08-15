@@ -286,7 +286,7 @@ async function restoreDraftFromCache() {
   vehicleDocumentFile = restoredFile(draft.vehicleDocument, 'crlv-veiculo.pdf', 'application/pdf');
   identityDocumentFrontFile = restoredFile(draft.identityDocumentFront || draft.identityDocument, 'rg-cnh-frente.pdf', 'application/pdf');
   identityDocumentBackFile = restoredFile(draft.identityDocumentBack, 'rg-cnh-verso.pdf', 'application/pdf');
-  $('residence-address').value = draft.residenceAddress || '';
+  $('residence-address').value = request?.residenceAddress || draft.residenceAddress || '';
   restoredSignatureBlob = draft.signature || null;
   hasRestoredDraft = photoFiles.some(Boolean)
     || Boolean(videoFile)
@@ -295,6 +295,15 @@ async function restoreDraftFromCache() {
     || Boolean(identityDocumentBackFile)
     || Boolean(restoredSignatureBlob)
     || Boolean(draft.residenceAddress);
+
+  discardLocalCopiesAlreadyOnServer();
+  hasRestoredDraft = photoFiles.some(Boolean)
+    || Boolean(videoFile)
+    || Boolean(vehicleDocumentFile)
+    || Boolean(identityDocumentFrontFile)
+    || Boolean(identityDocumentBackFile)
+    || Boolean(restoredSignatureBlob)
+    || Boolean((!request?.residenceAddress) && $('residence-address').value.trim());
 
   if (hasRestoredDraft) {
     $('start').textContent = 'Continuar vistoria salva →';
@@ -454,9 +463,13 @@ async function load() {
 
     request = body;
     configureInspectionProfile(body.vehicleType);
-    $('vehicle-guide-count').textContent = body.requestType === 'NEW_INSPECTION'
-      ? `${labels.length} fotos obrigatórias + 1 vídeo`
-      : '1 vídeo obrigatório para atualização de boleto';
+    const pendingSlots = pendingRequiredSlots();
+    const selective = isSelectiveResubmission();
+    $('vehicle-guide-count').textContent = selective
+      ? `${pendingSlots.length} pendência${pendingSlots.length === 1 ? '' : 's'} para refazer · os demais arquivos foram mantidos`
+      : (body.requestType === 'NEW_INSPECTION'
+        ? `${labels.length} fotos obrigatórias + 1 vídeo`
+        : '1 vídeo obrigatório para atualização de boleto');
 
     if (databaseCompletionConfirmed(body)) {
       showComplete(body);
@@ -475,15 +488,21 @@ async function load() {
       return;
     }
 
-    $('title').textContent = body.requestType === 'NEW_INSPECTION'
-      ? 'Nova vistoria do veículo'
-      : 'Atualização de boleto';
+    $('title').textContent = selective
+      ? 'Refazer arquivos pendentes'
+      : (body.requestType === 'NEW_INSPECTION'
+        ? 'Nova vistoria do veículo'
+        : 'Atualização de boleto');
     const contractedPlanText = body.requestType === 'BILL_UPDATE' && body.contractedPlan
       ? ` · Plano atual: ${body.contractedPlan}`
       : '';
     $('subtitle').textContent = `Associado: ${body.associateName} · ${vehiclePlateLabel(body.plate)}${contractedPlanText}`;
     $('guideline-card').hidden = false;
     await restoreDraftFromCache();
+    if (selective) {
+      msg('Os arquivos já aceitos continuam salvos. Este link pedirá somente o que foi rejeitado, excluído ou ainda está faltando.', 'success');
+      $('start').textContent = 'Refazer somente as pendências →';
+    }
   } catch (error) {
     msg(friendlyNetworkMessage(
       error,
@@ -500,25 +519,51 @@ $('start').addEventListener('click', async () => {
   $('upload-card').hidden = false;
 
   const fullInspection = request.requestType === 'NEW_INSPECTION';
-  $('upload-heading').textContent = fullInspection
-    ? `Vistoria de ${inspectionProfile.title.toLowerCase()}`
-    : 'Vídeo para atualização de boleto';
-  $('upload-note').textContent = fullInspection
-    ? `Registre as ${labels.length} fotos na ordem indicada. Antes de cada abertura da câmera, a imagem ilustrativa correspondente será exibida.`
-    : 'Antes da gravação, você verá as diretrizes específicas para este tipo de veículo.';
+  const selective = isSelectiveResubmission();
+  const orders = requiredAssetOrders();
+  const pending = pendingRequiredSlots();
 
-  $('registration-fields').hidden = !fullInspection;
-  $('residence-address').required = fullInspection;
+  $('upload-heading').textContent = selective
+    ? 'Refazer arquivos pendentes'
+    : (fullInspection ? `Vistoria de ${inspectionProfile.title.toLowerCase()}` : 'Vídeo para atualização de boleto');
+  $('upload-note').textContent = selective
+    ? `Somente ${pending.length} ${pending.length === 1 ? 'item está pendente' : 'itens estão pendentes'}. Tudo que já foi aceito permanece salvo e não precisa ser refeito.`
+    : (fullInspection
+      ? `Registre as ${labels.length} fotos na ordem indicada. Antes de cada abertura da câmera, a imagem ilustrativa correspondente será exibida.`
+      : 'Antes da gravação, você verá as diretrizes específicas para este tipo de veículo.');
+
+  if ($('residence-address')) {
+    $('residence-address').value = request.residenceAddress || $('residence-address').value || '';
+    $('residence-address').required = fullInspection && !request.residenceAddress;
+  }
+
+  const pendingRegistration = fullInspection && (
+    !request.residenceAddress
+    || !serverHasAsset('SIGNATURE', orders.signature)
+    || !serverHasAsset('VEHICLE_DOCUMENT', orders.vehicleDocument)
+    || !serverHasAsset('IDENTITY_DOCUMENT', orders.identityFront)
+    || !serverHasAsset('IDENTITY_DOCUMENT', orders.identityBack)
+  );
+  $('registration-fields').hidden = !pendingRegistration;
+  $('residence-address-field').hidden = !fullInspection || Boolean(request.residenceAddress);
+  $('vehicle-document-card').hidden = !fullInspection || serverHasAsset('VEHICLE_DOCUMENT', orders.vehicleDocument);
+  $('identity-document-front-card').hidden = !fullInspection || serverHasAsset('IDENTITY_DOCUMENT', orders.identityFront);
+  $('identity-document-back-card').hidden = !fullInspection || serverHasAsset('IDENTITY_DOCUMENT', orders.identityBack);
+  $('signature-block').hidden = !fullInspection || serverHasAsset('SIGNATURE', orders.signature);
+
+  $('video-capture-card').hidden = serverHasAsset('VIDEO', orders.video);
   $('video-title').textContent = fullInspection
     ? `${labels.length + 1}. Vídeo da vistoria *`
     : 'Vídeo para atualização de boleto *';
 
   if (fullInspection) {
     renderPhotoCaptureCards();
-    initializeSignaturePad();
+    if (!serverHasAsset('SIGNATURE', orders.signature)) initializeSignaturePad();
   } else {
     $('photos').innerHTML = '';
   }
+
+  $('submit-inspection').textContent = selective ? 'Enviar arquivos pendentes' : 'Enviar vistoria com segurança';
 
   if (hasRestoredDraft) {
     await applyRestoredDraftToUi();
@@ -530,7 +575,9 @@ $('start').addEventListener('click', async () => {
 });
 
 function renderPhotoCaptureCards() {
-  $('photos').innerHTML = labels.map((label, index) => `
+  $('photos').innerHTML = labels.map((label, index) => {
+    if (serverHasAsset('PHOTO', index + 1)) return '';
+    return `
     <article class="upload-item camera-upload-item">
       <strong>${index + 1}. ${escapeHtml(label)}</strong>
       <small>Ao tocar em “Abrir câmera”, você verá primeiro a imagem ilustrativa desta etapa.</small>
@@ -540,7 +587,8 @@ function renderPhotoCaptureCards() {
         Abrir câmera
       </button>
     </article>
-  `).join('');
+  `;
+  }).join('');
 
   document.querySelectorAll('[data-photo-index]').forEach((button) => {
     button.addEventListener('click', () => showPhotoGuide(Number(button.dataset.photoIndex)));
@@ -967,18 +1015,23 @@ function stopCameraStream() {
 }
 
 function updateCaptureSummary() {
-  const requiredPhotos = request?.requestType === 'NEW_INSPECTION' ? labels.length : 0;
-  const capturedPhotos = photoFiles.filter(Boolean).length;
-  const videoStatus = videoFile ? 'vídeo gravado' : 'vídeo pendente';
+  const fullInspection = request?.requestType === 'NEW_INSPECTION';
+  const orders = requiredAssetOrders();
+  const requiredPhotos = fullInspection ? labels.length : 0;
+  const confirmedPhotos = fullInspection
+    ? labels.reduce((total, _label, index) => total + (serverHasAsset('PHOTO', index + 1) || photoFiles[index] ? 1 : 0), 0)
+    : 0;
+  const videoReady = serverHasAsset('VIDEO', orders.video) || Boolean(videoFile);
+  const videoStatus = videoReady ? 'vídeo confirmado' : 'vídeo pendente';
   const registrationStatus = requiredPhotos
-    ? ` · endereço ${$('residence-address').value.trim() ? 'preenchido' : 'pendente'}`
-      + ` · CRLV ${vehicleDocumentFile ? 'enviado' : 'pendente'}`
-      + ` · RG/CNH frente ${identityDocumentFrontFile ? 'enviada' : 'pendente'}`
-      + ` · RG/CNH verso ${identityDocumentBackFile ? 'enviado' : 'pendente'}`
-      + ` · assinatura ${signatureHasInk ? 'registrada' : 'pendente'}`
+    ? ` · endereço ${(request?.residenceAddress || $('residence-address').value.trim()) ? 'confirmado' : 'pendente'}`
+      + ` · CRLV ${(serverHasAsset('VEHICLE_DOCUMENT', orders.vehicleDocument) || vehicleDocumentFile) ? 'confirmado' : 'pendente'}`
+      + ` · RG/CNH frente ${(serverHasAsset('IDENTITY_DOCUMENT', orders.identityFront) || identityDocumentFrontFile) ? 'confirmada' : 'pendente'}`
+      + ` · RG/CNH verso ${(serverHasAsset('IDENTITY_DOCUMENT', orders.identityBack) || identityDocumentBackFile) ? 'confirmado' : 'pendente'}`
+      + ` · assinatura ${(serverHasAsset('SIGNATURE', orders.signature) || signatureHasInk) ? 'confirmada' : 'pendente'}`
     : '';
   $('capture-summary').textContent = requiredPhotos
-    ? `${capturedPhotos} de ${requiredPhotos} fotos registradas · ${videoStatus}${registrationStatus}`
+    ? `${confirmedPhotos} de ${requiredPhotos} fotos confirmadas · ${videoStatus}${registrationStatus}`
     : videoStatus;
 }
 
@@ -986,6 +1039,62 @@ function serverHasAsset(assetType, sortOrder) {
   return Array.isArray(request?.assets) && request.assets.some((asset) =>
     asset?.type === assetType && asset?.available === true && Number(asset?.sortOrder) === Number(sortOrder)
   );
+}
+
+function requiredAssetOrders() {
+  const fullInspection = request?.requestType === 'NEW_INSPECTION';
+  const photoCount = labels.length;
+  return {
+    video: fullInspection ? photoCount + 1 : 1,
+    signature: photoCount + 2,
+    vehicleDocument: photoCount + 3,
+    identityFront: photoCount + 4,
+    identityBack: photoCount + 5
+  };
+}
+
+function pendingRequiredSlots() {
+  if (!request) return [];
+  const fullInspection = request.requestType === 'NEW_INSPECTION';
+  const orders = requiredAssetOrders();
+  const pending = [];
+
+  if (fullInspection) {
+    labels.forEach((label, index) => {
+      if (!serverHasAsset('PHOTO', index + 1)) pending.push({ type: 'PHOTO', order: index + 1, label });
+    });
+  }
+  if (!serverHasAsset('VIDEO', orders.video)) pending.push({ type: 'VIDEO', order: orders.video, label: 'Vídeo da vistoria' });
+
+  if (fullInspection) {
+    if (!request.residenceAddress) pending.push({ type: 'ADDRESS', order: 0, label: 'Endereço de residência' });
+    if (!serverHasAsset('SIGNATURE', orders.signature)) pending.push({ type: 'SIGNATURE', order: orders.signature, label: 'Assinatura do associado' });
+    if (!serverHasAsset('VEHICLE_DOCUMENT', orders.vehicleDocument)) pending.push({ type: 'VEHICLE_DOCUMENT', order: orders.vehicleDocument, label: 'CRLV do veículo' });
+    if (!serverHasAsset('IDENTITY_DOCUMENT', orders.identityFront)) pending.push({ type: 'IDENTITY_DOCUMENT', order: orders.identityFront, label: 'RG ou CNH — frente' });
+    if (!serverHasAsset('IDENTITY_DOCUMENT', orders.identityBack)) pending.push({ type: 'IDENTITY_DOCUMENT', order: orders.identityBack, label: 'RG ou CNH — verso' });
+  }
+  return pending;
+}
+
+function isSelectiveResubmission() {
+  if (!request || !Array.isArray(request.assets)) return false;
+  const hasPreservedSourceAsset = request.assets.some(asset => asset?.available === true && asset?.type !== 'REPORT');
+  return hasPreservedSourceAsset && pendingRequiredSlots().length > 0;
+}
+
+function discardLocalCopiesAlreadyOnServer() {
+  if (!request) return;
+  const orders = requiredAssetOrders();
+  photoFiles = photoFiles.map((file, index) => serverHasAsset('PHOTO', index + 1) ? null : file);
+  if (serverHasAsset('VIDEO', orders.video)) videoFile = null;
+  if (serverHasAsset('VEHICLE_DOCUMENT', orders.vehicleDocument)) vehicleDocumentFile = null;
+  if (serverHasAsset('IDENTITY_DOCUMENT', orders.identityFront)) identityDocumentFrontFile = null;
+  if (serverHasAsset('IDENTITY_DOCUMENT', orders.identityBack)) identityDocumentBackFile = null;
+  if (serverHasAsset('SIGNATURE', orders.signature)) {
+    restoredSignatureBlob = null;
+    signatureHasInk = false;
+  }
+  if (request.residenceAddress) $('residence-address').value = request.residenceAddress;
 }
 
 function stableUploadId(file, assetType, sortOrder) {
@@ -1182,7 +1291,10 @@ $('upload-form').addEventListener('submit', async (event) => {
   clearMessage();
 
   const fullInspection = request.requestType === 'NEW_INSPECTION';
-  const missingPhotoIndex = fullInspection ? photoFiles.findIndex((file) => !file) : -1;
+  const orders = requiredAssetOrders();
+  const missingPhotoIndex = fullInspection
+    ? photoFiles.findIndex((file, index) => !serverHasAsset('PHOTO', index + 1) && !file)
+    : -1;
 
   if (missingPhotoIndex >= 0) {
     msg(`Registre a foto obrigatória: ${labels[missingPhotoIndex]}.`);
@@ -1190,38 +1302,38 @@ $('upload-form').addEventListener('submit', async (event) => {
     return;
   }
 
-  if (!videoFile) {
+  if (!serverHasAsset('VIDEO', orders.video) && !videoFile) {
     msg('Grave o vídeo da vistoria antes de enviar.');
     $('record-video').focus();
     return;
   }
 
-  const residenceAddress = $('residence-address').value.trim();
+  const residenceAddress = $('residence-address').value.trim() || request.residenceAddress || '';
   if (fullInspection && !residenceAddress) {
     msg('Informe o endereço completo de residência do associado.');
     $('residence-address').focus();
     return;
   }
 
-  if (fullInspection && !vehicleDocumentFile) {
+  if (fullInspection && !serverHasAsset('VEHICLE_DOCUMENT', orders.vehicleDocument) && !vehicleDocumentFile) {
     msg('Envie o CRLV do veículo antes de concluir.');
     $('vehicle-document').focus();
     return;
   }
 
-  if (fullInspection && !identityDocumentFrontFile) {
+  if (fullInspection && !serverHasAsset('IDENTITY_DOCUMENT', orders.identityFront) && !identityDocumentFrontFile) {
     msg('Envie a frente do RG ou da CNH do associado antes de concluir.');
     $('identity-document-front').focus();
     return;
   }
 
-  if (fullInspection && !identityDocumentBackFile) {
+  if (fullInspection && !serverHasAsset('IDENTITY_DOCUMENT', orders.identityBack) && !identityDocumentBackFile) {
     msg('Envie o verso do RG ou da CNH do associado antes de concluir.');
     $('identity-document-back').focus();
     return;
   }
 
-  if (fullInspection && !signatureHasInk) {
+  if (fullInspection && !serverHasAsset('SIGNATURE', orders.signature) && !signatureHasInk) {
     msg('Solicite que o associado assine com o dedo antes de concluir.');
     $('signature-pad').focus();
     return;
@@ -1235,51 +1347,44 @@ $('upload-form').addEventListener('submit', async (event) => {
   try {
     const assets = [];
     if (fullInspection) {
-      photoFiles.forEach((file, index) => assets.push({
-        assetType: 'PHOTO',
-        sortOrder: index + 1,
-        label: labels[index],
-        file
-      }));
+      photoFiles.forEach((file, index) => {
+        if (!serverHasAsset('PHOTO', index + 1) && file) {
+          assets.push({ assetType: 'PHOTO', sortOrder: index + 1, label: labels[index], file });
+        }
+      });
     }
 
-    const videoOrder = fullInspection ? labels.length + 1 : 1;
-    assets.push({
-      assetType: 'VIDEO',
-      sortOrder: videoOrder,
-      label: 'Vídeo da vistoria',
-      file: videoFile
-    });
+    if (!serverHasAsset('VIDEO', orders.video) && videoFile) {
+      assets.push({
+        assetType: 'VIDEO',
+        sortOrder: orders.video,
+        label: 'Vídeo da vistoria',
+        file: videoFile
+      });
+    }
 
     if (fullInspection) {
-      const signatureBlob = await exportSignatureBlob();
-      assets.push({
-        assetType: 'SIGNATURE',
-        sortOrder: labels.length + 2,
-        label: 'Assinatura do associado',
-        file: new File([signatureBlob], 'assinatura-associado.png', {
-          type: 'image/png',
-          lastModified: Date.now()
-        })
-      });
-      assets.push({
-        assetType: 'VEHICLE_DOCUMENT',
-        sortOrder: labels.length + 3,
-        label: 'CRLV do veículo',
-        file: vehicleDocumentFile
-      });
-      assets.push({
-        assetType: 'IDENTITY_DOCUMENT',
-        sortOrder: labels.length + 4,
-        label: 'RG ou CNH — frente',
-        file: identityDocumentFrontFile
-      });
-      assets.push({
-        assetType: 'IDENTITY_DOCUMENT',
-        sortOrder: labels.length + 5,
-        label: 'RG ou CNH — verso',
-        file: identityDocumentBackFile
-      });
+      if (!serverHasAsset('SIGNATURE', orders.signature)) {
+        const signatureBlob = await exportSignatureBlob();
+        assets.push({
+          assetType: 'SIGNATURE',
+          sortOrder: orders.signature,
+          label: 'Assinatura do associado',
+          file: new File([signatureBlob], 'assinatura-associado.png', {
+            type: 'image/png',
+            lastModified: Date.now()
+          })
+        });
+      }
+      if (!serverHasAsset('VEHICLE_DOCUMENT', orders.vehicleDocument) && vehicleDocumentFile) {
+        assets.push({ assetType: 'VEHICLE_DOCUMENT', sortOrder: orders.vehicleDocument, label: 'CRLV do veículo', file: vehicleDocumentFile });
+      }
+      if (!serverHasAsset('IDENTITY_DOCUMENT', orders.identityFront) && identityDocumentFrontFile) {
+        assets.push({ assetType: 'IDENTITY_DOCUMENT', sortOrder: orders.identityFront, label: 'RG ou CNH — frente', file: identityDocumentFrontFile });
+      }
+      if (!serverHasAsset('IDENTITY_DOCUMENT', orders.identityBack) && identityDocumentBackFile) {
+        assets.push({ assetType: 'IDENTITY_DOCUMENT', sortOrder: orders.identityBack, label: 'RG ou CNH — verso', file: identityDocumentBackFile });
+      }
     }
 
     const progressState = {
@@ -1456,7 +1561,7 @@ function signaturePoint(event) {
 }
 
 function beginSignature(event) {
-  if ($('registration-fields').hidden) return;
+  if ($('registration-fields').hidden || $('signature-block').hidden) return;
   event.preventDefault();
   signatureDrawing = true;
   signatureLastPoint = signaturePoint(event);
@@ -1550,7 +1655,6 @@ window.addEventListener('online', () => {
   if (!$('connection-actions').hidden) load();
 });
 initializeSignaturePad();
-clearSignature();
 
 function videoExtension(mimeType) {
   switch (mimeType) {

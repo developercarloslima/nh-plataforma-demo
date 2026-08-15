@@ -8,8 +8,8 @@
   <meta http-equiv="Expires" content="0">
   <meta name="theme-color" content="#070c40">
   
-  <link rel="icon" href="./favicon-nh.png">
-  <link rel="stylesheet" href="./styles.css?v=20260810-validity-v32">
+  <link rel="icon" type="image/png" href="web/assets/simbolo-fundo-azul.png" />
+  <link rel="stylesheet" href="./styles.css?v=20260810-v36-responsive-promo">
   <title>NH Cotação Digital</title>
   <link rel="stylesheet" href="/shared/responsive.css?v=20260807-responsive-audit-v4">
   <link rel="stylesheet" href="/shared/brand-system.css?v=20260807-modals-v5">
@@ -43,10 +43,14 @@
       </div>
 
       <form id="quote-form" class="form-grid">
-        <label id="consultant-field">Consultor responsável *<input id="consultantName" required readonly></label>
-        <label>Nome do cliente *<input id="customerName" required placeholder="Nome completo"></label>
-        <label id="customer-cpf-field">CPF *<input id="customerCpf" inputmode="numeric" maxlength="14" placeholder="000.000.000-00" required></label>
-        <label>WhatsApp do cliente <span id="whatsapp-required"></span><input id="whatsapp" placeholder="(82) 99999-9999"></label>
+        <label id="consultant-field" class="span-2">Consultor responsável *<input id="consultantName" required readonly></label>
+        <div class="customer-identity-row span-2">
+          <input id="customerName" required maxlength="140" placeholder="Informe seu nome completo" aria-label="Nome completo do cliente">
+          <div id="customer-cpf-field" class="customer-identity-field">
+            <input id="customerCpf" inputmode="numeric" maxlength="14" placeholder="Informe seu CPF" aria-label="CPF do cliente" required>
+          </div>
+        </div>
+        <label class="span-2">WhatsApp do cliente <span id="whatsapp-required"></span><input id="whatsapp" placeholder="(82) 99999-9999"></label>
 
         <fieldset class="zero-km-selector span-2">
           <legend>O veículo é 0 km? *</legend>
@@ -66,34 +70,15 @@
           <input id="plate" required maxlength="10" placeholder="ABC1D23">
           <small id="plate-help" class="field-help">Obrigatória para veículos que não são 0 km.</small>
         </label>
-        <label>Modelo do veículo *<input id="model" required placeholder="Ex.: Hyundai HB20 Comfort"></label>
+        <label id="model-field">Modelo do veículo *<input id="model" required placeholder="Ex.: Hyundai HB20 Comfort"></label>
         <label>Ano de fabricação *<input id="manufactureYear" required type="number" min="1950"></label>
-        <label>Valor FIPE *<input id="fipeValue" data-money required inputmode="decimal" maxlength="18" placeholder="Ex.: 65.000,00"></label>
+        <label id="fipe-field">Valor FIPE *<input id="fipeValue" data-money required inputmode="decimal" maxlength="18" placeholder="Ex.: 65.000,00"></label>
 
-
-        <fieldset id="motorcycle-selector" class="zero-km-selector span-2">
-          <legend>O veículo é moto? *</legend>
-          <div class="binary-options" role="radiogroup" aria-label="Veículo motocicleta">
-            <label class="binary-option">
-              <input type="radio" name="motorcycle" value="true">
-              <span>Sim</span>
-            </label>
-            <label class="binary-option selected">
-              <input type="radio" name="motorcycle" value="false" checked>
-              <span>Não</span>
-            </label>
-          </div>
-          <small class="field-help">Para scooters e motos elétricas, selecione a categoria específica; a cilindrada não é exigida.</small>
-        </fieldset>
-
-        <label id="motorcycle-cc-field" hidden>Cilindrada da moto (cc) *
-          <input id="motorcycleCc" type="number" min="1" max="2500" inputmode="numeric" placeholder="Ex.: 160">
-          <small class="field-help">Se a tabela promocional estiver ativa em Planos, o sistema verifica automaticamente se a moto se enquadra.</small>
-        </label>
 
         <fieldset class="vehicle-selector span-2">
           <legend>Categoria do veículo *</legend>
           <div id="vehicle-options" class="vehicle-options">
+            <button type="button" data-type="MOTORCYCLE_PROMO_2026" class="vehicle-option promo-category-button">Tabela Promocional - Motocicletas</button>
             <button type="button" data-type="MOTORCYCLE_UP_TO_300" class="vehicle-option">Motos até 300cc</button>
             <button type="button" data-type="MOTORCYCLE_OVER_300" class="vehicle-option">Motos acima de 300cc</button>
             <button type="button" data-type="SCOOTER_ELECTRIC" class="vehicle-option">Scooters e elétricas</button>
@@ -103,24 +88,41 @@
           </div>
         </fieldset>
 
+        <fieldset id="promo-motorcycle-options" class="promo-motorcycle-selector span-2" hidden>
+          <legend>Tabela Promocional - Motocicletas</legend>
+          <div class="promo-motorcycle-grid" role="radiogroup" aria-label="Faixa da Tabela Promocional de Motocicletas">
+            <button type="button" class="promo-motorcycle-option" data-promo-tier="UP_TO_150_11K" data-min-cc="1" data-max-cc="150" data-max-fipe="11000" data-monthly-price="35" data-cc="150">
+              <strong>Motos até 150cc até R$ 11 mil</strong>
+              <span>R$ 35,00/mês</span>
+            </button>
+            <button type="button" class="promo-motorcycle-option" data-promo-tier="CC_151_160" data-min-cc="151" data-max-cc="160" data-monthly-price="45" data-cc="160">
+              <strong>Motos 151cc a 160cc</strong>
+              <span>R$ 45,00/mês</span>
+            </button>
+            <button type="button" class="promo-motorcycle-option" data-promo-tier="CC_161_300" data-min-cc="161" data-max-cc="300" data-monthly-price="75" data-cc="300">
+              <strong>Motos 161cc a 300cc</strong>
+              <span>R$ 75,00/mês</span>
+            </button>
+          </div>
+
+        </fieldset>
+
         <label id="car-origin-field">Origem do carro *
           <select id="carOrigin"><option value="CAR_NATIONAL">Nacional</option><option value="CAR_IMPORTED">Importado</option></select>
         </label>
-        <label id="region-field" hidden>Origem da moto *
+        <label id="region-field" class="span-2" hidden>Origem da moto *
           <select id="region"><option value="NORTHEAST">Demais cidades do Nordeste</option><option value="CAPITAL">Capital</option></select>
-          <small class="field-help">A origem da moto define somente a tabela comercial. Todos os planos possuem abrangência nacional.</small>
         </label>
 
         <label class="span-2">Observação da cotação
           <textarea id="observation" maxlength="1200" rows="4" placeholder="Ex.: informações importantes sobre o cliente, veículo ou negociação."></textarea>
-          <small class="field-help">Opcional. A observação ficará registrada na cotação e também aparecerá no PDF.</small>
         </label>
 
-        <label id="validity-date-field" class="span-2">Validade da cotação *
-          <select id="validityDate" required>
-            <option value="">Selecione a data de vencimento</option>
+        <label class="span-2 billing-due-field">Qual vencimento você quer no boleto das mensalidades? *
+          <select id="firstBillingDueDate" required>
+            <option value="">Calculando vencimentos disponíveis...</option>
           </select>
-          <small class="field-help">Permitido entre 30 e 40 dias à frente, somente nos vencimentos dos dias 5, 10, 15, 20, 25 e 30. Após essa data, a cotação não poderá mais iniciar o Retrato NH.</small>
+          <small id="billing-due-help" class="field-help">O primeiro vencimento deve ocorrer entre 30 e 40 dias após a emissão da cotação. Os vencimentos da NH são nos dias 5, 10, 15, 20, 25 e 30.</small>
         </label>
 
         <div class="form-actions span-2"><button id="simulate-button" class="primary-button" type="submit">Calcular planos disponíveis →</button></div>
@@ -247,7 +249,7 @@
   <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
   <script src="/shared/money-input.js?v=20260805-brl-mask"></script>
-  <script src="./app.js?v=20260810-v31" defer></script>
+  <script src="./app.js?v=20260815-v41-admin-assignment" defer></script>
 <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
 </body>
 </html>

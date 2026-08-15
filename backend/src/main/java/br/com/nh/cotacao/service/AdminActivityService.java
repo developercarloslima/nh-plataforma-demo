@@ -23,6 +23,8 @@ public class AdminActivityService {
     private final CatalogChangeAuditRepository auditRepository;
     private final CommunicationSettingsService settingsService;
     private final InspectionAssetStorageService storageService;
+    private final ConsultantService consultantService;
+    private final RetratoService retratoService;
     private final String publicApiUrl;
     private final String publicWebUrl;
 
@@ -32,6 +34,8 @@ public class AdminActivityService {
             CatalogChangeAuditRepository auditRepository,
             CommunicationSettingsService settingsService,
             InspectionAssetStorageService storageService,
+            ConsultantService consultantService,
+            RetratoService retratoService,
             @Value("${app.public-api-url:http://localhost:8080}") String publicApiUrl,
             @Value("${app.public-web-url:https://aforma-demo.vercel.app}") String publicWebUrl
     ) {
@@ -40,6 +44,8 @@ public class AdminActivityService {
         this.auditRepository = auditRepository;
         this.settingsService = settingsService;
         this.storageService = storageService;
+        this.consultantService = consultantService;
+        this.retratoService = retratoService;
         this.publicApiUrl = stripTrailingSlash(publicApiUrl);
         this.publicWebUrl = normalizePublicWebUrl(publicWebUrl);
     }
@@ -50,12 +56,59 @@ public class AdminActivityService {
     }
 
     @Transactional
+    public AdminQuoteResponse updateQuoteConsultant(UUID id, UpdateQuoteConsultantRequest request, String username) {
+        Quotation quotation = quotationRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Cotação não encontrada."));
+        if (quotation.getOrigin() != QuoteOrigin.SELF_SERVICE) {
+            throw new IllegalArgumentException("A troca de responsável por esta tela é permitida apenas para cotações feitas pelo site.");
+        }
+
+        Consultant consultant = consultantService.findActive(request.consultantId());
+        String oldConsultant = quotation.getConsultantName();
+        quotation.assignConsultant(consultant);
+
+        inspectionRepository.findByQuotation_Id(quotation.getId()).ifPresent(inspection ->
+                inspection.assignConsultant(consultant)
+        );
+
+        quotationRepository.flush();
+        inspectionRepository.flush();
+
+        // Se o cliente já aceitou enquanto a distribuição automática estava desligada,
+        // a atribuição manual conclui a preparação da vistoria sem exigir nova ação dele.
+        if (quotation.getStatus() == QuoteStatus.ACCEPTED
+                && inspectionRepository.findByQuotation_Id(quotation.getId()).isEmpty()) {
+            retratoService.ensureForSelfServiceQuote(quotation);
+        }
+
+        auditRepository.save(CatalogChangeAudit.createText(
+                "QUOTE_CONSULTANT", null, id.toString(),
+                "Responsável da cotação " + quotation.getQuoteNumber() + " alterado",
+                "consultor=" + oldConsultant,
+                "consultor=" + consultant.getName(),
+                username
+        ));
+        return toQuote(quotation);
+    }
+
+    @Transactional
     public AdminQuoteResponse updateQuoteStatus(UUID id, UpdateQuoteStatusRequest request, String username) {
         Quotation quotation = quotationRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Cotação não encontrada."));
         String old = quoteAnalysisSummary(quotation);
         quotation.adminReview(request.status(), request.adminNote());
-        quotationRepository.save(quotation);
+        quotationRepository.saveAndFlush(quotation);
+
+        // Uma cotação feita pelo site pode ser aceita enquanto a distribuição automática
+        // estiver desligada. Assim que houver responsável definido, o próprio Admin pode
+        // concluir a análise e a vistoria é criada sem exigir uma nova ação do cliente.
+        if (quotation.getOrigin() == QuoteOrigin.SELF_SERVICE
+                && quotation.getStatus() == QuoteStatus.ACCEPTED
+                && quotation.getConsultant() != null
+                && inspectionRepository.findByQuotation_Id(quotation.getId()).isEmpty()) {
+            retratoService.ensureForSelfServiceQuote(quotation);
+        }
+
         auditRepository.save(CatalogChangeAudit.createText(
                 "QUOTE_STATUS", null, id.toString(), "Cotação " + quotation.getQuoteNumber() + " analisada",
                 old, quoteAnalysisSummary(quotation), username
@@ -89,20 +142,52 @@ public class AdminActivityService {
 
     @Transactional(readOnly = true)
     public List<AdminInspectionResponse> inspections() {
-        return inspectionRepository.findAllByOrderByCreatedAtDesc().stream().map(this::toInspection).toList();
+        return inspectionRepository.findAllByOrderByCreatedAtDesc().stream()
+                .map(item -> toInspection(item, false))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<AdminInspectionResponse> inspectionsForAnalysis() {
+        return inspectionRepository.findAllByOrderByCreatedAtDesc().stream()
+                .map(item -> toInspection(item, true))
+                .toList();
     }
 
     @Transactional
     public AdminInspectionResponse markDecisionMessageSent(UUID id) {
+        return markDecisionMessageSent(id, false);
+    }
+
+    @Transactional
+    public AdminInspectionResponse markDecisionMessageSentForAnalysis(UUID id) {
+        return markDecisionMessageSent(id, true);
+    }
+
+    private AdminInspectionResponse markDecisionMessageSent(UUID id, boolean revealCpf) {
         InspectionRequest inspection = inspectionRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
         inspection.markDecisionMessageSent();
         inspectionRepository.flush();
-        return toInspection(inspection);
+        return toInspection(inspection, revealCpf);
     }
 
     @Transactional
     public AdminInspectionResponse updateInspectionStatus(UUID id, UpdateInspectionStatusRequest request, String username) {
+        return updateInspectionStatus(id, request, username, false);
+    }
+
+    @Transactional
+    public AdminInspectionResponse updateInspectionStatusForAnalysis(UUID id, UpdateInspectionStatusRequest request, String username) {
+        return updateInspectionStatus(id, request, username, true);
+    }
+
+    private AdminInspectionResponse updateInspectionStatus(
+            UUID id,
+            UpdateInspectionStatusRequest request,
+            String username,
+            boolean revealCpf
+    ) {
         InspectionRequest inspection = inspectionRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
         String old = inspectionAnalysisSummary(inspection);
@@ -112,7 +197,7 @@ public class AdminActivityService {
                 "INSPECTION_STATUS", null, id.toString(), "Retrato NH de " + inspection.getAssociateName() + " analisado",
                 old, inspectionAnalysisSummary(inspection), username
         ));
-        return toInspection(inspection);
+        return toInspection(inspection, revealCpf);
     }
 
     @Transactional
@@ -147,9 +232,7 @@ public class AdminActivityService {
     }
 
     private AdminQuoteResponse toQuote(Quotation item) {
-        boolean expired = (item.getStatus() == QuoteStatus.CREATED
-                || item.getStatus() == QuoteStatus.UNDER_REVIEW
-                || item.getStatus() == QuoteStatus.ACCEPTED)
+        boolean expired = (item.getStatus() == QuoteStatus.CREATED || item.getStatus() == QuoteStatus.UNDER_REVIEW)
                 && OffsetDateTime.now().isAfter(item.getValidUntil());
         String pdfUrl = publicApiUrl + "/api/quotes/" + item.getId() + "/pdf";
         String whatsapp = settingsService.teamWhatsapp();
@@ -179,6 +262,10 @@ public class AdminActivityService {
     }
 
     private AdminInspectionResponse toInspection(InspectionRequest item) {
+        return toInspection(item, false);
+    }
+
+    private AdminInspectionResponse toInspection(InspectionRequest item, boolean revealCpf) {
         String publicUrl = publicWebUrl + "/retrato/?token=" + item.getPublicToken();
         String quotationPdfUrl = item.getQuotation() == null
                 ? null
@@ -231,8 +318,11 @@ public class AdminActivityService {
         String associateDecisionUrl = associateDecisionWhatsappUrl(item);
         boolean decisionMessagePending = associateDecisionUrl != null && item.getDecisionMessageSentAt() == null;
         return new AdminInspectionResponse(
-                item.getId(), item.getRequestType().name(), item.getAssociateName(), maskCpf(item.getCpf()),
+                item.getId(), item.getRequestType().name(), item.getVehicleType().name(), item.getAssociateName(),
+                revealCpf ? formatCpf(item.getCpf()) : maskCpf(item.getCpf()),
                 item.getWhatsapp(), item.getPlate(), item.getResidenceAddress(), item.getContractedPlan(),
+                item.getQuotation() == null ? null : item.getQuotation().getBillingDueDay(),
+                item.getQuotation() == null ? null : item.getQuotation().getFirstBillingDueDate(),
                 item.getQuotation() == null ? 0 : item.getQuotation().getDiscountPercent(),
                 item.getQuotation() == null ? RearWindowBranding.NOT_APPLICABLE : item.getQuotation().getRearWindowBranding(), null,
                 item.getConsultant() == null ? null : item.getConsultant().getId(), item.getConsultantName(), displayStatus,
@@ -248,11 +338,21 @@ public class AdminActivityService {
         if (phone == null || publicUrl == null || publicUrl.isBlank()) return null;
         String firstName = item.getAssociateName() == null || item.getAssociateName().isBlank()
                 ? "associado" : item.getAssociateName().trim().split("\\s+")[0];
-        String action = item.getRequestType() == InspectionRequestType.NEW_INSPECTION
-                ? "realizar a vistoria digital completa"
-                : "gravar o vídeo para atualização do boleto";
-        String message = "Olá, " + firstName + "! Acesse o link abaixo para " + action
-                + " do seu veículo pela Novo Horizonte Proteção Veicular:\n" + publicUrl;
+        boolean hasPreservedFile = item.getAssets().stream()
+                .filter(asset -> asset.getAssetType() != br.com.nh.cotacao.entity.InspectionAssetType.REPORT)
+                .anyMatch(storageService::isAvailable);
+        String message;
+        if (hasPreservedFile && item.getCompletedAt() == null) {
+            message = "Olá, " + firstName + "! Precisamos refazer apenas alguns arquivos da sua vistoria. "
+                    + "Os arquivos já aceitos foram mantidos e não precisam ser enviados novamente. "
+                    + "Ao abrir o link, o sistema mostrará somente o que está pendente/rejeitado:\n" + publicUrl;
+        } else {
+            String action = item.getRequestType() == InspectionRequestType.NEW_INSPECTION
+                    ? "realizar a vistoria digital completa"
+                    : "gravar o vídeo para atualização do boleto";
+            message = "Olá, " + firstName + "! Acesse o link abaixo para " + action
+                    + " do seu veículo pela Novo Horizonte Proteção Veicular:\n" + publicUrl;
+        }
         return whatsappUrl(phone, message);
     }
 
@@ -315,9 +415,19 @@ public class AdminActivityService {
         }
         return normalized;
     }
+    private String formatCpf(String cpf) {
+        if (cpf == null || cpf.isBlank()) return "—";
+        String digits = cpf.replaceAll("\\D", "");
+        return digits.length() == 11
+                ? digits.substring(0, 3) + "." + digits.substring(3, 6) + "." + digits.substring(6, 9) + "-" + digits.substring(9)
+                : cpf;
+    }
+
     private String maskCpf(String cpf) {
-        return cpf != null && cpf.length() == 11
-                ? "***." + cpf.substring(3, 6) + "." + cpf.substring(6, 9) + "-**"
+        if (cpf == null || cpf.isBlank()) return "***.***.***-**";
+        String digits = cpf.replaceAll("\\D", "");
+        return digits.length() == 11
+                ? "***." + digits.substring(3, 6) + "." + digits.substring(6, 9) + "-**"
                 : "***.***.***-**";
     }
 }

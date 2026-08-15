@@ -16,6 +16,7 @@ public interface PlanRepository extends JpaRepository<Plan, Long> {
             where p.category.code = :categoryCode
               and p.region = :region
               and p.active = true
+              and p.category.active = true
               and ((:motorcycleOrigin is null and p.motorcycleOrigin is null)
                    or p.motorcycleOrigin = :motorcycleOrigin)
             order by p.displayOrder asc
@@ -26,7 +27,8 @@ public interface PlanRepository extends JpaRepository<Plan, Long> {
             @Param("motorcycleOrigin") MotorcycleOrigin motorcycleOrigin
     );
 
-    Optional<Plan> findByCodeAndActiveTrue(String code);
+    @Query("select p from Plan p where p.code = :code and p.active = true and p.category.active = true")
+    Optional<Plan> findAvailableByCode(@Param("code") String code);
 
     boolean existsByCode(String code);
 

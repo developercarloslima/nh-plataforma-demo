@@ -15,10 +15,18 @@ public class VehicleCategory {
     @Column(nullable = false, length = 100)
     private String name;
 
+    @Column(nullable = false)
+    private Boolean active = true;
+
     protected VehicleCategory() {
     }
 
     public Long getId() { return id; }
     public String getCode() { return code; }
     public String getName() { return name; }
+    public Boolean getActive() { return active; }
+
+    public void updateActive(boolean active) {
+        this.active = active;
+    }
 }

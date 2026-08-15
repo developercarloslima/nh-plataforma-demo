@@ -5,6 +5,8 @@ import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.OffsetDateTime;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -74,6 +76,12 @@ public class Quotation {
 
     @Column(name = "observation", length = 1200)
     private String observation;
+
+    @Column(name = "billing_due_day")
+    private Integer billingDueDay;
+
+    @Column(name = "first_billing_due_date")
+    private LocalDate firstBillingDueDate;
 
     @Column(name = "selected_plan_code", nullable = false, length = 80)
     private String selectedPlanCode;
@@ -376,21 +384,34 @@ public class Quotation {
         return q;
     }
 
+    private static final java.util.Set<Integer> ALLOWED_BILLING_DUE_DAYS = java.util.Set.of(5, 10, 15, 20, 25, 30);
+    private static final ZoneId BUSINESS_ZONE = ZoneId.of("America/Maceio");
+
+    public void configureBillingDueDate(LocalDate requestedDate) {
+        if (requestedDate == null) {
+            throw new IllegalArgumentException("Escolha o vencimento das mensalidades.");
+        }
+        LocalDate quoteDate = createdAt.atZoneSameInstant(BUSINESS_ZONE).toLocalDate();
+        LocalDate minimum = quoteDate.plusDays(30);
+        LocalDate maximum = quoteDate.plusDays(40);
+        if (requestedDate.isBefore(minimum) || requestedDate.isAfter(maximum)) {
+            throw new IllegalArgumentException("O primeiro vencimento deve ficar entre 30 e 40 dias após a data da cotação.");
+        }
+        if (!ALLOWED_BILLING_DUE_DAYS.contains(requestedDate.getDayOfMonth())) {
+            throw new IllegalArgumentException("Os vencimentos permitidos são nos dias 5, 10, 15, 20, 25 ou 30.");
+        }
+        this.billingDueDay = requestedDate.getDayOfMonth();
+        this.firstBillingDueDate = requestedDate;
+    }
+
     private static String cleanName(String value) {
         return value.trim().replaceAll("\\s+", " ");
     }
 
     private static Integer validateMotorcycleCc(String categoryCode, Integer motorcycleCc) {
-        boolean motorcycle = categoryCode != null && categoryCode.startsWith("MOTORCYCLE");
-        if (!motorcycle) return null;
-        if (motorcycleCc == null || motorcycleCc < 1 || motorcycleCc > 2500) {
-            throw new IllegalArgumentException("Informe a cilindrada da moto.");
-        }
-        if ("MOTORCYCLE_UP_TO_300".equals(categoryCode) && motorcycleCc > 300) {
-            throw new IllegalArgumentException("Para Motos até 300cc, informe uma cilindrada de até 300cc.");
-        }
-        if ("MOTORCYCLE_OVER_300".equals(categoryCode) && motorcycleCc <= 300) {
-            throw new IllegalArgumentException("Para Motos acima de 300cc, informe uma cilindrada acima de 300cc.");
+        if (!"MOTORCYCLE_PROMO_2026".equals(categoryCode)) return null;
+        if (motorcycleCc == null || motorcycleCc < 1 || motorcycleCc > 300) {
+            throw new IllegalArgumentException("Selecione uma faixa da Tabela Promocional de Motocicletas.");
         }
         return motorcycleCc;
     }
@@ -455,16 +476,6 @@ public class Quotation {
         ));
         preDiscountMonthlyValue = preDiscountMonthlyValue.add(monthlyPrice);
         recalculateDiscountedMonthlyValue();
-    }
-
-    public void defineValidity(OffsetDateTime requestedValidUntil) {
-        if (requestedValidUntil == null) {
-            throw new IllegalArgumentException("Informe a validade da cotação.");
-        }
-        if (createdAt == null || !requestedValidUntil.isAfter(createdAt)) {
-            throw new IllegalArgumentException("A validade da cotação precisa ser posterior à emissão.");
-        }
-        this.validUntil = requestedValidUntil;
     }
 
     public void applyDiscount(Integer requestedPercent, RearWindowBranding requestedBranding) {
@@ -661,6 +672,8 @@ public class Quotation {
     public MotorcycleOrigin getMotorcycleOrigin() { return motorcycleOrigin; }
     public Integer getMotorcycleCc() { return motorcycleCc; }
     public String getObservation() { return observation; }
+    public Integer getBillingDueDay() { return billingDueDay; }
+    public LocalDate getFirstBillingDueDate() { return firstBillingDueDate; }
     public String getSelectedPlanCode() { return selectedPlanCode; }
     public String getSelectedPlanName() { return selectedPlanName; }
     public BigDecimal getBaseMonthlyValue() { return baseMonthlyValue; }

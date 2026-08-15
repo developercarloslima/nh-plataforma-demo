@@ -228,6 +228,12 @@ public class InspectionAssetStorageService {
             return new ChunkStoreResult(true, totalChunks, currentAsset.get());
         }
 
+        // Se este slot foi rejeitado/excluído anteriormente, remova o metadado
+        // indisponível antes de iniciar a nova sessão de upload. O orphanRemoval
+        // elimina o registro antigo e os binários vinculados por cascade, evitando
+        // colisões nas restrições únicas do slot durante o reenvio.
+        removeUnavailableSlotAsset(request, type, sortOrder);
+
         BlobRow blob = lockOrCreateBlob(
                 request.getId(), type, sortOrder, uploadId, label, fileName,
                 contentType, totalSize, totalChunks
@@ -241,7 +247,6 @@ public class InspectionAssetStorageService {
             return new ChunkStoreResult(false, progress.receivedChunks(), null);
         }
 
-        removeUnavailableSlotAsset(request, type, sortOrder);
         InspectionAsset asset = createAssetMetadata(
                 request, type, label, fileName, contentType, totalSize, sortOrder
         );
@@ -278,11 +283,37 @@ public class InspectionAssetStorageService {
     public void deleteAsset(UUID inspectionId, UUID assetId) {
         InspectionAsset asset = assetRepository.findByIdAndInspectionRequest_Id(assetId, inspectionId)
                 .orElseThrow(() -> new IllegalArgumentException("Arquivo da vistoria não encontrado."));
+        InspectionRequest request = asset.getInspectionRequest();
         String fileName = asset.getFileName();
-        assetRepository.delete(asset);
+        boolean userSubmittedAsset = asset.getAssetType() != InspectionAssetType.REPORT;
+
+        List<InspectionAsset> currentAssets = assetRepository.findAllByInspectionRequest_IdOrderBySortOrderAsc(inspectionId);
+        List<InspectionAsset> toDelete = currentAssets.stream()
+                .filter(current -> current.getId().equals(assetId)
+                        || (userSubmittedAsset && current.getAssetType() == InspectionAssetType.REPORT))
+                .toList();
+
+        OffsetDateTime purgedAt = OffsetDateTime.now();
+        for (InspectionAsset current : toDelete) {
+            // Remove primeiro o conteúdo/binário do slot. O metadado permanece
+            // temporariamente como indisponível até o novo upload substituir o slot.
+            // Isso evita deixar uma sessão COMPLETE antiga disputando a restrição
+            // única (inspection_id, asset_type, sort_order) durante o reenvio.
+            deleteBlobSlot(inspectionId, current.getAssetType(), current.getSortOrder());
+            jdbcTemplate.update("delete from inspection_asset_contents where asset_id = ?", current.getId());
+            current.markPurged(purgedAt);
+        }
+
+        if (userSubmittedAsset) {
+            request.reopenForMissingFiles();
+        }
         assetRepository.flush();
-        log.info("Retrato NH: arquivo excluído individualmente inspectionId={} assetId={} fileName={}",
-                inspectionId, assetId, fileName);
+        entityManager.flush();
+        log.info(
+                "Retrato NH: arquivo excluído individualmente e vistoria reaberta inspectionId={} assetId={} fileName={} removedReport={}",
+                inspectionId, assetId, fileName,
+                toDelete.stream().anyMatch(current -> current.getAssetType() == InspectionAssetType.REPORT)
+        );
     }
 
     @Transactional(readOnly = true)
@@ -680,7 +711,6 @@ public class InspectionAssetStorageService {
         if (stale.isEmpty()) return;
         for (InspectionAsset asset : stale) {
             request.removeAsset(asset);
-            if (entityManager.contains(asset)) entityManager.remove(asset);
         }
         entityManager.flush();
     }

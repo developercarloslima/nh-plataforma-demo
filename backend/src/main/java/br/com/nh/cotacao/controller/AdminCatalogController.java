@@ -22,6 +22,13 @@ public class AdminCatalogController {
     @GetMapping("/categories")
     public List<CategoryResponse> categories() { return service.categories(); }
 
+    @PatchMapping("/categories/{id}")
+    public CategoryResponse updateCategoryStatus(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateCategoryStatusRequest request,
+            Authentication auth
+    ) { return service.updateCategoryStatus(id, request, username(auth)); }
+
     @GetMapping("/prices")
     public List<PriceRangeResponse> prices() { return service.priceRanges(); }
 
@@ -43,6 +50,24 @@ public class AdminCatalogController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deletePrice(@PathVariable Long id, Authentication auth) {
         service.deletePriceRange(id, username(auth));
+    }
+
+    @GetMapping("/promotional-motorcycle-prices")
+    public List<PromotionalMotorcyclePriceResponse> promotionalMotorcyclePrices() {
+        return service.promotionalMotorcyclePrices();
+    }
+
+    @PatchMapping("/promotional-motorcycle-prices/{id}")
+    public PromotionalMotorcyclePriceResponse updatePromotionalMotorcyclePrice(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdatePromotionalMotorcyclePriceRequest request,
+            Authentication auth
+    ) { return service.updatePromotionalMotorcyclePrice(id, request, username(auth)); }
+
+    @DeleteMapping("/promotional-motorcycle-prices/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deletePromotionalMotorcyclePrice(@PathVariable Long id, Authentication auth) {
+        service.deletePromotionalMotorcyclePrice(id, username(auth));
     }
 
     @GetMapping("/plans")

@@ -1,377 +1,1341 @@
 <!doctype html>
 <html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#070c40">
-  <title>Painel Administrativo NH</title>
-  <link rel="icon" href="/assets/favicon-nh.png">
-  <link rel="stylesheet" href="/shared/portal.css?v=20260810-v31">
-  <link rel="stylesheet" href="/shared/responsive.css?v=20260807-responsive-audit-v4">
-  <link rel="stylesheet" href="/shared/brand-system.css?v=20260807-modals-v5">
-</head>
-<body class="admin-page">
-<header class="portal-header">
-  <a class="portal-brand" href="/">
-    <img src="/assets/logo-nh-simbolo.png" alt="Novo Horizonte">
-    <span><strong>Painel Administrativo</strong><small>Novo Horizonte</small></span>
-  </a>
-  <div class="header-actions">
-    <a href="/colaborador/">Área do Colaborador</a>
-    <button id="logout" hidden>Sair</button>
-  </div>
-</header>
-
-<section id="admin-login" class="login-wrap">
-  <div class="card login-card">
-    <span class="eyebrow" style="color:#070c40">ACESSO ADMINISTRATIVO</span>
-    <h1>Entrar no painel</h1>
-    <p>Entre com o usuário e a senha administrativos configurados para a plataforma.</p>
-    <form id="admin-login-form" class="form-grid">
-      <label class="span-2">Usuário administrativo
-        <input id="admin-username" autocomplete="username" required>
-      </label>
-      <label class="span-2">Senha
-        <input id="admin-password" type="password" autocomplete="current-password" required>
-      </label>
-      <button class="primary span-2" type="submit">Entrar como administrador</button>
-    </form>
-    <div id="admin-login-message" aria-live="polite"></div>
-  </div>
-</section>
-
-<main id="admin-view" class="shell" hidden>
-  <section class="hero-panel">
-    <h1>Gestão da operação Novo Horizonte</h1>
-    <p>Controle usuários, consultores, cotações, Retrato NH, planos, valores, coberturas, opcionais, destinos de envio, retenção e auditoria.</p>
-  </section>
-  <div id="message" aria-live="polite"></div>
-
-  <div class="admin-tabs" aria-label="Seções do painel">
-    <button type="button" data-tab="overview" class="active">Visão geral</button>
-    <button type="button" data-tab="activities">Atividades</button>
-    <button type="button" data-tab="consultants">Consultores</button>
-    <button type="button" data-tab="users">Usuários</button>
-    <button type="button" data-tab="quotes">Cotações</button>
-    <button type="button" data-tab="inspections">Retrato NH</button>
-    <button type="button" data-tab="plans">Planos</button>
-    <button type="button" data-tab="prices">Valores</button>
-    <button type="button" data-tab="coverages">Coberturas e opcionais</button>
-    <button type="button" data-tab="settings">Envios</button>
-    <button type="button" data-tab="audit">Auditoria</button>
-  </div>
-
-  <section id="tab-overview">
-    <div class="kpi-grid">
-      <div class="kpi"><span>Consultores ativos</span><strong id="kpi-consultants">—</strong></div>
-      <div class="kpi"><span>Cotações</span><strong id="kpi-quotes">—</strong></div>
-      <div class="kpi"><span>Retratos NH</span><strong id="kpi-inspections">—</strong></div>
-      <div class="kpi"><span>Propostas aceitas</span><strong id="kpi-accepted">—</strong></div>
-    </div>
-    <div class="overview-grid">
-      <div class="card">
-        <h2>Resumo das cotações</h2>
-        <div id="quote-status-summary" class="status-summary"></div>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#070c40" />
+    <title>Painel Administrativo NH</title>
+    <link
+      rel="icon"
+      type="image/png"
+      href="web/assets/simbolo-fundo-azul.png"
+    />
+    <link
+      rel="stylesheet"
+      href="/shared/portal.css?v=20260810-v32-media-actions"
+    />
+    <link
+      rel="stylesheet"
+      href="/shared/responsive.css?v=20260807-responsive-audit-v4"
+    />
+    <link
+      rel="stylesheet"
+      href="/shared/brand-system.css?v=20260807-modals-v5"
+    />
+  </head>
+  <body class="admin-page">
+    <header class="portal-header">
+      <a class="portal-brand" href="/">
+        <img src="/assets/logo-nh-simbolo.png" alt="Novo Horizonte" />
+        <span
+          ><strong>Painel Administrativo</strong
+          ><small>Novo Horizonte</small></span
+        >
+      </a>
+      <div class="header-actions">
+        <a href="/colaborador/">Área do Colaborador</a>
+        <button id="logout" hidden>Sair</button>
       </div>
-      <div class="card">
-        <h2>Resumo do Retrato NH</h2>
-        <div id="inspection-status-summary" class="status-summary"></div>
+    </header>
+
+    <section id="admin-login" class="login-wrap">
+      <div class="card login-card">
+        <span class="eyebrow" style="color: #070c40"
+          >ACESSO ADMINISTRATIVO</span
+        >
+        <h1>Entrar no painel</h1>
+        <p>
+          Entre com o usuário e a senha administrativos configurados para a
+          plataforma.
+        </p>
+        <form id="admin-login-form" class="form-grid">
+          <label class="span-2"
+            >Usuário administrativo
+            <input id="admin-username" autocomplete="username" required />
+          </label>
+          <label class="span-2"
+            >Senha
+            <input
+              id="admin-password"
+              type="password"
+              autocomplete="current-password"
+              required
+            />
+          </label>
+          <button class="primary span-2" type="submit">
+            Entrar como administrador
+          </button>
+        </form>
+        <div id="admin-login-message" aria-live="polite"></div>
       </div>
-      <div class="card">
-        <h2>Destinos de envio</h2>
-        <p><strong>E-mail:</strong> <span id="overview-team-email">Não configurado</span></p>
-        <p><strong>WhatsApp:</strong> <span id="overview-team-whatsapp">Não configurado</span></p>
-        <button class="outline" type="button" data-open-settings>Alterar destinos</button>
-      </div>
-    </div>
-  </section>
-
-  <section id="tab-activities" hidden>
-    <div class="section-head">
-      <div><h2>Atividades dos consultores</h2><p>Histórico unificado de cotações e solicitações do Retrato NH, inclusive de consultores já excluídos.</p></div>
-      <input id="activity-filter" placeholder="Filtrar por consultor, cliente ou placa" style="max-width:360px">
-    </div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Data</th><th>Consultor</th><th>Atividade</th><th>Cliente/associado</th><th>Placa</th><th>Status</th><th>Ação</th></tr></thead>
-      <tbody id="activities-body"></tbody>
-    </table></div>
-  </section>
-
-  <section id="tab-consultants" hidden>
-    <div class="section-head">
-      <div><h2>Consultores e voluntários</h2><p>Cadastre, edite, ative, desative ou exclua. O histórico permanece salvo pelo nome registrado na atividade.</p></div>
-      <button id="new-consultant-button" class="primary" type="button">+ Novo consultor</button>
-    </div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Nome</th><th>Origem</th><th>Cotações</th><th>Retratos NH</th><th>Status</th><th>Ações</th></tr></thead>
-      <tbody id="consultants-body"></tbody>
-    </table></div>
-  </section>
-
-  <section id="tab-users" hidden>
-    <div class="section-head">
-      <div><h2>Usuários e senhas</h2><p>Crie contas para administrador, analista ou consultor e altere senhas diretamente pelo painel.</p></div>
-      <button id="new-user-button" class="primary" type="button">+ Novo usuário</button>
-    </div>
-    <div class="card retention-notice" style="margin-bottom:14px">
-      <strong>Segurança das contas</strong>
-      <p>As senhas são armazenadas com hash BCrypt e nunca são exibidas. Uma conta desativada perde o acesso imediatamente.</p>
-    </div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Usuário</th><th>Nome</th><th>Perfil</th><th>Status</th><th>Último acesso</th><th>Senha alterada</th><th>Ações</th></tr></thead>
-      <tbody id="users-body"></tbody>
-    </table></div>
-  </section>
-
-  <section id="tab-quotes" hidden>
-    <div class="section-head">
-      <div><h2>Cotações</h2><p>Analise os dados, altere o status e registre observações administrativas. Todas as cotações são removidas automaticamente após 40 dias, inclusive as aceitas.</p></div>
-      <div class="section-head-actions">
-        <input id="quote-filter" placeholder="Filtrar por origem, consultor, cliente, placa ou número" style="max-width:360px">
-        <button id="delete-all-quotes" class="danger" type="button">Excluir todas as cotações</button>
-      </div>
-    </div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Número</th><th>Origem / responsável</th><th>Cliente</th><th>Placa</th><th>Plano</th><th>Total</th><th>Validade</th><th>Status</th><th>Ações</th></tr></thead>
-      <tbody id="quotes-body"></tbody>
-    </table></div>
-  </section>
-
-  <section id="tab-inspections" hidden>
-    <div class="section-head">
-      <div><h2>Retrato NH</h2><p>Analise novas vistorias e atualizações de boleto. A exclusão manual preserva as aprovadas; a limpeza automática de 40 dias remove todas, inclusive as aprovadas.</p></div>
-      <div class="section-head-actions">
-        <input id="inspection-filter" placeholder="Filtrar por consultor, associado ou placa" style="max-width:360px">
-        <button id="delete-all-inspections" class="danger" type="button">Excluir vistorias permitidas</button>
-      </div>
-    </div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Associado</th><th>Consultor</th><th>Placa</th><th>Tipo</th><th>Arquivos</th><th>Status</th><th>Criada</th><th>Ações</th></tr></thead>
-      <tbody id="inspections-body"></tbody>
-    </table></div>
-  </section>
-
-  <section id="tab-plans" hidden>
-    <div class="section-head">
-      <div><h2>Planos e pacotes</h2><p>Crie, edite ou exclua completamente os planos disponíveis para novas cotações.</p></div>
-      <button id="new-plan-button" class="primary" type="button">+ Novo plano</button>
-    </div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Código / plano</th><th>Categoria</th><th>Abrangência</th><th>Origem da moto</th><th>Subtítulo</th><th>Ordem</th><th>Status</th><th>Ações</th></tr></thead>
-      <tbody id="plans-body"></tbody>
-    </table></div>
-  </section>
-
-  <section id="tab-prices" hidden>
-    <div class="section-head">
-      <div><h2>Valores dos pacotes</h2><p>Crie, altere e exclua faixas FIPE e mensalidades.</p></div>
-      <button id="new-price-button" class="primary" type="button">+ Nova faixa de valor</button>
-    </div>
-    <div class="filter-grid">
-      <label>Pesquisar<input id="price-filter" placeholder="Plano, categoria ou origem da moto"></label>
-      <label>Plano<select id="price-plan-filter"><option value="">Todos os planos</option></select></label>
-    </div>
-    <div class="table-wrap" style="margin-top:16px"><table>
-      <thead><tr><th>Plano</th><th>Categoria</th><th>Abrangência / origem</th><th>Faixa FIPE</th><th>Mensalidade</th><th>Ações</th></tr></thead>
-      <tbody id="prices-body"></tbody>
-    </table></div>
-  </section>
-
-  <section id="tab-coverages" hidden>
-    <div class="section-head">
-      <div><h2>Coberturas e serviços opcionais</h2><p>Crie, edite e exclua coberturas, definindo se são incluídas, não incluídas ou opcionais.</p></div>
-      <button id="new-coverage-button" class="primary" type="button">+ Nova cobertura</button>
-    </div>
-    <div class="filter-grid">
-      <label>Plano<select id="coverage-plan-filter"><option value="">Todos os planos</option></select></label>
-      <label>Classificação<select id="coverage-status-filter"><option value="">Todas</option><option value="INCLUDED">Incluído</option><option value="NOT_INCLUDED">Não incluído</option><option value="OPTIONAL">Serviço opcional</option></select></label>
-      <label>Pesquisar<input id="coverage-text-filter" placeholder="Nome ou detalhe"></label>
-    </div>
-    <div class="table-wrap" style="margin-top:16px"><table>
-      <thead><tr><th>Plano</th><th>Código / cobertura</th><th>Classificação</th><th>Detalhe</th><th>Mensalidade</th><th>Ordem</th><th>Ações</th></tr></thead>
-      <tbody id="coverages-body"></tbody>
-    </table></div>
-  </section>
-
-  <section id="tab-settings" hidden>
-    <div class="section-head"><div><h2>Destinos de envio</h2><p>Defina o e-mail e o WhatsApp usados para compartilhar as cotações e os registros do Retrato NH com a equipe.</p></div></div>
-    <div class="card settings-card">
-      <div class="settings-row"><span>E-mail da equipe</span><strong id="settings-team-email">Não configurado</strong></div>
-      <div class="settings-row"><span>WhatsApp da equipe</span><strong id="settings-team-whatsapp">Não configurado</strong></div>
-      <div class="settings-row"><span>Última alteração</span><strong id="settings-updated-at">—</strong></div>
-      <button class="primary" type="button" data-open-settings>Alterar destinos de envio</button>
-    </div>
-  </section>
-
-  <section id="tab-audit" hidden>
-    <div class="section-head">
-      <div><h2>Auditoria completa</h2><p>Histórico completo das ações administrativas, incluindo catálogo, consultores, análises e configurações.</p></div>
-      <input id="audit-filter" placeholder="Filtrar por tipo, item ou administrador" style="max-width:360px">
-    </div>
-    <div id="audit-list" class="audit-list" aria-live="polite"></div>
-  </section>
-</main>
-
-<dialog id="confirm-dialog" class="admin-dialog">
-  <form method="dialog" class="dialog-card">
-    <div class="dialog-head"><div><span class="eyebrow" style="color:#070c40">CONFIRMAÇÃO</span><h2 id="confirm-title">Confirmar ação</h2></div><button class="dialog-close" value="cancel" aria-label="Fechar">×</button></div>
-    <p id="confirm-text" class="muted"></p>
-    <div class="actions dialog-actions"><button class="outline" value="cancel">Cancelar</button><button id="confirm-action" class="danger" value="default">Confirmar</button></div>
-  </form>
-</dialog>
-
-<dialog id="consultant-dialog" class="admin-dialog">
-  <form id="consultant-form" class="dialog-card">
-    <div class="dialog-head"><div><span class="eyebrow" style="color:#070c40">CONSULTOR</span><h2 id="consultant-dialog-title">Cadastrar consultor</h2></div><button class="dialog-close" type="button" data-close-dialog="consultant-dialog">×</button></div>
-    <input id="consultant-id" type="hidden">
-    <label>Nome completo<input id="consultant-name" maxlength="140" required></label>
-    <div id="consultant-active-wrap" class="form-check form-switch" hidden><input id="consultant-active" class="form-check-input" type="checkbox"><label class="form-check-label" for="consultant-active">Consultor ativo</label></div>
-    <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="consultant-dialog">Cancelar</button><button class="primary" type="submit">Salvar</button></div>
-  </form>
-</dialog>
-
-<dialog id="user-dialog" class="admin-dialog">
-  <form id="user-form" class="dialog-card">
-    <div class="dialog-head"><div><span class="eyebrow" style="color:#070c40">CONTA DE ACESSO</span><h2 id="user-dialog-title">Novo usuário</h2></div><button class="dialog-close" type="button" data-close-dialog="user-dialog">×</button></div>
-    <input id="user-id" type="hidden">
-    <div class="form-grid">
-      <label class="span-2">Usuário<input id="user-username" autocomplete="off" maxlength="160" required placeholder="Ex.: analista2 ou nome@nh.local"></label>
-      <label class="span-2">Nome de identificação<input id="user-display-name" maxlength="160" placeholder="Ex.: Maria - Análise"></label>
-      <label>Perfil<select id="user-role" required><option value="CONSULTANT">Consultor</option><option value="ANALYST">Analista</option><option value="ADMIN">Administrador</option></select></label>
-      <label id="user-password-wrap">Senha inicial<input id="user-password" type="password" autocomplete="new-password" minlength="8" maxlength="120" placeholder="Mínimo de 8 caracteres"></label>
-    </div>
-    <div id="user-active-wrap" class="form-check form-switch" hidden><input id="user-active" class="form-check-input" type="checkbox"><label class="form-check-label" for="user-active">Conta ativa</label></div>
-    <p class="helper">Contas de consultor acessam a Área do Colaborador; analistas acessam o painel de análise; administradores acessam este painel.</p>
-    <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="user-dialog">Cancelar</button><button class="primary" type="submit">Salvar usuário</button></div>
-  </form>
-</dialog>
-
-<dialog id="password-dialog" class="admin-dialog">
-  <form id="password-form" class="dialog-card">
-    <div class="dialog-head"><div><span class="eyebrow" style="color:#070c40">ALTERAR SENHA</span><h2 id="password-dialog-title">Nova senha</h2></div><button class="dialog-close" type="button" data-close-dialog="password-dialog">×</button></div>
-    <input id="password-user-id" type="hidden">
-    <label>Nova senha<input id="password-new" type="password" autocomplete="new-password" minlength="8" maxlength="120" required></label>
-    <label style="margin-top:14px">Confirmar nova senha<input id="password-confirm" type="password" autocomplete="new-password" minlength="8" maxlength="120" required></label>
-    <p class="helper">A senha anterior deixa de funcionar imediatamente para novos logins.</p>
-    <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="password-dialog">Cancelar</button><button class="primary" type="submit">Alterar senha</button></div>
-  </form>
-</dialog>
-
-<dialog id="plan-dialog" class="admin-dialog wide-dialog">
-  <form id="plan-form" class="dialog-card">
-    <div class="dialog-head"><div><span class="eyebrow" style="color:#070c40">PLANO OU PACOTE</span><h2 id="plan-dialog-title">Novo plano</h2></div><button class="dialog-close" type="button" data-close-dialog="plan-dialog">×</button></div>
-    <input id="plan-id" type="hidden">
-    <div class="form-grid">
-      <label>Nome<input id="plan-name" maxlength="120" required></label>
-      <label>Categoria<select id="plan-category" required></select></label>
-      <label>Abrangência<select id="plan-region" required disabled><option value="NATIONAL">Nacional</option></select><small>Todos os planos e pacotes possuem abrangência nacional.</small></label>
-      <label id="plan-motorcycle-origin-field" hidden>Origem da moto<select id="plan-motorcycle-origin"><option value="NORTHEAST">Demais cidades do Nordeste</option><option value="CAPITAL">Capital</option></select><small>Define somente a tabela comercial da motocicleta.</small></label>
-      <label id="plan-subtitle-field" class="span-2">Subtítulo<input id="plan-subtitle" maxlength="180"></label>
-      <label>Ordem de exibição<input id="plan-order" type="number" min="0" value="100" required></label>
-      <label>Status<select id="plan-active"><option value="true">Ativo</option><option value="false">Inativo</option></select></label>
-
-      <div class="span-2 admin-form-section">
-        <strong>Regra automática para FIPE acima da última faixa</strong>
-        <small>Deixe os quatro campos vazios para desativar. Quando usada, todos precisam ser preenchidos.</small>
-      </div>
-      <label>Aplicar acima de<input id="plan-extra-above" data-money inputmode="decimal" maxlength="18" placeholder="Ex.: 210.000,00"></label>
-      <label>Intervalo de FIPE<input id="plan-extra-step" data-money inputmode="decimal" maxlength="18" placeholder="Ex.: 10.000,00"></label>
-      <label>Acréscimo por intervalo<input id="plan-extra-increment" data-money inputmode="decimal" maxlength="18" placeholder="Ex.: 50,00"></label>
-      <label>Mensalidade base<input id="plan-extra-base-price" data-money inputmode="decimal" maxlength="18" placeholder="Ex.: 447,45"></label>
-
-      <div class="span-2 admin-form-section">
-        <strong>Rastreador obrigatório</strong>
-        <small>Deixe os três campos vazios quando o plano não exigir rastreador por valor FIPE.</small>
-      </div>
-      <label>Obrigatório a partir de<input id="plan-tracker-required-above" data-money inputmode="decimal" maxlength="18" placeholder="Ex.: 150.000,00"></label>
-      <label>Taxa de instalação<input id="plan-tracker-installation-fee" data-money inputmode="decimal" maxlength="18" placeholder="Ex.: 200,00"></label>
-      <label class="span-2">Mensalidade do rastreador<input id="plan-tracker-monthly-fee" data-money inputmode="decimal" maxlength="18" placeholder="Ex.: 20,00"></label>
-    </div>
-    <p class="helper">Somente o administrador pode cadastrar, editar, ativar, desativar ou excluir planos e suas regras financeiras.</p>
-    <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="plan-dialog">Cancelar</button><button class="primary" type="submit">Salvar plano</button></div>
-  </form>
-</dialog>
-
-<dialog id="price-dialog" class="admin-dialog">
-  <form id="price-form" class="dialog-card">
-    <div class="dialog-head"><div><span class="eyebrow" style="color:#070c40">FAIXA FIPE</span><h2 id="price-dialog-title">Nova faixa de valor</h2></div><button class="dialog-close" type="button" data-close-dialog="price-dialog">×</button></div>
-    <input id="price-id" type="hidden">
-    <div class="form-grid">
-      <label class="span-2">Plano<select id="price-plan" required></select></label>
-      <label>Valor FIPE mínimo<input id="price-min" data-money inputmode="decimal" maxlength="18" required></label>
-      <label>Valor FIPE máximo<input id="price-max" data-money inputmode="decimal" maxlength="18" required></label>
-      <label class="span-2">Mensalidade<input id="price-monthly" data-money inputmode="decimal" maxlength="18" required></label>
-    </div>
-    <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="price-dialog">Cancelar</button><button class="primary" type="submit">Salvar faixa</button></div>
-  </form>
-</dialog>
-
-<dialog id="coverage-dialog" class="admin-dialog">
-  <form id="coverage-form" class="dialog-card">
-    <div class="dialog-head"><div><span class="eyebrow" style="color:#070c40">COBERTURA OU OPCIONAL</span><h2 id="coverage-dialog-title">Nova cobertura</h2></div><button class="dialog-close" type="button" data-close-dialog="coverage-dialog">×</button></div>
-    <input id="coverage-id" type="hidden">
-    <div class="form-grid">
-      <label class="span-2">Plano<select id="coverage-plan" required></select></label>
-      <label>Nome<input id="coverage-name" maxlength="180" required></label>
-      <label>Classificação<select id="coverage-status" required><option value="INCLUDED">Incluído</option><option value="NOT_INCLUDED">Não incluído</option><option value="OPTIONAL">Serviço opcional</option></select></label>
-      <label>Ordem de exibição<input id="coverage-order" type="number" min="0" value="100" required></label>
-      <label class="span-2">Condições ou limites<textarea id="coverage-detail" maxlength="240" rows="4"></textarea></label>
-      <label class="span-2">Mensalidade do opcional<input id="coverage-price" data-money inputmode="decimal" maxlength="18" placeholder="0,00"></label>
-    </div>
-    <p class="helper">O administrador também pode trocar a cobertura de plano. O valor mensal é obrigatório somente para “Serviço opcional”.</p>
-    <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="coverage-dialog">Cancelar</button><button class="primary" type="submit">Salvar cobertura</button></div>
-  </form>
-</dialog>
-
-<dialog id="quote-dialog" class="admin-dialog wide-dialog">
-  <form id="quote-analysis-form" class="dialog-card">
-    <div class="dialog-head"><div><span class="eyebrow" style="color:#070c40">ANÁLISE DE COTAÇÃO</span><h2 id="quote-dialog-title">Cotação</h2></div><button class="dialog-close" type="button" data-close-dialog="quote-dialog">×</button></div>
-    <input id="quote-analysis-id" type="hidden">
-    <div id="quote-detail-grid" class="detail-grid"></div>
-    <div class="form-grid" style="margin-top:18px">
-      <label>Status<select id="quote-analysis-status"><option value="CREATED">Pendente</option><option value="UNDER_REVIEW">Em análise</option><option value="ACCEPTED">Aceita</option><option value="DECLINED">Recusada</option><option value="CANCELLED">Cancelada</option></select></label>
-      <label class="span-2">Observação administrativa<textarea id="quote-analysis-note" maxlength="1200" rows="4" placeholder="Registre a análise, pendências ou decisão."></textarea></label>
-    </div>
-    <div id="quote-links" class="actions"></div>
-    <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="quote-dialog">Fechar</button><button class="primary" type="submit">Salvar análise</button></div>
-  </form>
-</dialog>
-
-<dialog id="inspection-dialog" class="admin-dialog wide-dialog">
-  <form id="inspection-analysis-form" class="dialog-card">
-    <div class="dialog-head"><div><span class="eyebrow" style="color:#070c40">ANÁLISE DO RETRATO NH</span><h2 id="inspection-dialog-title">Retrato NH</h2></div><button class="dialog-close" type="button" data-close-dialog="inspection-dialog">×</button></div>
-    <input id="inspection-analysis-id" type="hidden">
-    <div id="inspection-detail-grid" class="detail-grid"></div>
-    <section id="admin-inspection-files-section" class="inspection-media-section" hidden>
-      <div class="inspection-media-head">
-        <div><h3>Arquivos enviados</h3><p id="admin-inspection-files-retention">Disponíveis por 40 dias.</p></div>
-        <button id="admin-download-all-files" class="secondary" type="button">Baixar todos (.zip)</button>
-      </div>
-      <div id="admin-inspection-files-grid" class="inspection-media-grid"></div>
     </section>
-    <div class="form-grid" style="margin-top:18px">
-      <label>Status<select id="inspection-analysis-status"><option value="WAITING_FILES">Aguardando arquivos</option><option value="UPLOADING_FILES">Envio em andamento</option><option value="UNDER_REVIEW">Em análise</option><option value="COMPLETED">Material enviado</option><option value="APPROVED">Aprovada</option><option value="REJECTED">Reprovada</option><option value="CANCELLED">Cancelada</option><option value="EXPIRED">Expirada</option></select></label>
-      <label class="span-2">Observação administrativa<textarea id="inspection-analysis-note" maxlength="1200" rows="4" placeholder="Registre a análise, pendências ou decisão."></textarea></label>
-    </div>
-    <div id="inspection-links" class="actions"></div>
-    <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="inspection-dialog">Fechar</button><button class="primary" type="submit">Salvar análise</button></div>
-  </form>
-</dialog>
 
-<dialog id="settings-dialog" class="admin-dialog">
-  <form id="settings-form" class="dialog-card">
-    <div class="dialog-head"><div><span class="eyebrow" style="color:#070c40">DESTINOS DE ENVIO</span><h2>Alterar comunicação da equipe</h2></div><button class="dialog-close" type="button" data-close-dialog="settings-dialog">×</button></div>
-    <label>E-mail que receberá as cotações<input id="settings-email-input" type="email" maxlength="180" placeholder="comercial@empresa.com.br"></label>
-    <label style="margin-top:14px">WhatsApp da equipe<input id="settings-whatsapp-input" inputmode="numeric" maxlength="15" placeholder="5582999999999"></label>
-    <p class="helper">Informe o WhatsApp somente com números, incluindo DDI e DDD.</p>
-    <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="settings-dialog">Cancelar</button><button class="primary" type="submit">Salvar destinos</button></div>
-  </form>
-</dialog>
+    <main id="admin-view" class="shell" hidden>
+      <section class="hero-panel">
+        <h1>Gestão da operação Novo Horizonte</h1>
+        <p>
+          Controle usuários, consultores, cotações, Retrato NH, planos, valores,
+          coberturas, opcionais, destinos de envio, retenção e auditoria.
+        </p>
+      </section>
+      <div id="message" aria-live="polite"></div>
 
-<script src="/shared/config.js?v=20260804-current-origin"></script>
-<script src="/shared/url-tools.js?v=20260804-current-origin"></script>
-<script src="/shared/money-input.js?v=20260805-brl-mask"></script>
-<script src="/admin/admin.js?v=20260810-v31"></script>
-<script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
-</body>
+      <div class="admin-tabs" aria-label="Seções do painel">
+        <button type="button" data-tab="overview" class="active">
+          Visão geral
+        </button>
+        <button type="button" data-tab="activities">Atividades</button>
+        <button type="button" data-tab="consultants">Consultores</button>
+        <button type="button" data-tab="users">Usuários</button>
+        <button type="button" data-tab="quotes">Cotações</button>
+        <button type="button" data-tab="inspections">Retrato NH</button>
+        <button type="button" data-tab="plans">Planos</button>
+        <button type="button" data-tab="vehicle-categories">
+          Categorias de veículos
+        </button>
+        <button type="button" data-tab="prices">Valores</button>
+        <button type="button" data-tab="coverages">
+          Coberturas e opcionais
+        </button>
+        <button type="button" data-tab="settings">Envios</button>
+        <button type="button" data-tab="audit">Auditoria</button>
+      </div>
+
+      <section id="tab-overview">
+        <div class="kpi-grid">
+          <div class="kpi">
+            <span>Consultores ativos</span
+            ><strong id="kpi-consultants">—</strong>
+          </div>
+          <div class="kpi">
+            <span>Cotações</span><strong id="kpi-quotes">—</strong>
+          </div>
+          <div class="kpi">
+            <span>Retratos NH</span><strong id="kpi-inspections">—</strong>
+          </div>
+          <div class="kpi">
+            <span>Propostas aceitas</span><strong id="kpi-accepted">—</strong>
+          </div>
+        </div>
+        <div class="overview-grid">
+          <div class="card">
+            <h2>Resumo das cotações</h2>
+            <div id="quote-status-summary" class="status-summary"></div>
+          </div>
+          <div class="card">
+            <h2>Resumo do Retrato NH</h2>
+            <div id="inspection-status-summary" class="status-summary"></div>
+          </div>
+          <div class="card">
+            <h2>Destinos de envio</h2>
+            <p>
+              <strong>E-mail:</strong>
+              <span id="overview-team-email">Não configurado</span>
+            </p>
+            <p>
+              <strong>WhatsApp:</strong>
+              <span id="overview-team-whatsapp">Não configurado</span>
+            </p>
+            <button class="outline" type="button" data-open-settings>
+              Alterar destinos
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-activities" hidden>
+        <div class="section-head">
+          <div>
+            <h2>Atividades dos consultores</h2>
+            <p>
+              Histórico unificado de cotações e solicitações do Retrato NH,
+              inclusive de consultores já excluídos.
+            </p>
+          </div>
+          <input
+            id="activity-filter"
+            placeholder="Filtrar por consultor, cliente ou placa"
+            style="max-width: 360px"
+          />
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Consultor</th>
+                <th>Atividade</th>
+                <th>Cliente/associado</th>
+                <th>Placa</th>
+                <th>Status</th>
+                <th>Ação</th>
+              </tr>
+            </thead>
+            <tbody id="activities-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="tab-consultants" hidden>
+        <div class="section-head">
+          <div>
+            <h2>Consultores e voluntários</h2>
+            <p>
+              Cadastre, edite, ative, desative ou exclua. O histórico permanece
+              salvo pelo nome registrado na atividade.
+            </p>
+          </div>
+          <button id="new-consultant-button" class="primary" type="button">
+            + Novo consultor
+          </button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>Origem</th>
+                <th>Cotações</th>
+                <th>Retratos NH</th>
+                <th>Status</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="consultants-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="tab-users" hidden>
+        <div class="section-head">
+          <div>
+            <h2>Usuários e senhas</h2>
+            <p>
+              Crie contas para administrador, analista ou consultor e altere
+              senhas diretamente pelo painel.
+            </p>
+          </div>
+          <button id="new-user-button" class="primary" type="button">
+            + Novo usuário
+          </button>
+        </div>
+        <div class="card retention-notice" style="margin-bottom: 14px">
+          <strong>Segurança das contas</strong>
+          <p>
+            As senhas são armazenadas com hash BCrypt e nunca são exibidas. Uma
+            conta desativada perde o acesso imediatamente.
+          </p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Usuário</th>
+                <th>Nome</th>
+                <th>Perfil</th>
+                <th>Status</th>
+                <th>Último acesso</th>
+                <th>Senha alterada</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="users-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="tab-quotes" hidden>
+        <div class="section-head">
+          <div>
+            <h2>Cotações</h2>
+            <p>
+              Analise os dados, altere o status e registre observações
+              administrativas. Todas as cotações são removidas automaticamente
+              após 40 dias, inclusive as aceitas.
+            </p>
+          </div>
+          <div class="section-head-actions">
+            <input
+              id="quote-filter"
+              placeholder="Filtrar por origem, consultor, cliente, placa ou número"
+              style="max-width: 360px"
+            />
+            <button id="delete-all-quotes" class="danger" type="button">
+              Excluir todas as cotações
+            </button>
+          </div>
+        </div>
+
+        <form id="public-quote-assignment-form" class="card settings-card" style="margin-bottom: 18px">
+          <h3 style="margin-top: 0">Distribuição das cotações feitas pelo site</h3>
+          <p class="helper">
+            Controle se uma nova cotação do botão “Faça sua cotação” deve ser atribuída automaticamente ao último consultor que entrou no sistema.
+          </p>
+          <div class="settings-row">
+            <span>Regra atual</span>
+            <strong id="public-quote-assignment-status">—</strong>
+          </div>
+          <div class="settings-row">
+            <span>Última alteração</span>
+            <strong id="public-quote-assignment-updated-at">—</strong>
+          </div>
+          <div class="form-check form-switch">
+            <input id="public-quote-assignment-enabled" class="form-check-input" type="checkbox" />
+            <label class="form-check-label" for="public-quote-assignment-enabled">
+              Atribuir automaticamente ao último consultor logado
+            </label>
+          </div>
+          <p class="helper">
+            Desativada: a cotação fica aguardando o Admin escolher o consultor responsável. Ativada: mantém a regra atual de distribuição automática.
+          </p>
+          <button class="primary" type="submit">Salvar regra</button>
+        </form>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Número</th>
+                <th>Origem / responsável</th>
+                <th>Cliente</th>
+                <th>Placa</th>
+                <th>Plano</th>
+                <th>Total</th>
+                <th>Validade</th>
+                <th>Status</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="quotes-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="tab-inspections" hidden>
+        <div class="section-head">
+          <div>
+            <h2>Retrato NH</h2>
+            <p>
+              Analise novas vistorias e atualizações de boleto. A exclusão
+              manual preserva as aprovadas; a limpeza automática de 40 dias
+              remove todas, inclusive as aprovadas.
+            </p>
+          </div>
+          <div class="section-head-actions">
+            <input
+              id="inspection-filter"
+              placeholder="Filtrar por consultor, associado ou placa"
+              style="max-width: 360px"
+            />
+            <button id="delete-all-inspections" class="danger" type="button">
+              Excluir vistorias permitidas
+            </button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Associado</th>
+                <th>Consultor</th>
+                <th>Placa</th>
+                <th>Tipo</th>
+                <th>Arquivos</th>
+                <th>Status</th>
+                <th>Criada</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="inspections-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="tab-plans" hidden>
+        <div class="section-head">
+          <div>
+            <h2>Planos e pacotes</h2>
+            <p>
+              Crie, edite ou exclua completamente os planos disponíveis para
+              novas cotações.
+            </p>
+          </div>
+          <button id="new-plan-button" class="primary" type="button">
+            + Novo plano
+          </button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Código / plano</th>
+                <th>Categoria</th>
+                <th>Abrangência</th>
+                <th>Origem da moto</th>
+                <th>Subtítulo</th>
+                <th>Ordem</th>
+                <th>Status</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="plans-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="tab-vehicle-categories" hidden>
+        <div class="section-head">
+          <div>
+            <h2>Categorias de veículos</h2>
+            <p>
+              Ative ou desative os botões disponíveis na etapa “Categoria do
+              veículo” da cotação.
+            </p>
+          </div>
+        </div>
+        <div class="card retention-notice" style="margin-bottom: 14px">
+          <strong>Controle de disponibilidade</strong>
+          <p>
+            Ao desativar uma categoria, o botão correspondente fica oculto
+            imediatamente nas novas cotações. Os planos, valores e cotações
+            antigas permanecem salvos.
+          </p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Categoria</th>
+                <th>Status</th>
+                <th>Ação</th>
+              </tr>
+            </thead>
+            <tbody id="vehicle-categories-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="tab-prices" hidden>
+        <div class="section-head">
+          <div>
+            <h2>Valores dos pacotes</h2>
+            <p>Crie, altere e exclua faixas FIPE e mensalidades.</p>
+          </div>
+          <button id="new-price-button" class="primary" type="button">
+            + Nova faixa de valor
+          </button>
+        </div>
+
+        <div class="filter-grid">
+          <label
+            >Pesquisar<input
+              id="price-filter"
+              placeholder="Plano, categoria ou origem da moto"
+          /></label>
+          <label
+            >Plano<select id="price-plan-filter">
+              <option value="">Todos os planos</option>
+            </select></label
+          >
+        </div>
+        <div class="table-wrap" style="margin-top: 16px">
+          <table>
+            <thead>
+              <tr>
+                <th>Plano</th>
+                <th>Categoria</th>
+                <th>Abrangência / origem</th>
+                <th>Faixa FIPE</th>
+                <th>Mensalidade</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="prices-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="tab-coverages" hidden>
+        <div class="section-head">
+          <div>
+            <h2>Coberturas e serviços opcionais</h2>
+            <p>
+              Crie, edite e exclua coberturas, definindo se são incluídas, não
+              incluídas ou opcionais.
+            </p>
+          </div>
+          <button id="new-coverage-button" class="primary" type="button">
+            + Nova cobertura
+          </button>
+        </div>
+        <div class="filter-grid">
+          <label
+            >Plano<select id="coverage-plan-filter">
+              <option value="">Todos os planos</option>
+            </select></label
+          >
+          <label
+            >Classificação<select id="coverage-status-filter">
+              <option value="">Todas</option>
+              <option value="INCLUDED">Incluído</option>
+              <option value="NOT_INCLUDED">Não incluído</option>
+              <option value="OPTIONAL">Serviço opcional</option>
+            </select></label
+          >
+          <label
+            >Pesquisar<input
+              id="coverage-text-filter"
+              placeholder="Nome ou detalhe"
+          /></label>
+        </div>
+        <div class="table-wrap" style="margin-top: 16px">
+          <table>
+            <thead>
+              <tr>
+                <th>Plano</th>
+                <th>Código / cobertura</th>
+                <th>Classificação</th>
+                <th>Detalhe</th>
+                <th>Mensalidade</th>
+                <th>Ordem</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="coverages-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="tab-settings" hidden>
+        <div class="section-head">
+          <div>
+            <h2>Envios e arquivos do site</h2>
+            <p>
+              Gerencie os destinos de comunicação e os documentos institucionais
+              disponibilizados no site.
+            </p>
+          </div>
+        </div>
+        <div class="card settings-card">
+          <h3 style="margin-top: 0">Destinos de envio</h3>
+          <div class="settings-row">
+            <span>E-mail da equipe</span
+            ><strong id="settings-team-email">Não configurado</strong>
+          </div>
+          <div class="settings-row">
+            <span>WhatsApp da equipe</span
+            ><strong id="settings-team-whatsapp">Não configurado</strong>
+          </div>
+          <div class="settings-row">
+            <span>Última alteração</span
+            ><strong id="settings-updated-at">—</strong>
+          </div>
+          <button class="primary" type="button" data-open-settings>
+            Alterar destinos de envio
+          </button>
+        </div>
+
+        <form
+          id="regulation-upload-form"
+          class="card settings-card"
+          style="margin-top: 16px"
+        >
+          <h3 style="margin-top: 0">Regulamento da Proteção Veicular</h3>
+          <p class="helper">
+            Este é o PDF aberto pelo botão “Consulte o novo regulamento da Novo
+            Horizonte Proteção Veicular” na página principal.
+          </p>
+          <div class="settings-row">
+            <span>Arquivo atual</span
+            ><strong id="settings-regulation-file">—</strong>
+          </div>
+          <div class="settings-row">
+            <span>Tamanho</span><strong id="settings-regulation-size">—</strong>
+          </div>
+          <div class="settings-row">
+            <span>Origem</span
+            ><strong id="settings-regulation-source">—</strong>
+          </div>
+          <div class="settings-row">
+            <span>Última alteração</span
+            ><strong id="settings-regulation-updated-at">—</strong>
+          </div>
+          <label style="margin-top: 16px"
+            >Novo regulamento em PDF
+            <input
+              id="settings-regulation-input"
+              type="file"
+              accept="application/pdf,.pdf"
+              required
+            />
+          </label>
+          <p class="helper">
+            Envie somente PDF, com até 20 MB. Ao salvar, o botão do site passa a
+            baixar este arquivo automaticamente.
+          </p>
+          <div class="actions" style="margin-top: 14px">
+            <a
+              id="settings-regulation-download"
+              class="outline"
+              href="/api/public/documents/regulation"
+              download
+              >Baixar arquivo atual</a
+            >
+            <button id="settings-regulation-save" class="primary" type="submit">
+              Salvar novo regulamento
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section id="tab-audit" hidden>
+        <div class="section-head">
+          <div>
+            <h2>Auditoria completa</h2>
+            <p>
+              Histórico completo das ações administrativas, incluindo catálogo,
+              consultores, análises e configurações.
+            </p>
+          </div>
+          <input
+            id="audit-filter"
+            placeholder="Filtrar por tipo, item ou administrador"
+            style="max-width: 360px"
+          />
+        </div>
+        <div id="audit-list" class="audit-list" aria-live="polite"></div>
+      </section>
+    </main>
+
+    <dialog id="confirm-dialog" class="admin-dialog">
+      <form method="dialog" class="dialog-card">
+        <div class="dialog-head">
+          <div>
+            <span class="eyebrow" style="color: #070c40">CONFIRMAÇÃO</span>
+            <h2 id="confirm-title">Confirmar ação</h2>
+          </div>
+          <button class="dialog-close" value="cancel" aria-label="Fechar">
+            ×
+          </button>
+        </div>
+        <p id="confirm-text" class="muted"></p>
+        <div class="actions dialog-actions">
+          <button class="outline" value="cancel">Cancelar</button
+          ><button id="confirm-action" class="danger" value="default">
+            Confirmar
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="consultant-dialog" class="admin-dialog">
+      <form id="consultant-form" class="dialog-card">
+        <div class="dialog-head">
+          <div>
+            <span class="eyebrow" style="color: #070c40">CONSULTOR</span>
+            <h2 id="consultant-dialog-title">Cadastrar consultor</h2>
+          </div>
+          <button
+            class="dialog-close"
+            type="button"
+            data-close-dialog="consultant-dialog"
+          >
+            ×
+          </button>
+        </div>
+        <input id="consultant-id" type="hidden" />
+        <label
+          >Nome completo<input id="consultant-name" maxlength="140" required
+        /></label>
+        <div id="consultant-active-wrap" class="form-check form-switch" hidden>
+          <input
+            id="consultant-active"
+            class="form-check-input"
+            type="checkbox"
+          /><label class="form-check-label" for="consultant-active"
+            >Consultor ativo</label
+          >
+        </div>
+        <div class="actions dialog-actions">
+          <button
+            class="outline"
+            type="button"
+            data-close-dialog="consultant-dialog"
+          >
+            Cancelar</button
+          ><button class="primary" type="submit">Salvar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="user-dialog" class="admin-dialog">
+      <form id="user-form" class="dialog-card">
+        <div class="dialog-head">
+          <div>
+            <span class="eyebrow" style="color: #070c40">CONTA DE ACESSO</span>
+            <h2 id="user-dialog-title">Novo usuário</h2>
+          </div>
+          <button
+            class="dialog-close"
+            type="button"
+            data-close-dialog="user-dialog"
+          >
+            ×
+          </button>
+        </div>
+        <input id="user-id" type="hidden" />
+        <div class="form-grid">
+          <label class="span-2"
+            >Usuário<input
+              id="user-username"
+              autocomplete="off"
+              maxlength="160"
+              required
+              placeholder="Ex.: analista2 ou nome@nh.local"
+          /></label>
+          <label class="span-2"
+            >Nome de identificação<input
+              id="user-display-name"
+              maxlength="160"
+              placeholder="Ex.: Maria - Análise"
+          /></label>
+          <label
+            >Perfil<select id="user-role" required>
+              <option value="CONSULTANT">Consultor</option>
+              <option value="ANALYST">Analista</option>
+              <option value="ADMIN">Administrador</option>
+            </select></label
+          >
+          <label id="user-password-wrap"
+            >Senha inicial<input
+              id="user-password"
+              type="password"
+              autocomplete="new-password"
+              minlength="8"
+              maxlength="120"
+              placeholder="Mínimo de 8 caracteres"
+          /></label>
+        </div>
+        <div id="user-active-wrap" class="form-check form-switch" hidden>
+          <input
+            id="user-active"
+            class="form-check-input"
+            type="checkbox"
+          /><label class="form-check-label" for="user-active"
+            >Conta ativa</label
+          >
+        </div>
+        <p class="helper">
+          Contas de consultor acessam a Área do Colaborador; analistas acessam o
+          painel de análise; administradores acessam este painel.
+        </p>
+        <div class="actions dialog-actions">
+          <button class="outline" type="button" data-close-dialog="user-dialog">
+            Cancelar</button
+          ><button class="primary" type="submit">Salvar usuário</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="password-dialog" class="admin-dialog">
+      <form id="password-form" class="dialog-card">
+        <div class="dialog-head">
+          <div>
+            <span class="eyebrow" style="color: #070c40">ALTERAR SENHA</span>
+            <h2 id="password-dialog-title">Nova senha</h2>
+          </div>
+          <button
+            class="dialog-close"
+            type="button"
+            data-close-dialog="password-dialog"
+          >
+            ×
+          </button>
+        </div>
+        <input id="password-user-id" type="hidden" />
+        <label
+          >Nova senha<input
+            id="password-new"
+            type="password"
+            autocomplete="new-password"
+            minlength="8"
+            maxlength="120"
+            required
+        /></label>
+        <label style="margin-top: 14px"
+          >Confirmar nova senha<input
+            id="password-confirm"
+            type="password"
+            autocomplete="new-password"
+            minlength="8"
+            maxlength="120"
+            required
+        /></label>
+        <p class="helper">
+          A senha anterior deixa de funcionar imediatamente para novos logins.
+        </p>
+        <div class="actions dialog-actions">
+          <button
+            class="outline"
+            type="button"
+            data-close-dialog="password-dialog"
+          >
+            Cancelar</button
+          ><button class="primary" type="submit">Alterar senha</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="plan-dialog" class="admin-dialog wide-dialog">
+      <form id="plan-form" class="dialog-card">
+        <div class="dialog-head">
+          <div>
+            <span class="eyebrow" style="color: #070c40">PLANO OU PACOTE</span>
+            <h2 id="plan-dialog-title">Novo plano</h2>
+          </div>
+          <button
+            class="dialog-close"
+            type="button"
+            data-close-dialog="plan-dialog"
+          >
+            ×
+          </button>
+        </div>
+        <input id="plan-id" type="hidden" />
+        <div class="form-grid">
+          <label>Nome<input id="plan-name" maxlength="120" required /></label>
+          <label>Categoria<select id="plan-category" required></select></label>
+          <label
+            >Abrangência<select id="plan-region" required disabled>
+              <option value="NATIONAL">Nacional</option></select
+            ><small
+              >Todos os planos e pacotes possuem abrangência nacional.</small
+            ></label
+          >
+          <label id="plan-motorcycle-origin-field" hidden
+            >Origem da moto<select id="plan-motorcycle-origin">
+              <option value="NORTHEAST">Demais cidades do Nordeste</option>
+              <option value="CAPITAL">Capital</option></select
+            ><small
+              >Define somente a tabela comercial da motocicleta.</small
+            ></label
+          >
+          <label id="plan-subtitle-field" class="span-2"
+            >Subtítulo<input id="plan-subtitle" maxlength="180"
+          /></label>
+          <label
+            >Ordem de exibição<input
+              id="plan-order"
+              type="number"
+              min="0"
+              value="100"
+              required
+          /></label>
+          <label
+            >Status<select id="plan-active">
+              <option value="true">Ativo</option>
+              <option value="false">Inativo</option>
+            </select></label
+          >
+
+          <div class="span-2 admin-form-section">
+            <strong>Regra automática para FIPE acima da última faixa</strong>
+            <small
+              >Deixe os quatro campos vazios para desativar. Quando usada, todos
+              precisam ser preenchidos.</small
+            >
+          </div>
+          <label
+            >Aplicar acima de<input
+              id="plan-extra-above"
+              data-money
+              inputmode="decimal"
+              maxlength="18"
+              placeholder="Ex.: 210.000,00"
+          /></label>
+          <label
+            >Intervalo de FIPE<input
+              id="plan-extra-step"
+              data-money
+              inputmode="decimal"
+              maxlength="18"
+              placeholder="Ex.: 10.000,00"
+          /></label>
+          <label
+            >Acréscimo por intervalo<input
+              id="plan-extra-increment"
+              data-money
+              inputmode="decimal"
+              maxlength="18"
+              placeholder="Ex.: 50,00"
+          /></label>
+          <label
+            >Mensalidade base<input
+              id="plan-extra-base-price"
+              data-money
+              inputmode="decimal"
+              maxlength="18"
+              placeholder="Ex.: 447,45"
+          /></label>
+
+          <div class="span-2 admin-form-section">
+            <strong>Rastreador obrigatório</strong>
+            <small
+              >Deixe os três campos vazios quando o plano não exigir rastreador
+              por valor FIPE.</small
+            >
+          </div>
+          <label
+            >Obrigatório a partir de<input
+              id="plan-tracker-required-above"
+              data-money
+              inputmode="decimal"
+              maxlength="18"
+              placeholder="Ex.: 150.000,00"
+          /></label>
+          <label
+            >Taxa de instalação<input
+              id="plan-tracker-installation-fee"
+              data-money
+              inputmode="decimal"
+              maxlength="18"
+              placeholder="Ex.: 200,00"
+          /></label>
+          <label class="span-2"
+            >Mensalidade do rastreador<input
+              id="plan-tracker-monthly-fee"
+              data-money
+              inputmode="decimal"
+              maxlength="18"
+              placeholder="Ex.: 20,00"
+          /></label>
+        </div>
+        <p class="helper">
+          Somente o administrador pode cadastrar, editar, ativar, desativar ou
+          excluir planos e suas regras financeiras.
+        </p>
+        <div class="actions dialog-actions">
+          <button class="outline" type="button" data-close-dialog="plan-dialog">
+            Cancelar</button
+          ><button class="primary" type="submit">Salvar plano</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="promo-motorcycle-price-dialog" class="admin-dialog">
+      <form id="promo-motorcycle-price-form" class="dialog-card">
+        <div class="dialog-head">
+          <div>
+            <span class="eyebrow" style="color: #070c40"
+              >TABELA PROMOCIONAL</span
+            >
+            <h2>Editar faixa promocional</h2>
+          </div>
+          <button
+            class="dialog-close"
+            type="button"
+            data-close-dialog="promo-motorcycle-price-dialog"
+          >
+            ×
+          </button>
+        </div>
+        <input id="promo-motorcycle-price-id" type="hidden" />
+        <div class="form-grid">
+          <label class="span-2"
+            >Faixa promocional<input
+              id="promo-motorcycle-price-label"
+              maxlength="120"
+              placeholder="Ex.: Até 150cc até R$ 11 mil"
+              required
+          /></label>
+          <label
+            >Valor FIPE mínimo<input
+              id="promo-motorcycle-price-min-fipe"
+              data-money
+              inputmode="decimal"
+              maxlength="18"
+              placeholder="Ex.: 0,00"
+              required
+          /></label>
+          <label
+            >Valor FIPE máximo<input
+              id="promo-motorcycle-price-max-fipe"
+              data-money
+              inputmode="decimal"
+              maxlength="18"
+              placeholder="Sem limite se ficar vazio"
+          /></label>
+          <label
+            >Cilindrada mínima<input
+              id="promo-motorcycle-price-min-cc"
+              type="number"
+              min="1"
+              max="2500"
+              step="1"
+              placeholder="Ex.: 1"
+              required
+          /></label>
+          <label
+            >Cilindrada máxima<input
+              id="promo-motorcycle-price-max-cc"
+              type="number"
+              min="1"
+              max="2500"
+              step="1"
+              placeholder="Ex.: 150"
+              required
+          /></label>
+          <label class="span-2"
+            >Mensalidade<input
+              id="promo-motorcycle-price-monthly"
+              data-money
+              inputmode="decimal"
+              maxlength="18"
+              placeholder="Ex.: 35,00"
+              required
+          /></label>
+        </div>
+        <p class="helper">
+          Nome, FIPE, cilindradas e mensalidade passam a valer nas novas
+          cotações assim que você salvar.
+        </p>
+        <div class="actions dialog-actions">
+          <button
+            id="promo-motorcycle-price-delete"
+            class="danger"
+            type="button"
+          >
+            Excluir faixa</button
+          ><button
+            class="outline"
+            type="button"
+            data-close-dialog="promo-motorcycle-price-dialog"
+          >
+            Cancelar</button
+          ><button class="primary" type="submit">Salvar faixa</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="price-dialog" class="admin-dialog">
+      <form id="price-form" class="dialog-card">
+        <div class="dialog-head">
+          <div>
+            <span class="eyebrow" style="color: #070c40">FAIXA FIPE</span>
+            <h2 id="price-dialog-title">Nova faixa de valor</h2>
+          </div>
+          <button
+            class="dialog-close"
+            type="button"
+            data-close-dialog="price-dialog"
+          >
+            ×
+          </button>
+        </div>
+        <input id="price-id" type="hidden" />
+        <div class="form-grid">
+          <label class="span-2"
+            >Plano<select id="price-plan" required></select
+          ></label>
+          <label
+            >Valor FIPE mínimo<input
+              id="price-min"
+              data-money
+              inputmode="decimal"
+              maxlength="18"
+              required
+          /></label>
+          <label
+            >Valor FIPE máximo<input
+              id="price-max"
+              data-money
+              inputmode="decimal"
+              maxlength="18"
+              required
+          /></label>
+          <label class="span-2"
+            >Mensalidade<input
+              id="price-monthly"
+              data-money
+              inputmode="decimal"
+              maxlength="18"
+              required
+          /></label>
+        </div>
+        <div class="actions dialog-actions">
+          <button
+            class="outline"
+            type="button"
+            data-close-dialog="price-dialog"
+          >
+            Cancelar</button
+          ><button class="primary" type="submit">Salvar faixa</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="coverage-dialog" class="admin-dialog">
+      <form id="coverage-form" class="dialog-card">
+        <div class="dialog-head">
+          <div>
+            <span class="eyebrow" style="color: #070c40"
+              >COBERTURA OU OPCIONAL</span
+            >
+            <h2 id="coverage-dialog-title">Nova cobertura</h2>
+          </div>
+          <button
+            class="dialog-close"
+            type="button"
+            data-close-dialog="coverage-dialog"
+          >
+            ×
+          </button>
+        </div>
+        <input id="coverage-id" type="hidden" />
+        <div class="form-grid">
+          <label class="span-2"
+            >Plano<select id="coverage-plan" required></select
+          ></label>
+          <label
+            >Nome<input id="coverage-name" maxlength="180" required
+          /></label>
+          <label
+            >Classificação<select id="coverage-status" required>
+              <option value="INCLUDED">Incluído</option>
+              <option value="NOT_INCLUDED">Não incluído</option>
+              <option value="OPTIONAL">Serviço opcional</option>
+            </select></label
+          >
+          <label
+            >Ordem de exibição<input
+              id="coverage-order"
+              type="number"
+              min="0"
+              value="100"
+              required
+          /></label>
+          <label class="span-2"
+            >Condições ou limites<textarea
+              id="coverage-detail"
+              maxlength="240"
+              rows="4"
+            ></textarea>
+          </label>
+          <label class="span-2"
+            >Mensalidade do opcional<input
+              id="coverage-price"
+              data-money
+              inputmode="decimal"
+              maxlength="18"
+              placeholder="0,00"
+          /></label>
+        </div>
+        <p class="helper">
+          O administrador também pode trocar a cobertura de plano. O valor
+          mensal é obrigatório somente para “Serviço opcional”.
+        </p>
+        <div class="actions dialog-actions">
+          <button
+            class="outline"
+            type="button"
+            data-close-dialog="coverage-dialog"
+          >
+            Cancelar</button
+          ><button class="primary" type="submit">Salvar cobertura</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="quote-dialog" class="admin-dialog wide-dialog">
+      <form id="quote-analysis-form" class="dialog-card">
+        <div class="dialog-head">
+          <div>
+            <span class="eyebrow" style="color: #070c40"
+              >ANÁLISE DE COTAÇÃO</span
+            >
+            <h2 id="quote-dialog-title">Cotação</h2>
+          </div>
+          <button
+            class="dialog-close"
+            type="button"
+            data-close-dialog="quote-dialog"
+          >
+            ×
+          </button>
+        </div>
+        <input id="quote-analysis-id" type="hidden" />
+        <div id="quote-detail-grid" class="detail-grid"></div>
+        <div class="form-grid" style="margin-top: 18px">
+          <label id="quote-analysis-consultant-field" class="span-2" hidden
+            >Consultor responsável
+            <select id="quote-analysis-consultant">
+              <option value="">Selecione um consultor</option>
+            </select>
+            <small class="helper">Disponível para cotações feitas pelo site. Ao trocar o responsável, uma vistoria já criada também é atualizada.</small>
+          </label>
+          <label
+            >Status<select id="quote-analysis-status">
+              <option value="CREATED">Pendente</option>
+              <option value="UNDER_REVIEW">Em análise</option>
+              <option value="ACCEPTED">Aceita</option>
+              <option value="DECLINED">Recusada</option>
+              <option value="CANCELLED">Cancelada</option>
+            </select></label
+          >
+          <label class="span-2"
+            >Observação administrativa<textarea
+              id="quote-analysis-note"
+              maxlength="1200"
+              rows="4"
+              placeholder="Registre a análise, pendências ou decisão."
+            ></textarea>
+          </label>
+        </div>
+        <div id="quote-links" class="actions"></div>
+        <div class="actions dialog-actions">
+          <button
+            class="outline"
+            type="button"
+            data-close-dialog="quote-dialog"
+          >
+            Fechar</button
+          ><button class="primary" type="submit">Salvar análise</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="inspection-dialog" class="admin-dialog wide-dialog">
+      <form id="inspection-analysis-form" class="dialog-card">
+        <div class="dialog-head">
+          <div>
+            <span class="eyebrow" style="color: #070c40"
+              >ANÁLISE DO RETRATO NH</span
+            >
+            <h2 id="inspection-dialog-title">Retrato NH</h2>
+          </div>
+          <button
+            class="dialog-close"
+            type="button"
+            data-close-dialog="inspection-dialog"
+          >
+            ×
+          </button>
+        </div>
+        <input id="inspection-analysis-id" type="hidden" />
+        <div id="inspection-detail-grid" class="detail-grid"></div>
+        <section
+          id="admin-inspection-files-section"
+          class="inspection-media-section"
+          hidden
+        >
+          <div class="inspection-media-head">
+            <div>
+              <h3>Arquivos enviados</h3>
+              <p id="admin-inspection-files-retention">
+                Disponíveis por 40 dias.
+              </p>
+            </div>
+            <button
+              id="admin-download-all-files"
+              class="secondary"
+              type="button"
+            >
+              Baixar todos (.zip)
+            </button>
+          </div>
+          <div
+            id="admin-inspection-files-grid"
+            class="inspection-media-grid"
+          ></div>
+        </section>
+        <div class="form-grid" style="margin-top: 18px">
+          <label
+            >Status<select id="inspection-analysis-status">
+              <option value="WAITING_FILES">Aguardando arquivos</option>
+              <option value="UPLOADING_FILES">Envio em andamento</option>
+              <option value="UNDER_REVIEW">Em análise</option>
+              <option value="COMPLETED">Material enviado</option>
+              <option value="APPROVED">Aprovada</option>
+              <option value="REJECTED">Reprovada</option>
+              <option value="CANCELLED">Cancelada</option>
+              <option value="EXPIRED">Expirada</option>
+            </select></label
+          >
+          <label class="span-2"
+            >Observação administrativa<textarea
+              id="inspection-analysis-note"
+              maxlength="1200"
+              rows="4"
+              placeholder="Registre a análise, pendências ou decisão."
+            ></textarea>
+          </label>
+        </div>
+        <div id="inspection-links" class="actions"></div>
+        <div class="actions dialog-actions">
+          <button
+            class="outline"
+            type="button"
+            data-close-dialog="inspection-dialog"
+          >
+            Fechar</button
+          ><button class="primary" type="submit">Salvar análise</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="settings-dialog" class="admin-dialog">
+      <form id="settings-form" class="dialog-card">
+        <div class="dialog-head">
+          <div>
+            <span class="eyebrow" style="color: #070c40"
+              >DESTINOS DE ENVIO</span
+            >
+            <h2>Alterar comunicação da equipe</h2>
+          </div>
+          <button
+            class="dialog-close"
+            type="button"
+            data-close-dialog="settings-dialog"
+          >
+            ×
+          </button>
+        </div>
+        <label
+          >E-mail que receberá as cotações<input
+            id="settings-email-input"
+            type="email"
+            maxlength="180"
+            placeholder="comercial@empresa.com.br"
+        /></label>
+        <label style="margin-top: 14px"
+          >WhatsApp da equipe<input
+            id="settings-whatsapp-input"
+            inputmode="numeric"
+            maxlength="15"
+            placeholder="5582999999999"
+        /></label>
+        <p class="helper">
+          Informe o WhatsApp somente com números, incluindo DDI e DDD.
+        </p>
+        <div class="actions dialog-actions">
+          <button
+            class="outline"
+            type="button"
+            data-close-dialog="settings-dialog"
+          >
+            Cancelar</button
+          ><button class="primary" type="submit">Salvar destinos</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="/shared/config.js?v=20260804-current-origin"></script>
+    <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
+    <script src="/shared/money-input.js?v=20260805-brl-mask"></script>
+    <script src="/admin/admin.js?v=20260815-v42-public-assignment"></script>
+    <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
+  </body>
 </html>

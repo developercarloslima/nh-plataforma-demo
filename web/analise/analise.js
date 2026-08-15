@@ -26,6 +26,36 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
 const date = value => value ? new Date(value).toLocaleString('pt-BR') : '—';
 const hasFiles = item => Number(item?.assetCount || 0) > 0;
 
+function inspectionAssetAvailable(item, type, sortOrder) {
+  return Array.isArray(item?.assets) && item.assets.some(asset =>
+    asset?.available === true && asset?.type === type && Number(asset?.sortOrder) === Number(sortOrder)
+  );
+}
+
+function inspectionPendingCount(item) {
+  if (!item) return 0;
+  if (item.requestType !== 'NEW_INSPECTION') {
+    return inspectionAssetAvailable(item, 'VIDEO', 1) ? 0 : 1;
+  }
+
+  const photoCount = item.vehicleType === 'MOTORCYCLE' ? 7 : 15;
+  let pending = 0;
+  for (let order = 1; order <= photoCount; order += 1) {
+    if (!inspectionAssetAvailable(item, 'PHOTO', order)) pending += 1;
+  }
+  if (!inspectionAssetAvailable(item, 'VIDEO', photoCount + 1)) pending += 1;
+  if (!inspectionAssetAvailable(item, 'SIGNATURE', photoCount + 2)) pending += 1;
+  if (!inspectionAssetAvailable(item, 'VEHICLE_DOCUMENT', photoCount + 3)) pending += 1;
+  if (!inspectionAssetAvailable(item, 'IDENTITY_DOCUMENT', photoCount + 4)) pending += 1;
+  if (!inspectionAssetAvailable(item, 'IDENTITY_DOCUMENT', photoCount + 5)) pending += 1;
+  if (!item.residenceAddress) pending += 1;
+  return pending;
+}
+
+function inspectionNeedsFiles(item) {
+  return inspectionPendingCount(item) > 0;
+}
+
 function badge(status) {
   const [label, kind] = STATUS[status] || [status, ''];
   return `<span class="badge ${kind}">${esc(label)}</span>`;
@@ -188,12 +218,14 @@ function inspectionRows(items, emptyMessage) {
       ? (window.NH_URLS?.retratoUrl(item.publicUrl) || item.publicUrl)
       : null;
     const filesAvailable = hasFiles(item);
+    const needsFiles = inspectionNeedsFiles(item);
+    const partialResubmission = filesAvailable && needsFiles;
     const statusActions = filesAvailable
       ? `<button class="outline small-button" data-analyze="${item.id}" type="button">Ver documentos enviados</button>`
       : '';
-    const pendingActions = filesAvailable
-      ? ''
-      : `${actionLink(item.associateInspectionWhatsappUrl, 'Enviar link', 'secondary')}${actionLink(currentPublicUrl, 'Fazer vistoria')}`;
+    const pendingActions = needsFiles
+      ? `${actionLink(item.associateInspectionWhatsappUrl, partialResubmission ? 'Enviar pendências' : 'Enviar link', 'secondary')}${actionLink(currentPublicUrl, partialResubmission ? 'Refazer pendências' : 'Fazer vistoria')}`
+      : '';
 
     return `<tr>
       <td><strong>${esc(item.associateName)}</strong><small class="table-code">${esc(formatPhone(item.whatsapp) || 'Sem WhatsApp')}</small></td>
@@ -271,6 +303,8 @@ function openInspection(id) {
 
   releaseMediaUrls();
   const filesAvailable = hasFiles(item);
+  const needsFiles = inspectionNeedsFiles(item);
+  const pendingCount = inspectionPendingCount(item);
   const currentPublicUrl = item.publicUrl
     ? (window.NH_URLS?.retratoUrl(item.publicUrl) || item.publicUrl)
     : null;
@@ -281,7 +315,9 @@ function openInspection(id) {
   configureStatusOptions(item);
 
   const retentionText = filesAvailable
-    ? `Disponíveis no painel até ${date(item.filesExpireAt)}.`
+    ? (needsFiles
+      ? `${pendingCount} ${pendingCount === 1 ? 'item pendente' : 'itens pendentes'}; os demais arquivos continuam armazenados no sistema.`
+      : `Disponíveis no painel até ${date(item.filesExpireAt)}.`)
     : (Number(item.expiredAssetCount || 0) > 0
       ? 'O prazo de 40 dias terminou e os arquivos foram apagados automaticamente.'
       : 'Aguardando envio do associado.');
@@ -308,6 +344,10 @@ function openInspection(id) {
 
   if (item.requestType === 'NEW_INSPECTION') {
     inspectionDetails.push(['PDF da cotação', item.quotationPdfUrl ? 'Disponível para visualização' : '—']);
+    if (item.billingDueDay) inspectionDetails.push(['Vencimento mensal', `Dia ${item.billingDueDay}`]);
+    if (item.firstBillingDueDate) {
+      inspectionDetails.push(['Primeiro vencimento', new Date(`${item.firstBillingDueDate}T12:00:00`).toLocaleDateString('pt-BR')]);
+    }
   }
 
   if (item.requestType === 'NEW_INSPECTION' && discountPercent > 0) {
@@ -339,14 +379,11 @@ function openInspection(id) {
     discountNote.textContent = '';
   }
 
-  $('inspection-links').innerHTML = links(filesAvailable ? [
-    [currentPublicUrl, 'Abrir link da vistoria'],
-    [item.requestType === 'NEW_INSPECTION' ? item.quotationPdfUrl : null, 'Ver PDF da cotação']
-  ] : [
-    [item.associateInspectionWhatsappUrl, 'Enviar link ao associado', 'secondary'],
-    [currentPublicUrl, 'Fazer vistoria agora'],
+  $('inspection-links').innerHTML = links([
+    [needsFiles ? item.associateInspectionWhatsappUrl : null, filesAvailable ? 'Enviar link para refazer pendências' : 'Enviar link ao associado', 'secondary'],
+    [currentPublicUrl, needsFiles && filesAvailable ? 'Abrir link das pendências' : 'Abrir link da vistoria'],
     [item.requestType === 'NEW_INSPECTION' ? item.quotationPdfUrl : null, 'Ver PDF da cotação'],
-    [item.teamWhatsappUrl, 'Comunicar equipe pelo WhatsApp']
+    [!filesAvailable ? item.teamWhatsappUrl : null, 'Comunicar equipe pelo WhatsApp']
   ]);
 
   renderInspectionFiles(item);
@@ -382,8 +419,9 @@ function renderInspectionFiles(item) {
       : video
         ? `<div class="inspection-media-preview"><div class="inspection-media-placeholder">▶ Vídeo disponível</div><video data-video-preview="${asset.id}" controls hidden></video></div>`
         : `<div class="inspection-media-preview"><div class="inspection-media-placeholder">${asset.type === 'REPORT' ? 'PDF' : 'DOCUMENTO'}</div></div>`;
+    const canDelete = asset.available && ['PHOTO', 'VIDEO', 'SIGNATURE', 'VEHICLE_DOCUMENT', 'IDENTITY_DOCUMENT'].includes(asset.type);
     const actions = asset.available
-      ? `<div class="inspection-media-actions">${video ? `<button class="outline" data-play-video="${asset.id}" type="button">Reproduzir</button>` : ''}<button class="secondary" data-download-asset="${asset.id}" data-file-name="${esc(asset.fileName)}" type="button">Baixar</button><button class="danger" data-delete-asset="${asset.id}" data-file-name="${esc(title)}" type="button">Excluir</button></div>`
+      ? `<div class="inspection-media-actions">${video ? `<button class="outline" data-play-video="${asset.id}" type="button">Reproduzir</button>` : ''}<button class="secondary" data-download-asset="${asset.id}" data-file-name="${esc(asset.fileName)}" type="button">Baixar</button>${canDelete ? `<button class="danger" data-delete-asset="${asset.id}" data-file-name="${esc(title)}" type="button">Excluir / solicitar novamente</button>` : ''}</div>`
       : '<div class="inspection-media-expired">Arquivo removido após 40 dias.</div>';
     return `<article class="inspection-media-card ${asset.available ? '' : 'expired'}">${preview}<div class="inspection-media-body"><strong>${esc(title)}</strong><small>${esc(asset.fileName)}</small><small>${formatBytes(asset.fileSize)} · ${esc(asset.contentType || 'arquivo')}</small>${actions}</div></article>`;
   }).join('');
@@ -405,8 +443,8 @@ function renderInspectionFiles(item) {
 async function deleteInspectionAsset(inspectionId, assetId, label, button) {
   const confirmed = await confirmAnalysisAction(
     'Excluir arquivo da vistoria?',
-    `O arquivo “${label}” será excluído definitivamente do banco de dados. Esta ação não pode ser desfeita.`,
-    'Excluir arquivo'
+    `O arquivo “${label}” será excluído. Os demais arquivos aceitos serão mantidos e o mesmo link da vistoria passará a pedir somente esta pendência (e qualquer outra que estiver faltando).`,
+    'Excluir e solicitar novamente'
   );
   if (!confirmed) return;
 
@@ -421,7 +459,7 @@ async function deleteInspectionAsset(inspectionId, assetId, label, button) {
     await load();
     const updated = inspections.find(item => item.id === inspectionId);
     if (updated) openInspection(inspectionId);
-    message('Arquivo excluído do banco de dados.', 'success');
+    message('Arquivo excluído. A vistoria foi reaberta e o link agora pede somente os arquivos pendentes.', 'success');
   } catch (error) {
     message(error.message);
     button.disabled = false;

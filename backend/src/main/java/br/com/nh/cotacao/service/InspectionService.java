@@ -50,9 +50,6 @@ public class InspectionService {
         if (quotation.getStatus() != QuoteStatus.ACCEPTED) {
             throw new IllegalArgumentException("A proposta precisa estar aceita antes do envio da vistoria.");
         }
-        if (java.time.OffsetDateTime.now().isAfter(quotation.getValidUntil())) {
-            throw new IllegalArgumentException("Esta cotação expirou e não pode mais ser utilizada para a vistoria.");
-        }
 
         validateFiles(photos, labels);
         List<PreparedPhoto> preparedPhotos = preparePhotos(photos, labels);

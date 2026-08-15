@@ -10,7 +10,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.time.OffsetDateTime;
 import java.util.*;
 
 @Service
@@ -97,17 +96,15 @@ public class RetratoService {
         if (quotation == null) {
             throw new IllegalArgumentException("Cotação não encontrada.");
         }
+        var existing = repository.findByQuotation_Id(quotation.getId());
+        if (existing.isPresent()) return toResponse(existing.get());
         if (quotation.getStatus() != QuoteStatus.ACCEPTED) {
             throw new IllegalArgumentException("A cotação precisa estar aceita para iniciar a nova vistoria.");
         }
-        if (OffsetDateTime.now().isAfter(quotation.getValidUntil())) {
-            throw new IllegalArgumentException("Esta cotação expirou e não pode mais ser utilizada para iniciar o Retrato NH.");
+        if (java.time.OffsetDateTime.now().isAfter(quotation.getValidUntil())) {
+            throw new IllegalArgumentException("Esta cotação expirou e não pode mais gerar uma nova vistoria.");
         }
-        return repository.findByQuotation_Id(quotation.getId())
-                .map(this::toResponse)
-                .orElseGet(() -> toResponse(repository.save(
-                        InspectionRequest.createForQuotation(randomToken(), quotation)
-                )));
+        return toResponse(repository.save(InspectionRequest.createForQuotation(randomToken(), quotation)));
     }
 
     @Transactional(readOnly = true)
@@ -117,9 +114,7 @@ public class RetratoService {
 
     @Transactional(readOnly = true)
     public InspectionResponse publicGet(String token) {
-        InspectionRequest request = findByToken(token);
-        validateQuotationValidityForCollection(request);
-        return toResponse(request);
+        return toResponse(findByToken(token));
     }
 
     @Transactional(readOnly = true)
@@ -142,7 +137,6 @@ public class RetratoService {
             List<String> additionalLabels
     ) {
         InspectionRequest request = findByToken(token);
-        validateQuotationValidityForCollection(request);
         if (request.getStatus() != InspectionRequestStatus.WAITING_FILES
                 && request.getStatus() != InspectionRequestStatus.UPLOADING_FILES
                 && request.getStatus() != InspectionRequestStatus.CREATED
@@ -295,20 +289,6 @@ public class RetratoService {
         }
     }
 
-    private void validateQuotationValidityForCollection(InspectionRequest request) {
-        if (request == null || request.getRequestType() != InspectionRequestType.NEW_INSPECTION) return;
-        if (request.getStatus() != InspectionRequestStatus.WAITING_FILES
-                && request.getStatus() != InspectionRequestStatus.UPLOADING_FILES
-                && request.getStatus() != InspectionRequestStatus.CREATED
-                && request.getStatus() != InspectionRequestStatus.UNDER_REVIEW) return;
-        Quotation quotation = request.getQuotation();
-        if (quotation != null && OffsetDateTime.now().isAfter(quotation.getValidUntil())) {
-            throw new IllegalArgumentException(
-                    "A cotação vinculada a esta vistoria expirou. Gere uma nova cotação para continuar."
-            );
-        }
-    }
-
     private InspectionRequest findByToken(String token) {
         return repository.findByPublicToken(token)
                 .orElseThrow(() -> new IllegalArgumentException("Link de vistoria inválido."));
@@ -318,11 +298,21 @@ public class RetratoService {
         String publicUrl = publicWebUrl + "/retrato/?token=" + request.getPublicToken();
         String whatsappUrl = null;
         if (request.getWhatsapp() != null && !request.getWhatsapp().isBlank()) {
-            String message = "Olá, " + request.getAssociateName() + "! Acesse o link abaixo para realizar "
-                    + (request.getRequestType() == InspectionRequestType.NEW_INSPECTION
-                    ? "a vistoria digital completa e enviar as fotos, o vídeo e os documentos"
-                    : "o vídeo e, se necessário, os arquivos para atualização de boleto")
-                    + " do veículo " + vehiclePlateLabel(request) + ":\n" + publicUrl;
+            boolean hasPreservedFile = request.getAssets().stream()
+                    .filter(asset -> asset.getAssetType() != InspectionAssetType.REPORT)
+                    .anyMatch(storageService::isAvailable);
+            String message;
+            if (hasPreservedFile && request.getCompletedAt() == null) {
+                message = "Olá, " + request.getAssociateName() + "! Precisamos refazer apenas alguns arquivos da vistoria do veículo "
+                        + vehiclePlateLabel(request) + ". Os arquivos já aceitos foram mantidos e não precisam ser enviados novamente. "
+                        + "O link mostrará somente o que está pendente/rejeitado:\n" + publicUrl;
+            } else {
+                message = "Olá, " + request.getAssociateName() + "! Acesse o link abaixo para realizar "
+                        + (request.getRequestType() == InspectionRequestType.NEW_INSPECTION
+                        ? "a vistoria digital completa e enviar as fotos, o vídeo e os documentos"
+                        : "o vídeo e, se necessário, os arquivos para atualização de boleto")
+                        + " do veículo " + vehiclePlateLabel(request) + ":\n" + publicUrl;
+            }
             whatsappUrl = "https://wa.me/55" + normalizeBrazilPhone(request.getWhatsapp())
                     + "?text=" + URLEncoder.encode(message, StandardCharsets.UTF_8);
         }

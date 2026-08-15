@@ -10,10 +10,13 @@ let quotes = [];
 let inspections = [];
 let categories = [];
 let prices = [];
+let promotionalMotorcyclePrices = [];
 let plans = [];
 let coverages = [];
 let auditEntries = [];
 let settings = {};
+let regulationDocument = {};
+let publicQuoteAssignmentSettings = { enabled: true, updatedBy: "SYSTEM", updatedAt: null };
 const adminMediaObjectUrls = new Set();
 
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -30,13 +33,25 @@ const INSPECTION_STATUS_LABELS = Object.freeze({
   APPROVED: ['Aprovada', 'ok'], REJECTED: ['Reprovada', 'off'], CANCELLED: ['Cancelada', 'off'], EXPIRED: ['Expirada', 'off']
 });
 const AUDIT_TYPE_LABELS = Object.freeze({
-  PLAN: 'Plano', PRICE_RANGE: 'Faixa de valor', PLAN_COVERAGE: 'Cobertura', OPTIONAL: 'Opcional',
-  CONSULTANT: 'Consultor', PORTAL_USER: 'Usuário', QUOTE_STATUS: 'Cotação', QUOTE_DELETE: 'Exclusão de cotação', INSPECTION_STATUS: 'Retrato NH', INSPECTION_DELETE: 'Exclusão de vistoria', DATA_RETENTION: 'Retenção automática', COMMUNICATION: 'Comunicação'
+  PLAN: 'Plano', VEHICLE_CATEGORY: 'Categoria de veículo', PRICE_RANGE: 'Faixa de valor', PROMO_MOTORCYCLE_PRICE: 'Tabela promocional', PLAN_COVERAGE: 'Cobertura', OPTIONAL: 'Opcional',
+  CONSULTANT: 'Consultor', PORTAL_USER: 'Usuário', QUOTE_STATUS: 'Cotação', QUOTE_DELETE: 'Exclusão de cotação', INSPECTION_STATUS: 'Retrato NH', INSPECTION_DELETE: 'Exclusão de vistoria', DATA_RETENTION: 'Retenção automática', COMMUNICATION: 'Comunicação', SITE_DOCUMENT: 'Arquivo do site', QUOTE_CONSULTANT: 'Responsável da cotação', PUBLIC_QUOTE_ASSIGNMENT: 'Distribuição de cotação do site'
 });
+
+
+const VEHICLE_CATEGORY_GROUPS = Object.freeze([
+  { code: 'MOTORCYCLE_PROMO_2026', name: 'Tabela Promocional - Motocicletas', categoryCodes: ['MOTORCYCLE_PROMO_2026'] },
+  { code: 'MOTORCYCLE_UP_TO_300', name: 'Motos até 300cc', categoryCodes: ['MOTORCYCLE_UP_TO_300'] },
+  { code: 'MOTORCYCLE_OVER_300', name: 'Motos acima de 300cc', categoryCodes: ['MOTORCYCLE_OVER_300'] },
+  { code: 'SCOOTER_ELECTRIC', name: 'Scooters e elétricas', categoryCodes: ['SCOOTER_ELECTRIC'] },
+  { code: 'CAR', name: 'Carros', categoryCodes: ['CAR_NATIONAL', 'CAR_IMPORTED'] },
+  { code: 'UTILITY', name: 'Utilitários', categoryCodes: ['UTILITY'] },
+  { code: 'TRUCK', name: 'Caminhões', categoryCodes: ['TRUCK'] }
+]);
 
 const regionLabel = value => REGION_LABELS[value] || value || '—';
 const motorcycleOriginLabel = value => MOTORCYCLE_ORIGIN_LABELS[value] || 'Não se aplica';
 const quoteOriginLabel = value => value === 'SELF_SERVICE' ? 'Cliente pelo site' : 'Consultor';
+const quoteConsultantLabel = item => item?.consultantId ? (item.consultantName || 'Consultor') : (item?.origin === 'SELF_SERVICE' ? 'Aguardando atribuição' : (item?.consultantName || '—'));
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
 }[char]));
@@ -147,6 +162,34 @@ function hasInspectionFiles(item) {
   return Number(item?.assetCount || 0) > 0;
 }
 
+function adminInspectionAssetAvailable(item, type, sortOrder) {
+  return Array.isArray(item?.assets) && item.assets.some(asset =>
+    asset?.available === true && asset?.type === type && Number(asset?.sortOrder) === Number(sortOrder)
+  );
+}
+
+function adminInspectionPendingCount(item) {
+  if (!item) return 0;
+  if (item.requestType !== 'NEW_INSPECTION') return adminInspectionAssetAvailable(item, 'VIDEO', 1) ? 0 : 1;
+
+  const photoCount = item.vehicleType === 'MOTORCYCLE' ? 7 : 15;
+  let pending = 0;
+  for (let order = 1; order <= photoCount; order += 1) {
+    if (!adminInspectionAssetAvailable(item, 'PHOTO', order)) pending += 1;
+  }
+  if (!adminInspectionAssetAvailable(item, 'VIDEO', photoCount + 1)) pending += 1;
+  if (!adminInspectionAssetAvailable(item, 'SIGNATURE', photoCount + 2)) pending += 1;
+  if (!adminInspectionAssetAvailable(item, 'VEHICLE_DOCUMENT', photoCount + 3)) pending += 1;
+  if (!adminInspectionAssetAvailable(item, 'IDENTITY_DOCUMENT', photoCount + 4)) pending += 1;
+  if (!adminInspectionAssetAvailable(item, 'IDENTITY_DOCUMENT', photoCount + 5)) pending += 1;
+  if (!item.residenceAddress) pending += 1;
+  return pending;
+}
+
+function adminInspectionNeedsFiles(item) {
+  return adminInspectionPendingCount(item) > 0;
+}
+
 function coverageBadge(status) {
   if (status === 'INCLUDED') return statusBadge('Incluído', 'ok');
   if (status === 'OPTIONAL') return statusBadge('Serviço opcional', 'warn');
@@ -213,12 +256,15 @@ async function load() {
       api('/api/admin/inspections'),
       api('/api/admin/catalog/categories'),
       api('/api/admin/catalog/prices'),
+      api('/api/admin/catalog/promotional-motorcycle-prices'),
       api('/api/admin/catalog/plans'),
       api('/api/admin/catalog/coverages'),
       api('/api/admin/catalog/audit'),
-      api('/api/admin/settings/communications')
+      api('/api/admin/settings/communications'),
+      api('/api/admin/settings/regulation'),
+      api('/api/admin/settings/public-quote-assignment')
     ]);
-    [consultants, users, quotes, inspections, categories, prices, plans, coverages, auditEntries, settings] = result;
+    [consultants, users, quotes, inspections, categories, prices, promotionalMotorcyclePrices, plans, coverages, auditEntries, settings, regulationDocument, publicQuoteAssignmentSettings] = result;
     renderAll();
   } catch (error) {
     if (!$('admin-view').hidden) message(error.message);
@@ -233,8 +279,10 @@ function renderAll() {
   renderConsultants();
   renderUsers();
   renderQuotes();
+  renderPublicQuoteAssignmentSettings();
   renderInspections();
   renderPlans();
+  renderVehicleCategories();
   renderPrices();
   renderCoverages();
   renderSettings();
@@ -492,9 +540,9 @@ async function deleteAllAllowedInspections() {
 function renderQuotes() {
   const filter = $('quote-filter').value.trim().toLowerCase();
   $('quotes-body').innerHTML = quotes
-    .filter(item => `${item.consultantName} ${quoteOriginLabel(item.origin)} ${item.customerName} ${item.plate || ""} ${item.quoteNumber}`.toLowerCase().includes(filter))
+    .filter(item => `${quoteConsultantLabel(item)} ${quoteOriginLabel(item.origin)} ${item.customerName} ${item.plate || ""} ${item.quoteNumber}`.toLowerCase().includes(filter))
     .map(item => `<tr>
-      <td><strong>${esc(item.quoteNumber)}</strong></td><td><strong>${esc(quoteOriginLabel(item.origin))}</strong><small class="table-subtitle">${esc(item.consultantName)}</small></td><td>${esc(item.customerName)}</td>
+      <td><strong>${esc(item.quoteNumber)}</strong></td><td><strong>${esc(quoteOriginLabel(item.origin))}</strong><small class="table-subtitle">${esc(quoteConsultantLabel(item))}</small></td><td>${esc(item.customerName)}</td>
       <td>${esc(item.plate || (item.zeroKm ? '0 km — sem placa' : '—'))}</td><td>${esc(item.selectedPlanName)}</td><td>${brl.format(item.monthlyValue)}</td>
       <td>${date(item.validUntil)}</td><td>${quoteBadge(item)}</td>
       <td><div class="row-actions"><button class="secondary small-button" data-quote-analyze="${item.id}" type="button">Analisar</button><a class="button outline small-button" href="${esc(item.pdfUrl)}" target="_blank" rel="noopener">PDF</a><button class="danger small-button" data-quote-delete="${item.id}" type="button">Excluir</button></div></td>
@@ -503,21 +551,49 @@ function renderQuotes() {
   document.querySelectorAll('[data-quote-delete]').forEach(button => button.addEventListener('click', () => deleteQuote(button.dataset.quoteDelete)));
 }
 
+function renderPublicQuoteAssignmentSettings() {
+  const enabled = publicQuoteAssignmentSettings?.enabled !== false;
+  $('public-quote-assignment-enabled').checked = enabled;
+  $('public-quote-assignment-status').textContent = enabled
+    ? 'Ativada — último consultor logado recebe a nova cotação'
+    : 'Desativada — Admin escolhe o consultor';
+  $('public-quote-assignment-updated-at').textContent = publicQuoteAssignmentSettings?.updatedAt
+    ? `${date(publicQuoteAssignmentSettings.updatedAt)} por ${publicQuoteAssignmentSettings.updatedBy || '—'}`
+    : 'Regra padrão do sistema';
+}
+
+function populateQuoteConsultantSelect(item) {
+  const select = $('quote-analysis-consultant');
+  const active = consultants.filter(consultant => consultant.active);
+  const options = ['<option value="">Selecione um consultor</option>'];
+  active.forEach(consultant => {
+    options.push(`<option value="${esc(consultant.id)}">${esc(consultant.name)}</option>`);
+  });
+  if (item?.consultantId && !active.some(consultant => consultant.id === item.consultantId)) {
+    options.push(`<option value="${esc(item.consultantId)}">${esc(item.consultantName || 'Consultor atual')} (inativo — atual)</option>`);
+  }
+  select.innerHTML = options.join('');
+  select.value = item?.consultantId || '';
+  select.dataset.originalConsultantId = item?.consultantId || '';
+}
+
 function renderInspections() {
   const filter = $('inspection-filter').value.trim().toLowerCase();
   $('inspections-body').innerHTML = inspections
     .filter(item => `${item.consultantName} ${item.associateName} ${item.plate || ""}`.toLowerCase().includes(filter))
     .map(item => {
       const filesAvailable = hasInspectionFiles(item);
+      const needsFiles = adminInspectionNeedsFiles(item);
+      const partialResubmission = filesAvailable && needsFiles;
       const currentPublicUrl = item.publicUrl
         ? (window.NH_URLS?.retratoUrl(item.publicUrl) || item.publicUrl)
         : null;
       const statusAction = filesAvailable
         ? `<button class="outline small-button" data-inspection-analyze="${item.id}" type="button">Ver documentos enviados</button>`
         : '';
-      const pendingActions = filesAvailable
-        ? ''
-        : `${item.associateInspectionWhatsappUrl ? `<a class="button secondary small-button" href="${esc(item.associateInspectionWhatsappUrl)}" target="_blank" rel="noopener">Enviar link</a>` : ''}${currentPublicUrl ? `<a class="button outline small-button" href="${esc(currentPublicUrl)}" target="_blank" rel="noopener">Fazer vistoria</a>` : ''}`;
+      const pendingActions = needsFiles
+        ? `${item.associateInspectionWhatsappUrl ? `<a class="button secondary small-button" href="${esc(item.associateInspectionWhatsappUrl)}" target="_blank" rel="noopener">${partialResubmission ? 'Enviar pendências' : 'Enviar link'}</a>` : ''}${currentPublicUrl ? `<a class="button outline small-button" href="${esc(currentPublicUrl)}" target="_blank" rel="noopener">${partialResubmission ? 'Refazer pendências' : 'Fazer vistoria'}</a>` : ''}`
+        : '';
       return `<tr>
         <td><strong>${esc(item.associateName)}</strong></td><td>${esc(item.consultantName)}</td><td>${esc(item.plate || '0 km — sem placa')}</td>
         <td>${item.requestType === 'NEW_INSPECTION' ? 'Nova vistoria' : 'Atualização de boleto'}</td><td>${item.assetCount}</td>
@@ -544,13 +620,15 @@ function openQuoteAnalysis(id) {
   $('quote-dialog-title').textContent = item.quoteNumber;
   $('quote-analysis-status').value = item.status;
   $('quote-analysis-note').value = item.adminNote || '';
+  const consultantField = $('quote-analysis-consultant-field');
+  consultantField.hidden = item.origin !== 'SELF_SERVICE';
+  if (item.origin === 'SELF_SERVICE') populateQuoteConsultantSelect(item);
   const quoteDiscount = Number(item.discountPercent || 0);
   const quoteDetails = [
-    ['Cliente', item.customerName], ['Origem', quoteOriginLabel(item.origin)], ['Responsável', item.consultantName], ['CPF', item.maskedCpf || '—'], ['WhatsApp', formatPhone(item.whatsapp) || '—'],
+    ['Cliente', item.customerName], ['Origem', quoteOriginLabel(item.origin)], ['Responsável', quoteConsultantLabel(item)], ['CPF', item.maskedCpf || '—'], ['WhatsApp', formatPhone(item.whatsapp) || '—'],
     ['Placa', item.plate], ['Modelo', item.model], ['Ano', item.manufactureYear], ['Veículo 0 km', item.zeroKm ? 'Sim' : 'Não'],
     ['Valor FIPE', brl.format(item.fipeValue)], ['Abrangência', regionLabel(item.region)],
     ['Origem da moto', item.motorcycleOrigin ? motorcycleOriginLabel(item.motorcycleOrigin) : 'Não se aplica'],
-    ['Cilindrada', item.motorcycleCc ? `${item.motorcycleCc} cc` : 'Não se aplica'],
     ['Observação da cotação', item.observation || '—'],
     ['Plano', item.selectedPlanName]
   ];
@@ -581,6 +659,8 @@ function openInspectionAnalysis(id) {
   const item = inspections.find(value => value.id === id);
   if (!item) return;
   const filesAvailable = hasInspectionFiles(item);
+  const needsFiles = adminInspectionNeedsFiles(item);
+  const pendingCount = adminInspectionPendingCount(item);
   const currentPublicUrl = item.publicUrl
     ? (window.NH_URLS?.retratoUrl(item.publicUrl) || item.publicUrl)
     : null;
@@ -619,21 +699,19 @@ function openInspectionAnalysis(id) {
     if (inspectionDiscount === 30) inspectionDetails.push(['Condição do vigia traseiro', 'Somente NH']);
   }
   inspectionDetails.push(
-    ['Arquivos disponíveis', item.assetCount], ['Situação dos arquivos', filesAvailable ? `Armazenados no sistema até ${date(item.filesExpireAt)}` : (Number(item.expiredAssetCount || 0) > 0 ? 'Arquivos apagados após 40 dias' : 'Aguardando envio do associado')],
+    ['Arquivos disponíveis', item.assetCount], ['Situação dos arquivos', filesAvailable ? (needsFiles ? `${pendingCount} ${pendingCount === 1 ? 'item pendente' : 'itens pendentes'}; os demais continuam armazenados` : `Armazenados no sistema até ${date(item.filesExpireAt)}`) : (Number(item.expiredAssetCount || 0) > 0 ? 'Arquivos apagados após 40 dias' : 'Aguardando envio do associado')],
     ['Criada em', date(item.createdAt)], ['Expira em', date(item.expiresAt)],
     ['Concluída em', date(item.completedAt)], ['Última análise', date(item.reviewedAt)]
   );
   $('inspection-detail-grid').innerHTML = detailItems(inspectionDetails);
 
-  $('inspection-links').innerHTML = linkButtons(filesAvailable ? [
-    [currentPublicUrl, 'Abrir link da vistoria'],
-    [window.NH_URLS?.replaceLinkInCommunicationUrl(item.teamWhatsappUrl, item.publicUrl, currentPublicUrl) || item.teamWhatsappUrl, 'Enviar por WhatsApp'],
-    [window.NH_URLS?.replaceLinkInCommunicationUrl(item.teamEmailUrl, item.publicUrl, currentPublicUrl) || item.teamEmailUrl, 'Enviar por e-mail'],
-    [item.associateDecisionWhatsappUrl, item.status === 'APPROVED' ? 'Informar aprovação ao associado' : 'Informar recusa ao associado']
-  ] : [
-    [item.associateInspectionWhatsappUrl, 'Enviar link ao associado'],
-    [currentPublicUrl, 'Fazer vistoria agora'],
-    [window.NH_URLS?.replaceLinkInCommunicationUrl(item.teamWhatsappUrl, item.publicUrl, currentPublicUrl) || item.teamWhatsappUrl, 'Enviar para a equipe']
+  $('inspection-links').innerHTML = linkButtons([
+    [needsFiles ? item.associateInspectionWhatsappUrl : null, filesAvailable ? 'Enviar link para refazer pendências' : 'Enviar link ao associado'],
+    [currentPublicUrl, needsFiles && filesAvailable ? 'Abrir link das pendências' : 'Abrir link da vistoria'],
+    [filesAvailable && !needsFiles ? (window.NH_URLS?.replaceLinkInCommunicationUrl(item.teamWhatsappUrl, item.publicUrl, currentPublicUrl) || item.teamWhatsappUrl) : null, 'Enviar por WhatsApp'],
+    [filesAvailable && !needsFiles ? (window.NH_URLS?.replaceLinkInCommunicationUrl(item.teamEmailUrl, item.publicUrl, currentPublicUrl) || item.teamEmailUrl) : null, 'Enviar por e-mail'],
+    [filesAvailable && !needsFiles ? item.associateDecisionWhatsappUrl : null, item.status === 'APPROVED' ? 'Informar aprovação ao associado' : 'Informar recusa ao associado'],
+    [!filesAvailable ? (window.NH_URLS?.replaceLinkInCommunicationUrl(item.teamWhatsappUrl, item.publicUrl, currentPublicUrl) || item.teamWhatsappUrl) : null, 'Enviar para a equipe']
   ]);
   renderAdminInspectionFiles(item);
   openDialog('inspection-dialog');
@@ -667,15 +745,47 @@ function renderAdminInspectionFiles(item) {
       : video
         ? `<div class="inspection-media-preview"><div class="inspection-media-placeholder">▶ Vídeo disponível</div><video data-admin-video-preview="${asset.id}" controls hidden></video></div>`
         : `<div class="inspection-media-preview"><div class="inspection-media-placeholder">${asset.type === 'REPORT' ? 'PDF' : 'DOCUMENTO'}</div></div>`;
+    const canDelete = asset.available && ['PHOTO', 'VIDEO', 'SIGNATURE', 'VEHICLE_DOCUMENT', 'IDENTITY_DOCUMENT'].includes(asset.type);
     const actions = asset.available
-      ? `<div class="inspection-media-actions">${video ? `<button class="outline" data-admin-play-video="${asset.id}" type="button">Reproduzir</button>` : ''}<button class="secondary" data-admin-download-asset="${asset.id}" data-file-name="${esc(asset.fileName)}" type="button">Baixar</button></div>`
-      : '<div class="inspection-media-expired">Arquivo removido após 40 dias.</div>';
+      ? `<div class="inspection-media-actions">${video ? `<button class="outline" data-admin-play-video="${asset.id}" type="button">Reproduzir</button>` : ''}<button class="secondary" data-admin-download-asset="${asset.id}" data-file-name="${esc(asset.fileName)}" type="button">Baixar</button>${canDelete ? `<button class="danger" data-admin-delete-asset="${asset.id}" data-file-name="${esc(title)}" type="button">Excluir / solicitar novamente</button>` : ''}</div>`
+      : `<div class="inspection-media-expired">${adminInspectionNeedsFiles(item) && asset.type !== 'REPORT' ? 'Arquivo excluído / aguardando reenvio.' : 'Arquivo removido após 40 dias.'}</div>`;
     return `<article class="inspection-media-card ${asset.available ? '' : 'expired'}">${preview}<div class="inspection-media-body"><strong>${esc(title)}</strong><small>${esc(asset.fileName)}</small><small>${formatBytes(asset.fileSize)} · ${esc(asset.contentType || 'arquivo')}</small>${actions}</div></article>`;
   }).join('');
 
   available.filter(asset => String(asset.contentType || '').startsWith('image/')).forEach(asset => loadAdminImagePreview(item.id, asset));
   grid.querySelectorAll('[data-admin-download-asset]').forEach(button => button.addEventListener('click', () => downloadAdminAsset(item.id, button.dataset.adminDownloadAsset, button.dataset.fileName, button)));
   grid.querySelectorAll('[data-admin-play-video]').forEach(button => button.addEventListener('click', () => playAdminVideo(item.id, button.dataset.adminPlayVideo, button)));
+  grid.querySelectorAll('[data-admin-delete-asset]').forEach(button => {
+    button.addEventListener('click', () => deleteAdminInspectionAsset(
+      item.id, button.dataset.adminDeleteAsset, button.dataset.fileName || 'arquivo', button
+    ));
+  });
+}
+
+async function deleteAdminInspectionAsset(inspectionId, assetId, label, button) {
+  const confirmed = await confirmAction(
+    'Excluir arquivo e solicitar novamente?',
+    `O arquivo “${label}” será excluído. Os demais arquivos aceitos serão mantidos e o mesmo link da vistoria passará a pedir somente esta pendência (e qualquer outra que estiver faltando).`,
+    'Excluir e solicitar novamente'
+  );
+  if (!confirmed) return;
+
+  button.disabled = true;
+  const original = button.textContent;
+  button.textContent = 'Excluindo...';
+  try {
+    await api(`/api/admin/inspections/${encodeURIComponent(inspectionId)}/assets/${encodeURIComponent(assetId)}`, { method: 'DELETE' });
+    releaseAdminMediaUrls();
+    closeDialog('inspection-dialog');
+    await load();
+    const updated = inspections.find(item => item.id === inspectionId);
+    if (updated) openInspectionAnalysis(inspectionId);
+    message('Arquivo excluído. A vistoria foi reaberta e o link agora pede somente os arquivos pendentes.', 'success');
+  } catch (error) {
+    message(error.message);
+    button.disabled = false;
+    button.textContent = original;
+  }
 }
 
 async function loadAdminImagePreview(inspectionId, asset) {
@@ -764,6 +874,62 @@ function detailItems(items) {
 
 function linkButtons(items) {
   return items.filter(([url]) => url).map(([url, label]) => `<a class="button outline" href="${esc(url)}" target="_blank" rel="noopener">${esc(label)}</a>`).join('');
+}
+
+
+function vehicleCategoryGroupState(group) {
+  const members = categories.filter(item => group.categoryCodes.includes(item.code));
+  const activeCount = members.filter(item => item.active).length;
+  return {
+    members,
+    active: members.length > 0 && activeCount === members.length,
+    partial: activeCount > 0 && activeCount < members.length
+  };
+}
+
+function renderVehicleCategories() {
+  $('vehicle-categories-body').innerHTML = VEHICLE_CATEGORY_GROUPS.map(group => {
+    const state = vehicleCategoryGroupState(group);
+    const status = state.partial
+      ? statusBadge('Parcial', 'warn')
+      : statusBadge(state.active ? 'Ativa' : 'Desativada', state.active ? 'ok' : 'off');
+    return `<tr>
+      <td><strong class="catalog-name">${esc(group.name)}</strong></td>
+      <td>${status}</td>
+      <td><button class="${state.active ? 'outline' : 'secondary'} small-button" data-vehicle-category-toggle="${esc(group.code)}" type="button">${state.active ? 'Desativar' : 'Ativar'}</button></td>
+    </tr>`;
+  }).join('') || emptyRow(3, 'Nenhuma categoria encontrada.');
+
+  document.querySelectorAll('[data-vehicle-category-toggle]').forEach(button =>
+    button.addEventListener('click', () => toggleVehicleCategory(button.dataset.vehicleCategoryToggle))
+  );
+}
+
+async function toggleVehicleCategory(groupCode) {
+  const group = VEHICLE_CATEGORY_GROUPS.find(item => item.code === groupCode);
+  if (!group) return;
+  const state = vehicleCategoryGroupState(group);
+  if (!state.members.length) return message('A categoria não foi encontrada no catálogo.');
+  const nextActive = !state.active;
+
+  if (!nextActive) {
+    const confirmed = await confirmAction(
+      'Desativar categoria?',
+      `${group.name} deixará de aparecer como botão em novas cotações. Planos, valores e histórico continuarão salvos.`,
+      'Desativar categoria'
+    );
+    if (!confirmed) return;
+  }
+
+  try {
+    await Promise.all(state.members.map(item => api(`/api/admin/catalog/categories/${item.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: nextActive })
+    })));
+    message(nextActive ? 'Categoria ativada.' : 'Categoria desativada.', 'success');
+    await load();
+  } catch (error) { message(error.message); }
 }
 
 function renderPlans() {
@@ -860,20 +1026,88 @@ async function deletePlan(id) {
   } catch (error) { message(error.message); }
 }
 
+function openPromotionalMotorcyclePriceModal(id) {
+  const item = promotionalMotorcyclePrices.find(value => value.id === id);
+  if (!item) return;
+  $('promo-motorcycle-price-id').value = item.id;
+  $('promo-motorcycle-price-label').value = item.label || '';
+  $('promo-motorcycle-price-min-fipe').value = moneyInput(item.minFipe ?? 0);
+  $('promo-motorcycle-price-max-fipe').value = item.maxFipe == null ? '' : moneyInput(item.maxFipe);
+  $('promo-motorcycle-price-min-cc').value = item.minCc ?? '';
+  $('promo-motorcycle-price-max-cc').value = item.maxCc ?? '';
+  $('promo-motorcycle-price-monthly').value = moneyInput(item.monthlyPrice);
+  window.NHMoney?.refresh($('promo-motorcycle-price-min-fipe'));
+  window.NHMoney?.refresh($('promo-motorcycle-price-max-fipe'));
+  window.NHMoney?.refresh($('promo-motorcycle-price-monthly'));
+  openDialog('promo-motorcycle-price-dialog');
+}
+
+function promotionalMotorcyclePlan() {
+  const promotionalCategoryIds = new Set(
+    categories.filter(item => item.code === 'MOTORCYCLE_PROMO_2026').map(item => Number(item.id))
+  );
+  return plans.find(item => promotionalCategoryIds.has(Number(item.categoryId))) || null;
+}
+
 function renderPrices() {
   const filter = $('price-filter').value.trim().toLowerCase();
   const selectedPlan = $('price-plan-filter').value;
-  const filtered = prices.filter(item => {
-    if (selectedPlan && String(item.planId) !== selectedPlan) return false;
-    return `${item.planName} ${item.category} ${item.region} ${regionLabel(item.region)} ${item.motorcycleOrigin || ''} ${motorcycleOriginLabel(item.motorcycleOrigin)}`.toLowerCase().includes(filter);
-  });
-  $('prices-body').innerHTML = filtered.map(item => `<tr>
-    <td><strong class="catalog-name">${esc(item.planName)}</strong></td><td>${esc(item.category)}</td><td>${esc(regionLabel(item.region))}<small class="table-code">${esc(motorcycleOriginLabel(item.motorcycleOrigin))}</small></td>
-    <td>${brl.format(item.minValue)} a ${brl.format(item.maxValue)}</td><td><strong>${brl.format(item.monthlyPrice)}</strong></td>
-    <td><div class="row-actions"><button class="secondary small-button" data-price-edit="${item.id}" type="button">Editar</button><button class="danger small-button" data-price-delete="${item.id}" type="button">Excluir</button></div></td>
-  </tr>`).join('') || emptyRow(6, 'Nenhuma faixa de valor encontrada.');
+  const promoPlan = promotionalMotorcyclePlan();
+  const promoPlanId = promoPlan ? String(promoPlan.id) : null;
+
+  const regularRows = prices
+    .filter(item => {
+      // A tabela promocional usa as três faixas fixas próprias; não mistura faixas FIPE comuns.
+      if (promoPlanId && String(item.planId) === promoPlanId) return false;
+      if (selectedPlan && String(item.planId) !== selectedPlan) return false;
+      return `${item.planName} ${item.category} ${item.region} ${regionLabel(item.region)} ${item.motorcycleOrigin || ''} ${motorcycleOriginLabel(item.motorcycleOrigin)}`.toLowerCase().includes(filter);
+    })
+    .map(item => `<tr>
+      <td><strong class="catalog-name">${esc(item.planName)}</strong></td><td>${esc(item.category)}</td><td>${esc(regionLabel(item.region))}<small class="table-code">${esc(motorcycleOriginLabel(item.motorcycleOrigin))}</small></td>
+      <td>${brl.format(item.minValue)} a ${brl.format(item.maxValue)}</td><td><strong>${brl.format(item.monthlyPrice)}</strong></td>
+      <td><div class="row-actions"><button class="secondary small-button" data-price-edit="${item.id}" type="button">Editar</button><button class="danger small-button" data-price-delete="${item.id}" type="button">Excluir</button></div></td>
+    </tr>`);
+
+  const promoRows = (!promoPlan || (selectedPlan && selectedPlan !== promoPlanId)) ? [] : promotionalMotorcyclePrices
+    .filter(item => `${promoPlan.name} ${promoPlan.category} nacional ${item.label} ${item.minCc} ${item.maxCc} ${item.minFipe ?? ''} ${item.maxFipe ?? ''}`.toLowerCase().includes(filter))
+    .map(item => `<tr>
+      <td><strong class="catalog-name">${esc(promoPlan.name)}</strong></td>
+      <td>${esc(promoPlan.category)}</td>
+      <td>${esc(regionLabel(promoPlan.region))}<small class="table-code">${esc(motorcycleOriginLabel(promoPlan.motorcycleOrigin))}</small></td>
+      <td>${item.minFipe != null || item.maxFipe != null
+        ? `${brl.format(Number(item.minFipe || 0))} a ${item.maxFipe == null ? 'sem limite' : brl.format(item.maxFipe)}<small class="table-code">${esc(item.label)} · ${item.minCc}cc a ${item.maxCc}cc</small>`
+        : esc(item.label)}</td>
+      <td><strong>${brl.format(item.monthlyPrice)}</strong></td>
+      <td><div class="row-actions"><button class="secondary small-button" data-promo-motorcycle-price-edit="${item.id}" type="button">Editar</button><button class="danger small-button" data-promo-motorcycle-price-delete="${item.id}" type="button">Excluir</button></div></td>
+    </tr>`);
+
+  const rows = [...promoRows, ...regularRows];
+  $('prices-body').innerHTML = rows.join('') || emptyRow(6, 'Nenhuma faixa de valor encontrada.');
+
   document.querySelectorAll('[data-price-edit]').forEach(button => button.addEventListener('click', () => openPriceModal(Number(button.dataset.priceEdit))));
   document.querySelectorAll('[data-price-delete]').forEach(button => button.addEventListener('click', () => deletePrice(Number(button.dataset.priceDelete))));
+  document.querySelectorAll('[data-promo-motorcycle-price-edit]').forEach(button =>
+    button.addEventListener('click', () => openPromotionalMotorcyclePriceModal(Number(button.dataset.promoMotorcyclePriceEdit)))
+  );
+  document.querySelectorAll('[data-promo-motorcycle-price-delete]').forEach(button =>
+    button.addEventListener('click', () => deletePromotionalMotorcyclePrice(Number(button.dataset.promoMotorcyclePriceDelete)))
+  );
+}
+
+async function deletePromotionalMotorcyclePrice(id) {
+  const item = promotionalMotorcyclePrices.find(value => value.id === id);
+  if (!item) return;
+  const confirmed = await confirmAction(
+    'Excluir faixa promocional?',
+    `${item.label} — ${brl.format(item.monthlyPrice)} será removida da Tabela Promocional 2026 e deixará de ser oferecida nas novas cotações.`,
+    'Excluir faixa'
+  );
+  if (!confirmed) return;
+  try {
+    await api(`/api/admin/catalog/promotional-motorcycle-prices/${id}`, { method: 'DELETE' });
+    message('Faixa promocional excluída.', 'success');
+    await load();
+  } catch (error) { message(error.message); }
 }
 
 function openPriceModal(id = null) {
@@ -966,6 +1200,13 @@ function renderSettings() {
   $('settings-team-email').textContent = email;
   $('settings-team-whatsapp').textContent = whatsapp;
   $('settings-updated-at').textContent = settings.updatedAt ? `${date(settings.updatedAt)} por ${settings.updatedBy || '—'}` : '—';
+
+  $('settings-regulation-file').textContent = regulationDocument.fileName || 'Regulamento padrão';
+  $('settings-regulation-size').textContent = formatBytes(regulationDocument.fileSize || 0);
+  $('settings-regulation-source').textContent = regulationDocument.customized ? 'Enviado pelo Admin' : 'Arquivo padrão do projeto';
+  $('settings-regulation-updated-at').textContent = regulationDocument.updatedAt
+    ? `${date(regulationDocument.updatedAt)} por ${regulationDocument.updatedBy || '—'}`
+    : 'Arquivo padrão do projeto';
 }
 
 function openSettingsModal() {
@@ -1125,7 +1366,7 @@ function populatePlanSelects() {
 
 function populateCategorySelect() {
   const current = $('plan-category').value;
-  $('plan-category').innerHTML = categories.map(item => `<option value="${item.id}">${esc(item.name)}</option>`).join('');
+  $('plan-category').innerHTML = categories.map(item => `<option value="${item.id}">${esc(item.name)}${item.active ? '' : ' — desativada'}</option>`).join('');
   if ([...$('plan-category').options].some(option => option.value === current)) $('plan-category').value = current;
 }
 
@@ -1280,6 +1521,55 @@ $('plan-form').addEventListener('submit', async event => {
   } catch (error) { message(error.message); }
 });
 
+$('promo-motorcycle-price-delete').addEventListener('click', async () => {
+  const id = Number($('promo-motorcycle-price-id').value);
+  if (!id) return;
+  closeDialog('promo-motorcycle-price-dialog');
+  await deletePromotionalMotorcyclePrice(id);
+});
+
+$('promo-motorcycle-price-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const id = $('promo-motorcycle-price-id').value;
+  const minCc = Number($('promo-motorcycle-price-min-cc').value);
+  const maxCc = Number($('promo-motorcycle-price-max-cc').value);
+  const minFipe = parseMoney($('promo-motorcycle-price-min-fipe').value);
+  const maxFipeRaw = $('promo-motorcycle-price-max-fipe').value.trim();
+  const maxFipe = maxFipeRaw ? parseMoney(maxFipeRaw) : null;
+  const monthlyPrice = parseMoney($('promo-motorcycle-price-monthly').value);
+
+  if (!Number.isInteger(minCc) || !Number.isInteger(maxCc) || minCc < 1 || maxCc < minCc) {
+    message('Confira as cilindradas mínima e máxima da faixa.');
+    return;
+  }
+  if (!Number.isFinite(minFipe) || minFipe < 0 || (maxFipe != null && (!Number.isFinite(maxFipe) || maxFipe <= 0 || maxFipe < minFipe))) {
+    message('Confira os valores FIPE mínimo e máximo da faixa. O máximo pode ficar vazio quando não houver limite.');
+    return;
+  }
+  if (!Number.isFinite(monthlyPrice) || monthlyPrice < 0) {
+    message('Informe uma mensalidade válida.');
+    return;
+  }
+
+  try {
+    await api(`/api/admin/catalog/promotional-motorcycle-prices/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        label: $('promo-motorcycle-price-label').value.trim(),
+        minCc,
+        maxCc,
+        minFipe,
+        maxFipe,
+        monthlyPrice
+      })
+    });
+    closeDialog('promo-motorcycle-price-dialog');
+    message('Faixa promocional atualizada.', 'success');
+    await load();
+  } catch (error) { message(error.message); }
+});
+
 $('price-form').addEventListener('submit', async event => {
   event.preventDefault();
   const id = $('price-id').value;
@@ -1321,13 +1611,41 @@ $('coverage-form').addEventListener('submit', async event => {
 $('quote-analysis-form').addEventListener('submit', async event => {
   event.preventDefault();
   const id = $('quote-analysis-id').value;
+  const item = quotes.find(value => value.id === id);
   try {
+    if (item?.origin === 'SELF_SERVICE') {
+      const consultantSelect = $('quote-analysis-consultant');
+      const selectedConsultantId = consultantSelect.value;
+      const originalConsultantId = consultantSelect.dataset.originalConsultantId || '';
+      if (selectedConsultantId && selectedConsultantId !== originalConsultantId) {
+        await api(`/api/admin/quotes/${id}/consultant`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ consultantId: selectedConsultantId })
+        });
+      }
+    }
+
     await api(`/api/admin/quotes/${id}/status`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: $('quote-analysis-status').value, adminNote: $('quote-analysis-note').value.trim() })
     });
     closeDialog('quote-dialog');
     message('Análise da cotação salva.', 'success');
+    await load();
+  } catch (error) { message(error.message); }
+});
+
+$('public-quote-assignment-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const enabled = $('public-quote-assignment-enabled').checked;
+    publicQuoteAssignmentSettings = await api('/api/admin/settings/public-quote-assignment', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled })
+    });
+    renderPublicQuoteAssignmentSettings();
+    message(enabled
+      ? 'Distribuição automática ativada. Novas cotações do site irão para o último consultor logado.'
+      : 'Distribuição automática desativada. Novas cotações do site ficarão aguardando atribuição do Admin.', 'success');
     await load();
   } catch (error) { message(error.message); }
 });
@@ -1358,6 +1676,43 @@ $('settings-form').addEventListener('submit', async event => {
     message('Destinos de envio atualizados.', 'success');
     await load();
   } catch (error) { message(error.message); }
+});
+
+$('regulation-upload-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const input = $('settings-regulation-input');
+  const file = input.files?.[0];
+  if (!file) {
+    message('Selecione o novo regulamento em PDF.');
+    return;
+  }
+  if (!file.name.toLowerCase().endsWith('.pdf')) {
+    message('O regulamento precisa estar em formato PDF.');
+    return;
+  }
+  if (file.size > 20 * 1024 * 1024) {
+    message('O regulamento deve ter no máximo 20 MB.');
+    return;
+  }
+
+  const button = $('settings-regulation-save');
+  const previousText = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Enviando PDF...';
+  try {
+    const formData = new FormData();
+    formData.append('file', file, file.name);
+    regulationDocument = await api('/api/admin/settings/regulation', { method: 'PUT', body: formData });
+    input.value = '';
+    renderSettings();
+    message('Regulamento atualizado. O botão do site já está usando o novo PDF.', 'success');
+    await load();
+  } catch (error) {
+    message(error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = previousText;
+  }
 });
 
 $('logout').addEventListener('click', () => showLogin());

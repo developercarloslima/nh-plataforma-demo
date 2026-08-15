@@ -12,12 +12,9 @@ import org.springframework.web.util.UriUtils;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDate;
-import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.time.LocalDate;
 import java.time.Year;
-import java.time.ZoneId;
-import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -25,14 +22,8 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
-
 @Service
 public class QuoteService {
-
-    private static final ZoneId BUSINESS_ZONE = ZoneId.of("America/Maceio");
-    private static final Set<Integer> ALLOWED_VALIDITY_DAYS = Set.of(5, 10, 15, 20, 25, 30);
-    private static final long MIN_VALIDITY_DAYS = 30;
-    private static final long MAX_VALIDITY_DAYS = 40;
 
     private final PlanRepository planRepository;
     private final QuotationRepository quotationRepository;
@@ -41,6 +32,7 @@ public class QuoteService {
     private final RetratoService retratoService;
     private final String publicApiUrl;
     private final CommunicationSettingsService communicationSettings;
+    private final PublicQuoteAssignmentSettingsService publicQuoteAssignmentSettings;
 
     public QuoteService(
             PlanRepository planRepository,
@@ -49,6 +41,7 @@ public class QuoteService {
             ConsultantService consultantService,
             RetratoService retratoService,
             CommunicationSettingsService communicationSettings,
+            PublicQuoteAssignmentSettingsService publicQuoteAssignmentSettings,
             @Value("${app.public-api-url:http://localhost:8080}") String publicApiUrl
     ) {
         this.planRepository = planRepository;
@@ -58,6 +51,7 @@ public class QuoteService {
         this.retratoService = retratoService;
         this.publicApiUrl = stripTrailingSlash(publicApiUrl);
         this.communicationSettings = communicationSettings;
+        this.publicQuoteAssignmentSettings = publicQuoteAssignmentSettings;
     }
 
     @Transactional(readOnly = true)
@@ -68,14 +62,15 @@ public class QuoteService {
         Integer motorcycleCc = validateMotorcycleSelection(
                 request.categoryCode(), request.motorcycle(), request.motorcycleCc()
         );
-        List<PlanOption> options = promotionalMotorcycleOption(request.fipeValue(), motorcycleCc)
-                .map(List::of)
-                .orElseGet(() -> planRepository
+        String promoMotorcycleTier = validatePromotionalMotorcycleTier(request.categoryCode(), request.promoMotorcycleTier());
+        List<PlanOption> options = "MOTORCYCLE_PROMO_2026".equals(request.categoryCode())
+                ? promotionalMotorcycleOption(request.fipeValue(), motorcycleCc, promoMotorcycleTier).map(List::of).orElseGet(List::of)
+                : planRepository
                         .findAvailable(request.categoryCode(), Region.NATIONAL, motorcycleOrigin)
                         .stream()
                         .map(plan -> toPlanOption(plan, request.fipeValue()))
                         .flatMap(java.util.Optional::stream)
-                        .toList());
+                        .toList();
 
         if (options.isEmpty()) {
             if ("SCOOTER_ELECTRIC".equalsIgnoreCase(request.categoryCode())) {
@@ -102,8 +97,9 @@ public class QuoteService {
         Integer motorcycleCc = validateMotorcycleSelection(
                 request.categoryCode(), request.motorcycle(), request.motorcycleCc()
         );
+        String promoMotorcycleTier = validatePromotionalMotorcycleTier(request.categoryCode(), request.promoMotorcycleTier());
         PlanSelection selection = resolvePlan(
-                request.selectedPlanCode(), request.categoryCode(), motorcycleOrigin, motorcycleCc,
+                request.selectedPlanCode(), request.categoryCode(), motorcycleOrigin, motorcycleCc, promoMotorcycleTier,
                 request.fipeValue(), request.selectedOptionalCodes()
         );
         Consultant consultant = consultantService.findActive(request.consultantId());
@@ -131,7 +127,7 @@ public class QuoteService {
                 selection.pricing().oneTimeFee(),
                 selection.pricing().mandatoryFeeDescription()
         );
-        quotation.defineValidity(resolveRequestedValidity(request.validityDate()));
+        quotation.configureBillingDueDate(request.firstBillingDueDate());
         applyCatalogSnapshot(quotation, selection.plan(), selection.optionals());
         quotation.applyDiscount(request.discountPercent(), request.rearWindowBranding());
         return toResponse(quotationRepository.save(quotation));
@@ -154,12 +150,15 @@ public class QuoteService {
         Integer motorcycleCc = validateMotorcycleSelection(
                 request.categoryCode(), request.motorcycle(), request.motorcycleCc()
         );
+        String promoMotorcycleTier = validatePromotionalMotorcycleTier(request.categoryCode(), request.promoMotorcycleTier());
         PlanSelection selection = resolvePlan(
-                request.selectedPlanCode(), request.categoryCode(), motorcycleOrigin, motorcycleCc,
+                request.selectedPlanCode(), request.categoryCode(), motorcycleOrigin, motorcycleCc, promoMotorcycleTier,
                 request.fipeValue(), request.selectedOptionalCodes()
         );
 
-        Consultant assignedConsultant = consultantService.findMostRecentPortalConsultant().orElse(null);
+        Consultant assignedConsultant = publicQuoteAssignmentSettings.assignToLastLoggedConsultant()
+                ? consultantService.findMostRecentPortalConsultant().orElse(null)
+                : null;
 
         Quotation quotation = Quotation.createSelfService(
                 buildQuoteNumber(),
@@ -184,7 +183,7 @@ public class QuoteService {
                 selection.pricing().oneTimeFee(),
                 selection.pricing().mandatoryFeeDescription()
         );
-        quotation.defineValidity(defaultValidity());
+        quotation.configureBillingDueDate(request.firstBillingDueDate());
         applyCatalogSnapshot(quotation, selection.plan(), selection.optionals());
         return toResponse(quotationRepository.save(quotation));
     }
@@ -198,7 +197,8 @@ public class QuoteService {
         if (source == null) throw new IllegalArgumentException("Cotação não encontrada.");
         if (consultant == null) throw new IllegalArgumentException("Informe o consultor responsável.");
 
-        boolean expired = isUsableStatus(source.getStatus())
+        boolean expired = (source.getStatus() == QuoteStatus.CREATED
+                || source.getStatus() == QuoteStatus.UNDER_REVIEW)
                 && OffsetDateTime.now().isAfter(source.getValidUntil());
         if (!expired) {
             throw new IllegalArgumentException("Somente uma cotação vencida pode ser refeita.");
@@ -243,10 +243,30 @@ public class QuoteService {
                 selection.pricing().oneTimeFee(),
                 selection.pricing().mandatoryFeeDescription()
         );
-        recreated.defineValidity(defaultValidity());
+        recreated.configureBillingDueDate(resolveBillingDueDateForRecreatedQuote(recreated, source.getBillingDueDay()));
         applyCatalogSnapshot(recreated, selection.plan(), selection.optionals());
         recreated.applyDiscount(source.getDiscountPercent(), source.getRearWindowBranding());
         return quotationRepository.save(recreated);
+    }
+
+    private LocalDate resolveBillingDueDateForRecreatedQuote(Quotation quotation, Integer preferredDay) {
+        LocalDate quoteDate = quotation.getCreatedAt()
+                .atZoneSameInstant(java.time.ZoneId.of("America/Maceio"))
+                .toLocalDate();
+        LocalDate minimum = quoteDate.plusDays(30);
+        LocalDate maximum = quoteDate.plusDays(40);
+        java.util.Set<Integer> allowed = java.util.Set.of(5, 10, 15, 20, 25, 30);
+        java.util.List<LocalDate> options = minimum.datesUntil(maximum.plusDays(1))
+                .filter(date -> allowed.contains(date.getDayOfMonth()))
+                .toList();
+        if (options.isEmpty()) {
+            throw new IllegalStateException("Não foi possível calcular um vencimento entre 30 e 40 dias para a nova cotação.");
+        }
+        if (preferredDay != null) {
+            var sameDay = options.stream().filter(date -> date.getDayOfMonth() == preferredDay).findFirst();
+            if (sameDay.isPresent()) return sameDay.get();
+        }
+        return options.get(options.size() - 1);
     }
 
     public boolean hasValidCustomerCpf(Quotation quotation) {
@@ -308,16 +328,38 @@ public class QuoteService {
             BigDecimal fipeValue,
             List<String> selectedOptionalCodes
     ) {
-        Plan selectedPlan = planRepository.findByCodeAndActiveTrue(selectedPlanCode)
+        String promoMotorcycleTier = null;
+        if ("MOTORCYCLE_PROMO_2026".equals(categoryCode)) {
+            promoMotorcycleTier = pricingService.findMatchingPromotionalTierCode(fipeValue, motorcycleCc)
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "A moto não se enquadra nas condições atuais da tabela promocional."
+                    ));
+        }
+        return resolvePlan(
+                selectedPlanCode, categoryCode, motorcycleOrigin, motorcycleCc, promoMotorcycleTier,
+                fipeValue, selectedOptionalCodes
+        );
+    }
+
+    private PlanSelection resolvePlan(
+            String selectedPlanCode,
+            String categoryCode,
+            MotorcycleOrigin motorcycleOrigin,
+            Integer motorcycleCc,
+            String promoMotorcycleTier,
+            BigDecimal fipeValue,
+            List<String> selectedOptionalCodes
+    ) {
+        Plan selectedPlan = planRepository.findAvailableByCode(selectedPlanCode)
                 .orElseThrow(() -> new IllegalArgumentException("Plano selecionado não encontrado."));
 
         boolean promotionalPlan = "MOTO_PROMO_2026".equals(selectedPlan.getCode());
         PricingService.PricingResult pricing;
         if (promotionalPlan) {
-            if (!"MOTORCYCLE_UP_TO_300".equals(categoryCode)) {
-                throw new IllegalArgumentException("A tabela promocional só pode ser usada para motos de até 300cc.");
+            if (!"MOTORCYCLE_PROMO_2026".equals(categoryCode)) {
+                throw new IllegalArgumentException("A tabela promocional só pode ser usada na categoria Tabela Promocional - Motocicletas.");
             }
-            pricing = pricingService.calculatePromotionalMotorcycle(selectedPlan, fipeValue, motorcycleCc)
+            pricing = pricingService.calculatePromotionalMotorcycle(selectedPlan, fipeValue, motorcycleCc, promoMotorcycleTier)
                     .orElseThrow(() -> new IllegalArgumentException("A moto não se enquadra nas condições da tabela promocional ativa."));
         } else {
             if (!selectedPlan.getCategory().getCode().equals(categoryCode)
@@ -387,7 +429,7 @@ public class QuoteService {
 
         String inspectionUrl = null;
         String whatsappUrl = null;
-        if (request.decision() == QuoteStatus.ACCEPTED) {
+        if (request.decision() == QuoteStatus.ACCEPTED && quotation.getConsultant() != null) {
             InspectionResponse inspection = retratoService.ensureForSelfServiceQuote(quotation);
             inspectionUrl = inspection.publicUrl();
             whatsappUrl = buildSelfServiceWhatsappUrl(quotation, inspectionUrl);
@@ -481,6 +523,8 @@ public class QuoteService {
                 quotation.getCategoryCode() != null && quotation.getCategoryCode().startsWith("MOTORCYCLE"),
                 quotation.getMotorcycleCc(),
                 quotation.getObservation(),
+                quotation.getBillingDueDay(),
+                quotation.getFirstBillingDueDate(),
                 quotation.getSelectedPlanCode(),
                 quotation.getSelectedPlanName(),
                 quotation.getBaseMonthlyValue(),
@@ -496,7 +540,7 @@ public class QuoteService {
                 quotation.getStatus(),
                 quotation.getCreatedAt(),
                 quotation.getValidUntil(),
-                isUsableStatus(quotation.getStatus())
+                (quotation.getStatus() == QuoteStatus.CREATED || quotation.getStatus() == QuoteStatus.UNDER_REVIEW)
                         && OffsetDateTime.now().isAfter(quotation.getValidUntil()),
                 quotation.getDecidedAt(),
                 quotation.getDriveFolderUrl(),
@@ -591,11 +635,21 @@ public class QuoteService {
         );
     }
 
-    private java.util.Optional<PlanOption> promotionalMotorcycleOption(BigDecimal fipeValue, Integer motorcycleCc) {
-        if (motorcycleCc == null || motorcycleCc > 300) return java.util.Optional.empty();
-        return planRepository.findByCodeAndActiveTrue("MOTO_PROMO_2026")
-                .flatMap(plan -> pricingService.calculatePromotionalMotorcycle(plan, fipeValue, motorcycleCc)
+    private java.util.Optional<PlanOption> promotionalMotorcycleOption(
+            BigDecimal fipeValue, Integer motorcycleCc, String promoMotorcycleTier
+    ) {
+        if (motorcycleCc == null) return java.util.Optional.empty();
+        return planRepository.findAvailableByCode("MOTO_PROMO_2026")
+                .flatMap(plan -> pricingService.calculatePromotionalMotorcycle(plan, fipeValue, motorcycleCc, promoMotorcycleTier)
                         .map(pricing -> toPlanOption(plan, pricing)));
+    }
+
+    private String validatePromotionalMotorcycleTier(String categoryCode, String tierCode) {
+        if (!"MOTORCYCLE_PROMO_2026".equals(categoryCode)) return null;
+        if (tierCode == null || tierCode.isBlank()) {
+            throw new IllegalArgumentException("Selecione uma faixa da Tabela Promocional de Motocicletas.");
+        }
+        return tierCode.trim();
     }
 
     private Integer validateMotorcycleSelection(String categoryCode, Boolean motorcycle, Integer motorcycleCc) {
@@ -603,18 +657,15 @@ public class QuoteService {
         boolean declaredMotorcycle = motorcycle == null ? motorcycleCategory : Boolean.TRUE.equals(motorcycle);
         if (motorcycleCategory != declaredMotorcycle) {
             throw new IllegalArgumentException(motorcycleCategory
-                    ? "Marque que o veículo é moto para utilizar uma categoria de motocicleta."
-                    : "A opção 'É moto' só pode ser usada nas categorias de motocicletas.");
+                    ? "A categoria selecionada é de motocicleta."
+                    : "A indicação de motocicleta só pode ser usada nas categorias de motocicletas.");
         }
         if (!motorcycleCategory) return null;
+        if (!"MOTORCYCLE_PROMO_2026".equals(categoryCode)) {
+            return null;
+        }
         if (motorcycleCc == null || motorcycleCc < 1 || motorcycleCc > 2500) {
-            throw new IllegalArgumentException("Informe a cilindrada da moto.");
-        }
-        if ("MOTORCYCLE_UP_TO_300".equals(categoryCode) && motorcycleCc > 300) {
-            throw new IllegalArgumentException("A categoria Motos até 300cc aceita cilindrada de até 300cc.");
-        }
-        if ("MOTORCYCLE_OVER_300".equals(categoryCode) && motorcycleCc <= 300) {
-            throw new IllegalArgumentException("A categoria Motos acima de 300cc exige cilindrada acima de 300cc.");
+            throw new IllegalArgumentException("Selecione uma faixa da Tabela Promocional de Motocicletas.");
         }
         return motorcycleCc;
     }
@@ -643,49 +694,16 @@ public class QuoteService {
 
     private MotorcycleOrigin validateMotorcycleOrigin(String categoryCode, MotorcycleOrigin motorcycleOrigin) {
         boolean motorcycle = categoryCode != null && categoryCode.startsWith("MOTORCYCLE");
-        if (motorcycle && motorcycleOrigin == null) {
+        boolean promotional = "MOTORCYCLE_PROMO_2026".equals(categoryCode);
+        if (motorcycle && !promotional && motorcycleOrigin == null) {
             throw new IllegalArgumentException("Informe a origem da moto para aplicar a tabela correta.");
         }
-        if (!motorcycle && motorcycleOrigin != null) {
-            throw new IllegalArgumentException("A origem da moto só pode ser informada para motocicletas.");
+        if ((!motorcycle || promotional) && motorcycleOrigin != null) {
+            throw new IllegalArgumentException(promotional
+                    ? "A tabela promocional não utiliza origem da moto."
+                    : "A origem da moto só pode ser informada para motocicletas.");
         }
-        return motorcycle ? motorcycleOrigin : null;
-    }
-
-    private OffsetDateTime resolveRequestedValidity(LocalDate requestedDate) {
-        if (requestedDate == null) {
-            throw new IllegalArgumentException("Escolha a validade da cotação.");
-        }
-        LocalDate today = LocalDate.now(BUSINESS_ZONE);
-        long daysAhead = ChronoUnit.DAYS.between(today, requestedDate);
-        if (daysAhead < MIN_VALIDITY_DAYS || daysAhead > MAX_VALIDITY_DAYS
-                || !ALLOWED_VALIDITY_DAYS.contains(requestedDate.getDayOfMonth())) {
-            throw new IllegalArgumentException(
-                    "Escolha um vencimento nos dias 5, 10, 15, 20, 25 ou 30, entre 30 e 40 dias à frente."
-            );
-        }
-        return requestedDate.atTime(LocalTime.MAX).atZone(BUSINESS_ZONE).toOffsetDateTime();
-    }
-
-    private OffsetDateTime defaultValidity() {
-        LocalDate today = LocalDate.now(BUSINESS_ZONE);
-        LocalDate selected = null;
-        for (long offset = MIN_VALIDITY_DAYS; offset <= MAX_VALIDITY_DAYS; offset++) {
-            LocalDate candidate = today.plusDays(offset);
-            if (ALLOWED_VALIDITY_DAYS.contains(candidate.getDayOfMonth())) {
-                selected = candidate;
-            }
-        }
-        if (selected == null) {
-            throw new IllegalStateException("Não foi encontrado um vencimento válido entre 30 e 40 dias.");
-        }
-        return selected.atTime(LocalTime.MAX).atZone(BUSINESS_ZONE).toOffsetDateTime();
-    }
-
-    private boolean isUsableStatus(QuoteStatus status) {
-        return status == QuoteStatus.CREATED
-                || status == QuoteStatus.UNDER_REVIEW
-                || status == QuoteStatus.ACCEPTED;
+        return motorcycle && !promotional ? motorcycleOrigin : null;
     }
 
     private void validateYear(Integer year) {

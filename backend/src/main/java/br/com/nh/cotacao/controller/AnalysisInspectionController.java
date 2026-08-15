@@ -22,12 +22,12 @@ public class AnalysisInspectionController {
 
     @GetMapping
     public List<AdminInspectionResponse> list() {
-        return service.inspections();
+        return service.inspectionsForAnalysis();
     }
 
     @PostMapping("/{id}/decision-message-sent")
     public AdminInspectionResponse markDecisionMessageSent(@PathVariable UUID id) {
-        return service.markDecisionMessageSent(id);
+        return service.markDecisionMessageSentForAnalysis(id);
     }
 
     @PatchMapping("/{id}/status")
@@ -37,6 +37,6 @@ public class AnalysisInspectionController {
             Authentication authentication
     ) {
         PortalPrincipal principal = (PortalPrincipal) authentication.getPrincipal();
-        return service.updateInspectionStatus(id, request, principal.username());
+        return service.updateInspectionStatusForAnalysis(id, request, principal.username());
     }
 }

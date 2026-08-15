@@ -257,13 +257,6 @@ public class InspectionResumableUploadService {
         if (request.isExpired()) {
             throw new IllegalArgumentException("Este link de vistoria expirou. Solicite um novo link ao consultor.");
         }
-        if (request.getRequestType() == InspectionRequestType.NEW_INSPECTION
-                && request.getQuotation() != null
-                && java.time.OffsetDateTime.now().isAfter(request.getQuotation().getValidUntil())) {
-            throw new IllegalArgumentException(
-                    "A cotação vinculada a esta vistoria expirou. Gere uma nova cotação para continuar."
-            );
-        }
     }
 
     private boolean isCompleted(InspectionRequest request) {

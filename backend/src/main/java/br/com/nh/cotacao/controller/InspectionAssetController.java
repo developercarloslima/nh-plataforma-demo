@@ -43,8 +43,11 @@ public class InspectionAssetController {
                 .body(body);
     }
 
-    @DeleteMapping("/api/analysis/inspections/{inspectionId}/assets/{assetId}")
-    public ResponseEntity<Void> deleteAnalysisAsset(
+    @DeleteMapping({
+            "/api/analysis/inspections/{inspectionId}/assets/{assetId}",
+            "/api/admin/inspections/{inspectionId}/assets/{assetId}"
+    })
+    public ResponseEntity<Void> deleteInspectionAsset(
             @PathVariable UUID inspectionId,
             @PathVariable UUID assetId
     ) {

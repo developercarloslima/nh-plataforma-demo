@@ -1685,12 +1685,150 @@ footer {
   }
 }
 
-/* Validade da cotação — vencimentos comerciais */
-#validity-date-field select {
-  min-height: 50px;
+/* Vencimento das mensalidades — V32 */
+.billing-due-field select {
+  min-height: 52px;
+  font-weight: 700;
+  color: var(--navy);
+  background: #fff;
+}
+.billing-due-field .field-help {
+  max-width: 850px;
+}
+@media (max-width: 620px) {
+  .billing-due-field select {
+    min-height: 54px;
+    font-size: 16px;
+  }
+}
+
+/* Tabela Promocional - Motocicletas: seleção explícita */
+.promo-category-button {
+  border-color: rgba(240, 240, 0, 0.8);
+  grid-column: span 2;
+}
+.promo-motorcycle-selector {
+  border: 1px solid rgba(7, 12, 64, 0.14);
+  border-radius: 16px;
+  padding: 18px;
+  background: linear-gradient(180deg, #fffef1, #fff);
+}
+.promo-motorcycle-selector legend {
+  padding: 0 6px;
+  color: var(--navy);
+  font-weight: 800;
+}
+.promo-motorcycle-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.promo-motorcycle-option {
+  min-width: 0;
+  min-height: 92px;
+  padding: 14px 12px;
+  border: 1px solid #cfd5e2;
+  border-radius: 14px;
   background: #fff;
   color: var(--navy);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  line-height: 1.2;
 }
-#validity-date-field .field-help {
-  max-width: 760px;
+.promo-motorcycle-option strong {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+.promo-motorcycle-option span {
+  font-size: 1.08rem;
+  font-weight: 800;
+}
+.promo-motorcycle-option:hover {
+  border-color: var(--navy);
+  transform: translateY(-1px);
+}
+.promo-motorcycle-option.active {
+  background: var(--navy);
+  color: var(--yellow);
+  border-color: var(--navy);
+  box-shadow:
+    inset 0 -3px 0 var(--yellow),
+    0 8px 20px rgba(7, 12, 64, 0.16);
+}
+@media (max-width: 900px) {
+  .promo-motorcycle-grid {
+    grid-template-columns: 1fr;
+  }
+  .promo-motorcycle-option {
+    min-height: 76px;
+  }
+}
+
+@media (max-width: 760px) {
+  .promo-category-button {
+    grid-column: 1 / -1 !important;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    min-height: 78px;
+    padding: 12px 16px;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    line-height: 1.2;
+    text-align: center;
+  }
+}
+
+/* Ajuste final da Tabela Promocional de Motocicletas */
+.promo-motorcycle-selector {
+  padding: 14px;
+}
+.promo-motorcycle-selector legend {
+  font-size: 0.92rem;
+  line-height: 1.2;
+}
+.promo-motorcycle-option {
+  min-height: 76px;
+  padding: 11px 10px;
+  gap: 5px;
+}
+.promo-motorcycle-option strong {
+  font-size: 0.86rem;
+  line-height: 1.18;
+}
+.promo-motorcycle-option span {
+  font-size: 1rem;
+}
+/* Nome e CPF: mesmo alinhamento, sem legendas externas */
+.customer-identity-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.customer-identity-row > input,
+.customer-identity-field input {
+  width: 100%;
+  border: 1px solid #cfd5e2;
+  border-radius: 12px;
+  min-height: 48px;
+  padding: 0 14px;
+  background: #fff;
+  outline: none;
+}
+.customer-identity-row > input:focus,
+.customer-identity-field input:focus {
+  border-color: var(--navy2);
+  box-shadow: 0 0 0 4px #070c4016;
+}
+@media (max-width: 620px) {
+  .customer-identity-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
 }

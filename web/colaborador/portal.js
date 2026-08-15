@@ -286,7 +286,8 @@ function quoteActions(item) {
     vehicleType: inspectionVehicleType,
     whatsapp: item.whatsapp || ''
   });
-  const startInspection = item.status === 'ACCEPTED' && !item.expired && !item.inspectionId
+  const validityEnded = item.validUntil && new Date(item.validUntil).getTime() < Date.now();
+  const startInspection = item.status === 'ACCEPTED' && !item.inspectionId && !validityEnded
     ? `<a class="button secondary small-button" href="/colaborador/retrato.html?${inspectionParams.toString()}">Abrir Retrato NH</a>`
     : '';
   const redo = item.expired
@@ -377,7 +378,7 @@ function renderQuoteEditDecision(item) {
   const declineButton = $('consultant-quote-decline');
   const canDecide = item && ['CREATED', 'UNDER_REVIEW', 'DECLINED'].includes(item.status) && !item.expired;
   decision.hidden = !canDecide;
-  accepted.hidden = item?.status !== 'ACCEPTED' || Boolean(item?.expired);
+  accepted.hidden = item?.status !== 'ACCEPTED';
   declineButton.classList.toggle('selected', item?.status === 'DECLINED');
   if (item?.status === 'ACCEPTED') {
     $('consultant-quote-open-retrato').href = quoteInspectionHref(item);
