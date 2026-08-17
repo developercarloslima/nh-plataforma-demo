@@ -78,27 +78,36 @@ public class InspectionAssetController {
     ) {
         assertConsultantInspectionAccessIfNeeded(request, auth, inspectionId);
         InspectionAsset asset = storageService.requireAvailable(inspectionId, assetId);
+        boolean compressedVideoDownload = download && storageService.requiresVideoDownloadCompression(asset);
         MediaType mediaType;
         try {
-            mediaType = MediaType.parseMediaType(asset.getContentType());
+            mediaType = compressedVideoDownload
+                    ? MediaType.parseMediaType("video/mp4")
+                    : MediaType.parseMediaType(asset.getContentType());
         } catch (Exception ignored) {
             mediaType = MediaType.APPLICATION_OCTET_STREAM;
         }
 
+        String responseFileName = compressedVideoDownload
+                ? storageService.downloadFileName(asset)
+                : asset.getFileName();
         ContentDisposition disposition = (download
                 ? ContentDisposition.attachment()
                 : ContentDisposition.inline())
-                .filename(asset.getFileName(), StandardCharsets.UTF_8)
+                .filename(responseFileName, StandardCharsets.UTF_8)
                 .build();
 
-        StreamingResponseBody body = output -> storageService.writeTo(assetId, output);
-        return ResponseEntity.ok()
+        StreamingResponseBody body = output -> {
+            if (download) storageService.writeForDownload(asset, output);
+            else storageService.writeTo(assetId, output);
+        };
+        ResponseEntity.BodyBuilder response = ResponseEntity.ok()
                 .contentType(mediaType)
-                .contentLength(asset.getFileSize())
                 .cacheControl(CacheControl.noStore().mustRevalidate())
                 .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
-                .header("X-Content-Type-Options", "nosniff")
-                .body(body);
+                .header("X-Content-Type-Options", "nosniff");
+        if (!compressedVideoDownload) response.contentLength(asset.getFileSize());
+        return response.body(body);
     }
 
     private void assertConsultantInspectionAccessIfNeeded(

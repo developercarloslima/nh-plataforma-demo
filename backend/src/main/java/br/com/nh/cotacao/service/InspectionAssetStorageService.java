@@ -37,6 +37,7 @@ import java.util.zip.ZipOutputStream;
 public class InspectionAssetStorageService {
     private static final Logger log = LoggerFactory.getLogger(InspectionAssetStorageService.class);
     private static final int DIRECT_CHUNK_BYTES = 4 * 1024 * 1024;
+    private static final long MAX_VIDEO_BYTES = 10L * 1024 * 1024;
 
     private final InspectionAssetRepository assetRepository;
     private final JdbcTemplate jdbcTemplate;
@@ -210,6 +211,7 @@ public class InspectionAssetStorageService {
         if (request == null) throw new IllegalArgumentException("Vistoria não encontrada.");
         if (type == null) throw new IllegalArgumentException("Tipo do arquivo não informado.");
         if (totalSize <= 0) throw new IllegalArgumentException("O arquivo recebido está vazio.");
+        validateStorageLimit(type, totalSize);
         if (totalChunks < 1 || totalChunks > 512) {
             throw new IllegalArgumentException("Quantidade de partes do arquivo inválida.");
         }
@@ -359,9 +361,9 @@ public class InspectionAssetStorageService {
         try (ZipOutputStream zip = new ZipOutputStream(output, java.nio.charset.StandardCharsets.UTF_8)) {
             Set<String> usedNames = new HashSet<>();
             for (InspectionAsset asset : assets) {
-                String name = uniqueZipName(asset.getFileName(), usedNames);
+                String name = uniqueZipName(downloadFileName(asset), usedNames);
                 zip.putNextEntry(new ZipEntry(name));
-                writeTo(asset.getId(), zip);
+                writeForDownload(asset, zip);
                 zip.closeEntry();
             }
             zip.finish();
@@ -418,10 +420,162 @@ public class InspectionAssetStorageService {
     }
 
     public boolean isAvailable(InspectionAsset asset) {
+        // O limite de 10 MB vale somente para NOVOS uploads.
+        // Vídeos legados maiores permanecem disponíveis até o fim da retenção e
+        // são compactados apenas no momento do download, sem destruir o original.
         return asset != null
                 && asset.getStorageKind() == InspectionAssetStorageKind.DATABASE
                 && asset.isAvailable()
                 && contentExists(asset.getId());
+    }
+
+    public boolean requiresVideoDownloadCompression(InspectionAsset asset) {
+        return asset != null
+                && asset.getAssetType() == InspectionAssetType.VIDEO
+                && asset.getFileSize() > MAX_VIDEO_BYTES;
+    }
+
+    public String downloadFileName(InspectionAsset asset) {
+        if (!requiresVideoDownloadCompression(asset)) return asset.getFileName();
+        String name = asset.getFileName() == null || asset.getFileName().isBlank()
+                ? "video-vistoria"
+                : asset.getFileName().trim();
+        int dot = name.lastIndexOf('.');
+        String base = dot > 0 ? name.substring(0, dot) : name;
+        return base + "-compactado.mp4";
+    }
+
+    /**
+     * Para vídeos legados acima de 10 MB, preserva o original no PostgreSQL e
+     * entrega uma cópia H.264/AAC compactada somente durante o download.
+     */
+    @Transactional(readOnly = true)
+    public void writeForDownload(InspectionAsset asset, OutputStream output) {
+        if (asset == null) throw new IllegalArgumentException("Arquivo da vistoria não informado.");
+        if (!requiresVideoDownloadCompression(asset)) {
+            writeTo(asset.getId(), output);
+            return;
+        }
+        writeCompressedVideo(asset, output);
+    }
+
+    private void writeCompressedVideo(InspectionAsset asset, OutputStream output) {
+        Path source = null;
+        Path compressed = null;
+        try {
+            source = Files.createTempFile("nh-video-original-", videoSourceExtension(asset.getContentType()));
+            try (OutputStream fileOut = Files.newOutputStream(source)) {
+                writeTo(asset.getId(), fileOut);
+            }
+
+            double durationSeconds = probeVideoDuration(source);
+            if (!Double.isFinite(durationSeconds) || durationSeconds <= 0) {
+                throw new IllegalStateException("Não foi possível identificar a duração do vídeo para compactação.");
+            }
+
+            compressed = Files.createTempFile("nh-video-download-", ".mp4");
+            long[] targets = {
+                    8_500_000L,
+                    7_500_000L,
+                    6_500_000L
+            };
+            boolean success = false;
+            for (long targetBytes : targets) {
+                Files.deleteIfExists(compressed);
+                compressed = Files.createTempFile("nh-video-download-", ".mp4");
+                transcodeVideo(source, compressed, durationSeconds, targetBytes);
+                long size = Files.size(compressed);
+                if (size > 0 && size <= MAX_VIDEO_BYTES) {
+                    success = true;
+                    break;
+                }
+            }
+            if (!success) {
+                throw new IllegalStateException("Não foi possível compactar o vídeo para até 10 MB.");
+            }
+
+            try (InputStream input = Files.newInputStream(compressed)) {
+                input.transferTo(output);
+            }
+            log.info("Retrato NH: vídeo legado compactado somente para download assetId={} originalBytes={} downloadBytes={}",
+                    asset.getId(), asset.getFileSize(), Files.size(compressed));
+        } catch (IllegalArgumentException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalStateException("Não foi possível compactar o vídeo para download. O arquivo original permanece preservado.", exception);
+        } finally {
+            if (source != null) try { Files.deleteIfExists(source); } catch (Exception ignored) {}
+            if (compressed != null) try { Files.deleteIfExists(compressed); } catch (Exception ignored) {}
+        }
+    }
+
+    private double probeVideoDuration(Path source) throws Exception {
+        Process process = new ProcessBuilder(
+                "ffprobe", "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                source.toAbsolutePath().toString()
+        ).redirectErrorStream(true).start();
+        String result;
+        try (InputStream input = process.getInputStream()) {
+            result = new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim();
+        }
+        int exit = process.waitFor();
+        if (exit != 0 || result.isBlank()) {
+            throw new IllegalStateException("ffprobe não conseguiu ler a duração do vídeo.");
+        }
+        return Double.parseDouble(result.split("\\R")[0].trim());
+    }
+
+    private void transcodeVideo(Path source, Path destination, double durationSeconds, long targetBytes) throws Exception {
+        // Reserva margem para container/metadata e áudio. O objetivo é ficar
+        // confortavelmente abaixo de 10 MB em vez de encostar no limite.
+        long targetTotalBps = Math.max(120_000L, (long) Math.floor((targetBytes * 8.0) / durationSeconds));
+        long audioBps = Math.min(32_000L, Math.max(20_000L, targetTotalBps / 8));
+        long videoBps = Math.max(80_000L, targetTotalBps - audioBps - 20_000L);
+
+        Process process = new ProcessBuilder(
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                "-i", source.toAbsolutePath().toString(),
+                "-vf", "scale=min(640\\,iw):-2",
+                "-c:v", "libx264",
+                "-preset", "veryfast",
+                "-b:v", Long.toString(videoBps),
+                "-maxrate", Long.toString(videoBps),
+                "-bufsize", Long.toString(Math.max(160_000L, videoBps * 2)),
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac",
+                "-b:a", Long.toString(audioBps),
+                "-ac", "1",
+                "-ar", "32000",
+                "-movflags", "+faststart",
+                destination.toAbsolutePath().toString()
+        ).redirectErrorStream(true).start();
+
+        String errorText;
+        try (InputStream input = process.getInputStream()) {
+            errorText = new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        }
+        int exit = process.waitFor();
+        if (exit != 0 || !Files.exists(destination) || Files.size(destination) <= 0) {
+            throw new IllegalStateException("ffmpeg falhou ao compactar o vídeo: " + errorText.trim());
+        }
+    }
+
+    private String videoSourceExtension(String contentType) {
+        String type = contentType == null ? "" : contentType.toLowerCase(Locale.ROOT);
+        return switch (type) {
+            case "video/quicktime" -> ".mov";
+            case "video/webm" -> ".webm";
+            case "video/3gpp" -> ".3gp";
+            default -> ".mp4";
+        };
+    }
+
+    private void validateStorageLimit(InspectionAssetType type, long fileSize) {
+        if (type == InspectionAssetType.VIDEO && fileSize > MAX_VIDEO_BYTES) {
+            throw new IllegalArgumentException("O vídeo da vistoria deve possuir no máximo 10 MB.");
+        }
     }
 
     @Transactional(readOnly = true)
@@ -464,6 +618,7 @@ public class InspectionAssetStorageService {
             InputStream input
     ) throws IOException {
         if (fileSize <= 0) throw new IllegalArgumentException("O arquivo recebido está vazio.");
+        validateStorageLimit(type, fileSize);
         Optional<InspectionAsset> existing = findSlotAsset(request, type, sortOrder);
         if (existing.isPresent() && isAvailable(existing.get())) {
             return existing.get();

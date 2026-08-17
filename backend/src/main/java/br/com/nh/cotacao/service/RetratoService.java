@@ -128,6 +128,7 @@ public class RetratoService {
             List<MultipartFile> photos,
             List<String> labels,
             MultipartFile video,
+            Double videoDurationSeconds,
             String residenceAddress,
             MultipartFile signature,
             MultipartFile vehicleDocument,
@@ -150,6 +151,7 @@ public class RetratoService {
             throw new IllegalArgumentException("O vídeo da vistoria é obrigatório.");
         }
         validateVideo(video);
+        validateVideoDuration(videoDurationSeconds);
 
         boolean newInspection = request.getRequestType() == InspectionRequestType.NEW_INSPECTION;
         if (newInspection) {
@@ -400,6 +402,12 @@ public class RetratoService {
     private void validateVideo(MultipartFile file) {
         if (file.getSize() > MAX_VIDEO_BYTES) throw new IllegalArgumentException("O vídeo deve possuir no máximo 10 MB.");
         if (!VIDEO_TYPES.contains(cleanType(file.getContentType()))) throw new IllegalArgumentException("Envie o vídeo em MP4, MOV, WebM ou 3GP.");
+    }
+
+    private void validateVideoDuration(Double durationSeconds) {
+        if (durationSeconds == null || !Double.isFinite(durationSeconds) || durationSeconds < 90.0) {
+            throw new IllegalArgumentException("O vídeo deve possuir pelo menos 1 minuto e 30 segundos.");
+        }
     }
 
     private void validateSignature(MultipartFile file) {

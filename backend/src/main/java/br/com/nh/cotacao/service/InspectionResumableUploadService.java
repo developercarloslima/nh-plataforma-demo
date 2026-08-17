@@ -96,6 +96,7 @@ public class InspectionResumableUploadService {
             int totalChunks,
             long totalSize,
             String contentType,
+            Double videoDurationSeconds,
             MultipartFile chunk
     ) {
         // O bloqueio pessimista funciona entre processos/contêineres e impede
@@ -104,7 +105,7 @@ public class InspectionResumableUploadService {
                 .orElseThrow(() -> new IllegalArgumentException("Link de vistoria inválido."));
         validateRequestAvailable(current);
         String cleanType = cleanType(contentType);
-        String cleanLabel = validateAssetMetadata(current, assetType, sortOrder, label, totalSize, cleanType);
+        String cleanLabel = validateAssetMetadata(current, assetType, sortOrder, label, totalSize, cleanType, videoDurationSeconds);
         validateChunk(uploadId, chunkIndex, totalChunks, chunk);
         byte[] chunkBytes = readChunk(chunk);
         Optional<InspectionAsset> currentAsset = findAsset(current, assetType, sortOrder);
@@ -271,7 +272,8 @@ public class InspectionResumableUploadService {
             int sortOrder,
             String label,
             long totalSize,
-            String contentType
+            String contentType,
+            Double videoDurationSeconds
     ) {
         if (assetType == null) throw new IllegalArgumentException("Informe o tipo do arquivo.");
         if (totalSize <= 0) throw new IllegalArgumentException("O arquivo enviado está vazio.");
@@ -295,6 +297,9 @@ public class InspectionResumableUploadService {
             case VIDEO -> {
                 if (sortOrder != videoOrder) throw new IllegalArgumentException("A posição do vídeo é inválida para esta vistoria.");
                 if (totalSize > MAX_VIDEO_BYTES) throw new IllegalArgumentException("O vídeo deve possuir no máximo 10 MB.");
+                if (videoDurationSeconds == null || !Double.isFinite(videoDurationSeconds) || videoDurationSeconds < 90.0) {
+                    throw new IllegalArgumentException("O vídeo deve possuir pelo menos 1 minuto e 30 segundos.");
+                }
                 if (!VIDEO_TYPES.contains(contentType)) throw new IllegalArgumentException("Envie o vídeo em MP4, MOV, WebM ou 3GP.");
             }
             case SIGNATURE -> {

@@ -14,7 +14,7 @@ const VEHICLE_PROFILES = {
       { label: 'Odômetro', guide: '/assets/inspection-guides/moto-07-odometro.webp' }
     ],
     videoGuide: '/assets/guia-vistoria-moto.png',
-    videoInstruction: 'Com o veículo ligado, inicie a gravação mostrando o chassi legível. Fale seu nome completo, o dia, o mês e o ano. Mostre os 4 lados da motocicleta detalhadamente, dando um giro de 360° em torno do veículo. Finalize mostrando o odômetro com o KM total e encerre o vídeo. Tempo ideal: 1 minuto e 30 segundos.'
+    videoInstruction: 'Com o veículo ligado, inicie a gravação mostrando o chassi legível. Fale seu nome completo, o dia, o mês e o ano. Mostre os 4 lados da motocicleta detalhadamente, dando um giro de 360° em torno do veículo. Finalize mostrando o odômetro com o KM total. A gravação deve ter no mínimo 1 minuto e 30 segundos e será encerrada automaticamente logo após atingir esse tempo.'
   },
   FOUR_WHEELS_OR_MORE: {
     title: 'Carro, utilitário ou veículo com 4 rodas ou mais',
@@ -36,7 +36,7 @@ const VEHICLE_PROFILES = {
       { label: 'Foto do chassi', guide: '/assets/inspection-guides/carro-15-chassi.webp' }
     ],
     videoGuide: '/assets/guia-vistoria-carro.png',
-    videoInstruction: 'Com o veículo ligado, inicie a gravação mostrando o chassi legível. Fale seu nome completo, o dia, o mês e o ano. Mostre os 4 lados do veículo detalhadamente, dando um giro de 360° em torno do veículo. Finalize abrindo a porta do motorista e mostrando o odômetro com o KM total. Encerre o vídeo. Tempo ideal: 1 minuto e 30 segundos.'
+    videoInstruction: 'Com o veículo ligado, inicie a gravação mostrando o chassi legível. Fale seu nome completo, o dia, o mês e o ano. Mostre os 4 lados do veículo detalhadamente, dando um giro de 360° em torno do veículo. Finalize abrindo a porta do motorista e mostrando o odômetro com o KM total. A gravação deve ter no mínimo 1 minuto e 30 segundos e será encerrada automaticamente logo após atingir esse tempo.'
   }
 };
 
@@ -48,7 +48,10 @@ const allowedVideoTypes = new Set([
 ]);
 
 const VIDEO_MAX_BYTES = 10 * 1024 * 1024;
-const VIDEO_RECORDING_STOP_BYTES = Math.floor(VIDEO_MAX_BYTES * 0.95);
+const VIDEO_MIN_DURATION_SECONDS = 90;
+const VIDEO_AUTO_STOP_SECONDS = 91;
+const VIDEO_TARGET_VIDEO_BITRATE = 480_000;
+const VIDEO_TARGET_AUDIO_BITRATE = 32_000;
 
 let request = null;
 let inspectionProfile = VEHICLE_PROFILES.FOUR_WHEELS_OR_MORE;
@@ -62,7 +65,7 @@ let activeStream = null;
 let mediaRecorder = null;
 let recordedChunks = [];
 let recordedVideoBytes = 0;
-let recordingStoppedBySizeLimit = false;
+let videoDurationSeconds = null;
 let currentPhotoIndex = null;
 let captureMode = null;
 let selfieMirrorCorrection = false;
@@ -736,14 +739,23 @@ async function openCamera({ audio, facingMode = 'environment' }) {
 
   stopCameraStream();
 
+  const videoConstraints = audio
+    ? {
+        facingMode: { ideal: facingMode },
+        width: { ideal: 640, max: 640 },
+        height: { ideal: 360, max: 360 },
+        frameRate: { ideal: 20, max: 24 }
+      }
+    : {
+        facingMode: { ideal: facingMode },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      };
+
   const constraints = {
-    video: {
-      facingMode: { ideal: facingMode },
-      width: { ideal: 1920 },
-      height: { ideal: 1080 }
-    },
+    video: videoConstraints,
     audio: audio
-      ? { echoCancellation: true, noiseSuppression: true }
+      ? { echoCancellation: true, noiseSuppression: true, channelCount: { ideal: 1 } }
       : false
   };
 
@@ -867,9 +879,11 @@ function startVideoRecording() {
 
   const mimeType = selectRecordingMimeType();
   const options = {
-    // Mantém o vídeo próximo de 10 MB mesmo na gravação ideal de ~1min30s.
-    videoBitsPerSecond: 700_000,
-    audioBitsPerSecond: 64_000
+    // 90 s a ~512 kbps totais gera cerca de 5,5 MB e deixa margem para navegadores
+    // que variam o bitrate e para o overhead do contêiner. A resolução também é limitada
+    // na captura para manter o arquivo final abaixo de 10 MB em aparelhos diferentes.
+    videoBitsPerSecond: VIDEO_TARGET_VIDEO_BITRATE,
+    audioBitsPerSecond: VIDEO_TARGET_AUDIO_BITRATE
   };
 
   if (mimeType) {
@@ -879,7 +893,7 @@ function startVideoRecording() {
   try {
     recordedChunks = [];
     recordedVideoBytes = 0;
-    recordingStoppedBySizeLimit = false;
+    videoDurationSeconds = null;
     discardRecording = false;
     mediaRecorder = new MediaRecorder(activeStream, options);
 
@@ -887,10 +901,6 @@ function startVideoRecording() {
       if (event.data && event.data.size > 0) {
         recordedChunks.push(event.data);
         recordedVideoBytes += event.data.size;
-        if (recordedVideoBytes >= VIDEO_RECORDING_STOP_BYTES && mediaRecorder?.state === 'recording') {
-          recordingStoppedBySizeLimit = true;
-          mediaRecorder.stop();
-        }
       }
     });
 
@@ -900,19 +910,33 @@ function startVideoRecording() {
     recordingStartedAt = Date.now();
     $('start-recording').hidden = true;
     $('stop-recording').hidden = false;
+    $('stop-recording').disabled = true;
+    $('stop-recording').textContent = 'Aguarde 01:30';
     $('cancel-camera').textContent = 'Cancelar gravação';
     $('recording-indicator').hidden = false;
     updateRecordingTimer();
-    recordingTimer = window.setInterval(updateRecordingTimer, 1000);
+    recordingTimer = window.setInterval(updateRecordingTimer, 250);
   } catch (error) {
     handleCameraError(error);
   }
 }
 
 function stopVideoRecording() {
-  if (mediaRecorder?.state === 'recording') {
-    mediaRecorder.stop();
+  if (mediaRecorder?.state !== 'recording') {
+    return;
   }
+
+  const elapsedSeconds = recordingStartedAt
+    ? (Date.now() - recordingStartedAt) / 1000
+    : 0;
+
+  if (elapsedSeconds < VIDEO_MIN_DURATION_SECONDS) {
+    const remaining = Math.max(1, Math.ceil(VIDEO_MIN_DURATION_SECONDS - elapsedSeconds));
+    msg(`O vídeo precisa ter pelo menos 1 minuto e 30 segundos. Aguarde mais ${remaining} segundo${remaining === 1 ? '' : 's'}.`);
+    return;
+  }
+
+  mediaRecorder.stop();
 }
 
 function cancelCameraCapture() {
@@ -926,14 +950,26 @@ function cancelCameraCapture() {
 }
 
 function finishVideoRecording() {
+  const measuredDurationSeconds = recordingStartedAt
+    ? (Date.now() - recordingStartedAt) / 1000
+    : 0;
   clearRecordingTimer();
 
   if (discardRecording) {
     recordedChunks = [];
     recordedVideoBytes = 0;
-    recordingStoppedBySizeLimit = false;
+    videoDurationSeconds = null;
     mediaRecorder = null;
     closeCameraModal();
+    return;
+  }
+
+  if (measuredDurationSeconds < VIDEO_MIN_DURATION_SECONDS) {
+    mediaRecorder = null;
+    recordedChunks = [];
+    recordedVideoBytes = 0;
+    videoDurationSeconds = null;
+    handleCameraError(new Error('O vídeo precisa ter pelo menos 1 minuto e 30 segundos. Grave novamente e aguarde o encerramento automático.'));
     return;
   }
 
@@ -945,7 +981,7 @@ function finishVideoRecording() {
     mediaRecorder = null;
     recordedChunks = [];
     recordedVideoBytes = 0;
-    recordingStoppedBySizeLimit = false;
+    videoDurationSeconds = null;
     handleCameraError(new Error(`O formato de vídeo gerado (${mimeType}) não é compatível. Use Chrome, Edge ou Safari atualizado.`));
     return;
   }
@@ -955,14 +991,15 @@ function finishVideoRecording() {
     mediaRecorder = null;
     recordedChunks = [];
     recordedVideoBytes = 0;
-    recordingStoppedBySizeLimit = false;
-    handleCameraError(new Error(`O vídeo ultrapassou o limite de 10 MB (${formatBytes(blob.size)}). Grave novamente um vídeo mais curto.`));
+    videoDurationSeconds = null;
+    handleCameraError(new Error(`Este aparelho gerou um vídeo de ${formatBytes(blob.size)}, acima do limite de 10 MB. Grave novamente; o sistema usará a configuração compactada obrigatória de 1min30s.`));
     return;
   }
 
   const extension = videoExtension(mimeType);
   const plate = slugify(request?.plate || 'veiculo');
 
+  videoDurationSeconds = measuredDurationSeconds;
   videoFile = new File([blob], `video-vistoria-${plate}.${extension}`, {
     type: mimeType,
     lastModified: Date.now()
@@ -975,17 +1012,16 @@ function finishVideoRecording() {
 
   $('video-preview').src = videoPreviewUrl;
   $('video-preview').hidden = false;
-  $('video-status').textContent = `Vídeo gravado pela câmera (${formatBytes(blob.size)} de 10 MB).${recordingStoppedBySizeLimit ? ' A gravação foi encerrada automaticamente ao atingir o limite.' : ''}`;
+  $('video-status').textContent = `Vídeo gravado com duração válida (${Math.floor(measuredDurationSeconds)}s · ${formatBytes(blob.size)} de 10 MB).`;
   $('record-video').textContent = 'Gravar novamente';
   $('record-video').classList.add('captured');
 
   mediaRecorder = null;
   recordedChunks = [];
   recordedVideoBytes = 0;
-  recordingStoppedBySizeLimit = false;
   closeCameraModal();
   updateCaptureSummary();
-  scheduleDraftSave(0, 'Vídeo salvo neste aparelho para uma nova tentativa de envio.');
+  scheduleDraftSave(0, 'Vídeo com duração mínima confirmada salvo neste aparelho para uma nova tentativa de envio.');
 }
 
 function selectRecordingMimeType() {
@@ -1009,10 +1045,22 @@ function updateRecordingTimer() {
     return;
   }
 
-  const elapsedSeconds = Math.floor((Date.now() - recordingStartedAt) / 1000);
+  const elapsed = (Date.now() - recordingStartedAt) / 1000;
+  const elapsedSeconds = Math.min(VIDEO_AUTO_STOP_SECONDS, Math.floor(elapsed));
   const minutes = String(Math.floor(elapsedSeconds / 60)).padStart(2, '0');
   const seconds = String(elapsedSeconds % 60).padStart(2, '0');
   $('recording-time').textContent = `${minutes}:${seconds}`;
+
+  const stopButton = $('stop-recording');
+  const remaining = Math.max(0, Math.ceil(VIDEO_MIN_DURATION_SECONDS - elapsed));
+  stopButton.disabled = elapsed < VIDEO_MIN_DURATION_SECONDS;
+  stopButton.textContent = remaining > 0
+    ? `Aguarde ${String(Math.floor(remaining / 60)).padStart(2, '0')}:${String(remaining % 60).padStart(2, '0')}`
+    : 'Finalizando vídeo...';
+
+  if (elapsed >= VIDEO_AUTO_STOP_SECONDS && mediaRecorder?.state === 'recording') {
+    mediaRecorder.stop();
+  }
 }
 
 function clearRecordingTimer() {
@@ -1030,6 +1078,8 @@ function closeCameraModal() {
   $('capture-photo').hidden = true;
   $('start-recording').hidden = true;
   $('stop-recording').hidden = true;
+  $('stop-recording').disabled = false;
+  $('stop-recording').textContent = 'Parar e usar vídeo';
   $('recording-indicator').hidden = true;
   $('cancel-camera').textContent = 'Cancelar';
   $('camera-preview').srcObject = null;
@@ -1180,6 +1230,9 @@ async function uploadChunkWithRetry(asset, uploadId, chunkIndex, totalChunks, ch
     form.append('totalChunks', String(totalChunks));
     form.append('totalSize', String(asset.file.size));
     form.append('contentType', asset.file.type || 'application/octet-stream');
+    if (asset.assetType === 'VIDEO' && Number.isFinite(asset.durationSeconds)) {
+      form.append('videoDurationSeconds', String(asset.durationSeconds));
+    }
     form.append('chunk', chunk, `parte-${chunkIndex + 1}.bin`);
 
     const controller = new AbortController();
@@ -1317,6 +1370,34 @@ async function finalizeResumableUpload(residenceAddress) {
   throw lastError || new Error('Não foi possível finalizar a vistoria.');
 }
 
+async function readVideoDurationSeconds(file) {
+  if (!file) return 0;
+  const url = URL.createObjectURL(file);
+  try {
+    const duration = await new Promise((resolve, reject) => {
+      const video = document.createElement('video');
+      const timeout = window.setTimeout(() => reject(new Error('Não foi possível confirmar a duração do vídeo.')), 15000);
+      video.preload = 'metadata';
+      video.muted = true;
+      video.playsInline = true;
+      video.onloadedmetadata = () => {
+        window.clearTimeout(timeout);
+        const value = Number(video.duration);
+        if (Number.isFinite(value) && value > 0) resolve(value);
+        else reject(new Error('Não foi possível confirmar a duração do vídeo.'));
+      };
+      video.onerror = () => {
+        window.clearTimeout(timeout);
+        reject(new Error('Não foi possível ler o vídeo gravado.'));
+      };
+      video.src = url;
+    });
+    return duration;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 $('upload-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   clearMessage();
@@ -1343,6 +1424,21 @@ $('upload-form').addEventListener('submit', async (event) => {
     msg(`O vídeo deve possuir no máximo 10 MB. O arquivo atual tem ${formatBytes(videoFile.size)}.`);
     $('record-video').focus();
     return;
+  }
+
+  if (!serverHasAsset('VIDEO', orders.video) && videoFile) {
+    try {
+      videoDurationSeconds = await readVideoDurationSeconds(videoFile);
+    } catch (error) {
+      msg(error?.message || 'Não foi possível confirmar a duração do vídeo. Grave novamente.');
+      $('record-video').focus();
+      return;
+    }
+    if (videoDurationSeconds < VIDEO_MIN_DURATION_SECONDS) {
+      msg(`O vídeo precisa ter pelo menos 1 minuto e 30 segundos. O vídeo atual possui ${Math.floor(videoDurationSeconds)} segundos.`);
+      $('record-video').focus();
+      return;
+    }
   }
 
   const residenceAddress = $('residence-address').value.trim() || request.residenceAddress || '';
@@ -1396,7 +1492,8 @@ $('upload-form').addEventListener('submit', async (event) => {
         assetType: 'VIDEO',
         sortOrder: orders.video,
         label: 'Vídeo da vistoria',
-        file: videoFile
+        file: videoFile,
+        durationSeconds: videoDurationSeconds
       });
     }
 

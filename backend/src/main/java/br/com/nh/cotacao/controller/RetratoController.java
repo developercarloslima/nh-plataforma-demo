@@ -52,6 +52,7 @@ public class RetratoController {
             @RequestParam(value = "photos", required = false) List<MultipartFile> photos,
             @RequestParam(value = "labels", required = false) List<String> labels,
             @RequestParam("video") MultipartFile video,
+            @RequestParam(value = "videoDurationSeconds", required = false) Double videoDurationSeconds,
             @RequestParam(value = "residenceAddress", required = false) String residenceAddress,
             @RequestParam(value = "signature", required = false) MultipartFile signature,
             @RequestParam(value = "vehicleDocument", required = false) MultipartFile vehicleDocument,
@@ -61,7 +62,7 @@ public class RetratoController {
             @RequestParam(value = "additionalLabels", required = false) List<String> additionalLabels
     ) {
         return service.upload(
-                token, photos, labels, video, residenceAddress, signature,
+                token, photos, labels, video, videoDurationSeconds, residenceAddress, signature,
                 vehicleDocument, identityDocumentFront, identityDocumentBack, additionalFiles, additionalLabels
         );
     }
@@ -88,6 +89,7 @@ public class RetratoController {
             @RequestParam int totalChunks,
             @RequestParam long totalSize,
             @RequestParam String contentType,
+            @RequestParam(value = "videoDurationSeconds", required = false) Double videoDurationSeconds,
             @RequestParam("chunk") MultipartFile chunk
     ) {
         return resumableUploadService.uploadChunk(
@@ -100,6 +102,7 @@ public class RetratoController {
                 totalChunks,
                 totalSize,
                 contentType,
+                videoDurationSeconds,
                 chunk
         );
     }
