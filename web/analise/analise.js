@@ -1,9 +1,14 @@
 const TOKEN_KEY = 'nhPortalToken';
 const ROLE_KEY = 'nhPortalRole';
 const CONSULTANT_KEY = 'nhSelectedConsultant';
+const LAST_ACTIVITY_KEY = 'nhPortalLastActivityAt';
+const INACTIVITY_LIMIT_MS = 20 * 60 * 1000;
+const ACTIVITY_WRITE_THROTTLE_MS = 15 * 1000;
 const $ = id => document.getElementById(id);
 
 let token = localStorage.getItem(TOKEN_KEY);
+let inactivityTimer = null;
+let lastActivityWriteAt = 0;
 let inspections = [];
 let analysts = [];
 let currentUser = null;
@@ -76,9 +81,77 @@ function clearSession() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(ROLE_KEY);
   localStorage.removeItem(CONSULTANT_KEY);
+  localStorage.removeItem(LAST_ACTIVITY_KEY);
+  if (inactivityTimer) clearTimeout(inactivityTimer);
+  inactivityTimer = null;
   token = null;
   currentUser = null;
   analysts = [];
+}
+
+function tokenExpiresAtMs(value = token) {
+  if (!value) return null;
+  const parts = String(value).split('.');
+  if (parts.length !== 5) return null;
+  const seconds = Number(parts[2]);
+  return Number.isFinite(seconds) ? seconds * 1000 : null;
+}
+
+function sessionExpired() {
+  const expiresAt = tokenExpiresAtMs();
+  return expiresAt !== null && Date.now() >= expiresAt;
+}
+
+function lastActivityAtMs() {
+  const value = Number(localStorage.getItem(LAST_ACTIVITY_KEY));
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function inactivityExpired() {
+  const lastActivity = lastActivityAtMs();
+  return lastActivity !== null && Date.now() - lastActivity >= INACTIVITY_LIMIT_MS;
+}
+
+function scheduleInactivityCheck() {
+  if (inactivityTimer) clearTimeout(inactivityTimer);
+  inactivityTimer = null;
+  if (!token) return;
+  let lastActivity = lastActivityAtMs();
+  if (lastActivity === null) {
+    lastActivity = Date.now();
+    localStorage.setItem(LAST_ACTIVITY_KEY, String(lastActivity));
+  }
+  const remaining = Math.max(0, INACTIVITY_LIMIT_MS - (Date.now() - lastActivity));
+  inactivityTimer = setTimeout(() => {
+    if (!token) return;
+    if (inactivityExpired()) {
+      showLogin('Sessão encerrada após 20 minutos de inatividade. Entre novamente.');
+      return;
+    }
+    scheduleInactivityCheck();
+  }, remaining + 100);
+}
+
+function markSessionActivity(force = false) {
+  if (!token) return;
+  const now = Date.now();
+  if (!force && now - lastActivityWriteAt < ACTIVITY_WRITE_THROTTLE_MS) return;
+  lastActivityWriteAt = now;
+  localStorage.setItem(LAST_ACTIVITY_KEY, String(now));
+  scheduleInactivityCheck();
+}
+
+function installInactivityTracking() {
+  ['pointerdown', 'keydown', 'touchstart', 'scroll', 'mousemove'].forEach(eventName => {
+    window.addEventListener(eventName, () => markSessionActivity(), { passive: true });
+  });
+  window.addEventListener('storage', event => {
+    if (event.key === TOKEN_KEY && !event.newValue) {
+      showLogin('Sua sessão foi encerrada. Entre novamente.');
+      return;
+    }
+    if (event.key === LAST_ACTIVITY_KEY && token) scheduleInactivityCheck();
+  });
 }
 
 function showLogin(text = '') {
@@ -108,9 +181,11 @@ async function api(path, options = {}) {
   const headers = new Headers(options.headers || {});
   if (token) headers.set('Authorization', `Bearer ${token}`);
   const response = await fetch(window.NH_API?.backend(path) || path, { ...options, headers });
-  if (response.status === 401 || response.status === 403) {
-    showLogin('Sua sessão expirou ou não possui acesso à equipe de análise.');
-    throw new Error('Sessão inválida.');
+  if (token && (response.status === 401 || response.status === 403)) {
+    showLogin('Sua sessão expirou. Entre novamente.');
+    const error = new Error('Sessão inválida.');
+    error.authExpired = true;
+    throw error;
   }
   if (!response.ok) {
     const body = await response.json().catch(() => null);
@@ -124,9 +199,11 @@ async function apiBlob(path) {
   const headers = new Headers();
   if (token) headers.set('Authorization', `Bearer ${token}`);
   const response = await fetch(window.NH_API?.backend(path) || path, { headers, cache: 'no-store' });
-  if (response.status === 401 || response.status === 403) {
-    showLogin('Sua sessão expirou ou não possui acesso à equipe de análise.');
-    throw new Error('Sessão inválida.');
+  if (token && (response.status === 401 || response.status === 403)) {
+    showLogin('Sua sessão expirou. Entre novamente.');
+    const error = new Error('Sessão inválida.');
+    error.authExpired = true;
+    throw error;
   }
   if (!response.ok) {
     const body = await response.json().catch(() => null);
@@ -174,7 +251,14 @@ function confirmAnalysisAction(title, text, confirmLabel = 'Confirmar') {
 }
 
 async function boot() {
-  if (!token) return;
+  if (!token) {
+    showLogin();
+    return;
+  }
+  if (sessionExpired()) {
+    showLogin('Sua sessão expirou. Entre novamente.');
+    return;
+  }
   try {
     const me = await api('/api/auth/me');
     currentUser = me;
@@ -190,7 +274,7 @@ async function boot() {
     showView();
     await load();
   } catch (error) {
-    if (!$('analysis-view').hidden) message(error.message);
+    if (!error?.authExpired && !$('analysis-view').hidden) message(error.message);
   }
 }
 
@@ -722,6 +806,7 @@ $('login-form').addEventListener('submit', async event => {
     localStorage.setItem(TOKEN_KEY, data.token);
     localStorage.setItem(ROLE_KEY, data.role);
     token = data.token;
+    markSessionActivity(true);
     currentUser = data;
     if (data.role === 'ADMIN') {
       location.href = '/admin/';
@@ -744,4 +829,22 @@ $('close-dialog').addEventListener('click', () => { releaseMediaUrls(); $('inspe
 $('cancel-dialog').addEventListener('click', () => { releaseMediaUrls(); $('inspection-dialog').close(); });
 $('inspection-dialog').addEventListener('close', releaseMediaUrls);
 $('logout').addEventListener('click', () => showLogin());
+
+window.addEventListener('pageshow', () => {
+  if (!token) return;
+  if (sessionExpired()) showLogin('Sua sessão expirou. Entre novamente.');
+  else if (inactivityExpired()) showLogin('Sessão encerrada após 20 minutos de inatividade. Entre novamente.');
+  else scheduleInactivityCheck();
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !token) return;
+  if (sessionExpired()) showLogin('Sua sessão expirou. Entre novamente.');
+  else if (inactivityExpired()) showLogin('Sessão encerrada após 20 minutos de inatividade. Entre novamente.');
+  else scheduleInactivityCheck();
+});
+
+installInactivityTracking();
+if (token && lastActivityAtMs() === null) markSessionActivity(true);
+else scheduleInactivityCheck();
 boot();

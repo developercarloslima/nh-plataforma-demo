@@ -1,10 +1,90 @@
 const TOKEN_KEY = 'nhPortalToken';
+const ROLE_KEY = 'nhPortalRole';
 const CONSULTANT_KEY = 'nhSelectedConsultant';
+const LAST_ACTIVITY_KEY = 'nhPortalLastActivityAt';
+const INACTIVITY_LIMIT_MS = 20 * 60 * 1000;
+const ACTIVITY_WRITE_THROTTLE_MS = 15 * 1000;
 const $ = (id) => document.getElementById(id);
 const token = localStorage.getItem(TOKEN_KEY);
 const consultant = JSON.parse(localStorage.getItem(CONSULTANT_KEY) || 'null');
+let inactivityTimer = null;
+let lastActivityWriteAt = 0;
 
-if (!token || !consultant?.id) location.replace('/colaborador/');
+function tokenExpiresAtMs(value = token) {
+  if (!value) return null;
+  const parts = String(value).split('.');
+  if (parts.length !== 5) return null;
+  const seconds = Number(parts[2]);
+  return Number.isFinite(seconds) ? seconds * 1000 : null;
+}
+
+function lastActivityAtMs() {
+  const value = Number(localStorage.getItem(LAST_ACTIVITY_KEY));
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function inactivityExpired() {
+  const lastActivity = lastActivityAtMs();
+  return lastActivity !== null && Date.now() - lastActivity >= INACTIVITY_LIMIT_MS;
+}
+
+function scheduleInactivityCheck() {
+  if (inactivityTimer) clearTimeout(inactivityTimer);
+  inactivityTimer = null;
+  if (!localStorage.getItem(TOKEN_KEY)) return;
+  let lastActivity = lastActivityAtMs();
+  if (lastActivity === null) {
+    lastActivity = Date.now();
+    localStorage.setItem(LAST_ACTIVITY_KEY, String(lastActivity));
+  }
+  const remaining = Math.max(0, INACTIVITY_LIMIT_MS - (Date.now() - lastActivity));
+  inactivityTimer = setTimeout(() => {
+    if (!localStorage.getItem(TOKEN_KEY)) return;
+    if (inactivityExpired()) redirectToLogin('Sessão encerrada após 20 minutos de inatividade. Entre novamente.');
+    else scheduleInactivityCheck();
+  }, remaining + 100);
+}
+
+function markSessionActivity(force = false) {
+  if (!localStorage.getItem(TOKEN_KEY)) return;
+  const now = Date.now();
+  if (!force && now - lastActivityWriteAt < ACTIVITY_WRITE_THROTTLE_MS) return;
+  lastActivityWriteAt = now;
+  localStorage.setItem(LAST_ACTIVITY_KEY, String(now));
+  scheduleInactivityCheck();
+}
+
+function installInactivityTracking() {
+  ['pointerdown', 'keydown', 'touchstart', 'scroll', 'mousemove'].forEach(eventName => {
+    window.addEventListener(eventName, () => markSessionActivity(), { passive: true });
+  });
+  window.addEventListener('storage', event => {
+    if (event.key === TOKEN_KEY && !event.newValue) {
+      redirectToLogin();
+      return;
+    }
+    if (event.key === LAST_ACTIVITY_KEY && localStorage.getItem(TOKEN_KEY)) scheduleInactivityCheck();
+  });
+}
+
+function redirectToLogin(message = '') {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(ROLE_KEY);
+  localStorage.removeItem(CONSULTANT_KEY);
+  localStorage.removeItem(LAST_ACTIVITY_KEY);
+  if (inactivityTimer) clearTimeout(inactivityTimer);
+  if (message) sessionStorage.setItem('nhPortalLoginMessage', message);
+  location.replace('/colaborador/');
+}
+
+const expiresAt = tokenExpiresAtMs();
+if (!token || !consultant?.id || (expiresAt !== null && Date.now() >= expiresAt) || inactivityExpired()) {
+  redirectToLogin(inactivityExpired() ? 'Sessão encerrada após 20 minutos de inatividade. Entre novamente.' : 'Sua sessão expirou. Entre novamente.');
+}
+
+installInactivityTracking();
+if (lastActivityAtMs() === null) markSessionActivity(true);
+else scheduleInactivityCheck();
 
 async function api(path, options = {}) {
   const headers = new Headers(options.headers || {});
@@ -12,11 +92,32 @@ async function api(path, options = {}) {
   const response = await fetch(window.NH_API?.backend(path) || path, { ...options, headers });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
+    if (response.status === 401 || response.status === 403) {
+      redirectToLogin();
+      const error = new Error('Sua sessão expirou. Entre novamente.');
+      error.authExpired = true;
+      throw error;
+    }
     throw new Error(body?.message || 'Não foi possível concluir a solicitação.');
   }
   if (response.status === 204) return null;
   return response.json();
 }
+
+window.addEventListener('pageshow', () => {
+  const exp = tokenExpiresAtMs();
+  if (exp !== null && Date.now() >= exp) redirectToLogin('Sua sessão expirou. Entre novamente.');
+  else if (inactivityExpired()) redirectToLogin('Sessão encerrada após 20 minutos de inatividade. Entre novamente.');
+  else scheduleInactivityCheck();
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  const exp = tokenExpiresAtMs();
+  if (exp !== null && Date.now() >= exp) redirectToLogin('Sua sessão expirou. Entre novamente.');
+  else if (inactivityExpired()) redirectToLogin('Sessão encerrada após 20 minutos de inatividade. Entre novamente.');
+  else scheduleInactivityCheck();
+});
 
 function msg(text, type = 'error') {
   const element = $('message');
