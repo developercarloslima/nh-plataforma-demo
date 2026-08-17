@@ -71,7 +71,15 @@ let captureMode = null;
 let selfieMirrorCorrection = false;
 let activeFacingMode = 'environment';
 let recordingTimer = null;
-let recordingStartedAt = null;
+let recordingElapsedMs = 0;
+let recordingActiveSince = null;
+let recordingStopRequested = false;
+let recordingInterrupted = false;
+let recordingMustRestart = false;
+let recordingInterruptionReason = '';
+let recordingWakeLock = null;
+let torchSupported = false;
+let torchEnabled = false;
 let discardRecording = false;
 let signatureHasInk = false;
 let vehicleDocumentFile = null;
@@ -701,6 +709,9 @@ async function openPhotoCamera(index) {
     $('capture-photo').hidden = false;
     $('start-recording').hidden = true;
     $('stop-recording').hidden = true;
+    $('resume-recording').hidden = true;
+    $('toggle-flash').hidden = true;
+    $('recording-paused-banner').hidden = true;
     $('recording-indicator').hidden = true;
   } catch (error) {
     handleCameraError(error);
@@ -725,7 +736,10 @@ async function openVideoCamera() {
     $('capture-photo').hidden = true;
     $('start-recording').hidden = false;
     $('stop-recording').hidden = true;
+    $('resume-recording').hidden = true;
+    $('recording-paused-banner').hidden = true;
     $('recording-indicator').hidden = true;
+    configureTorchControl();
   } catch (error) {
     handleCameraError(error);
   }
@@ -764,6 +778,11 @@ async function openCamera({ audio, facingMode = 'environment' }) {
   cameraPreview.srcObject = activeStream;
   cameraPreview.muted = true;
   await cameraPreview.play();
+
+  if (captureMode === 'video') {
+    attachVideoTrackInterruptionListeners();
+  }
+
   $('camera-modal').hidden = false;
   document.body.classList.add('camera-open');
 }
@@ -864,6 +883,8 @@ async function capturePhoto() {
 $('record-video').addEventListener('click', showVideoGuide);
 $('start-recording').addEventListener('click', startVideoRecording);
 $('stop-recording').addEventListener('click', stopVideoRecording);
+$('resume-recording').addEventListener('click', resumeVideoRecording);
+$('toggle-flash').addEventListener('click', toggleVideoFlash);
 $('cancel-camera').addEventListener('click', cancelCameraCapture);
 $('close-camera').addEventListener('click', cancelCameraCapture);
 
@@ -895,6 +916,11 @@ function startVideoRecording() {
     recordedVideoBytes = 0;
     videoDurationSeconds = null;
     discardRecording = false;
+    recordingStopRequested = false;
+    recordingInterrupted = false;
+    recordingMustRestart = false;
+    recordingInterruptionReason = '';
+    resetRecordingClock();
     mediaRecorder = new MediaRecorder(activeStream, options);
 
     mediaRecorder.addEventListener('dataavailable', (event) => {
@@ -904,18 +930,36 @@ function startVideoRecording() {
       }
     });
 
-    mediaRecorder.addEventListener('stop', finishVideoRecording, { once: true });
+    mediaRecorder.addEventListener('pause', () => {
+      pauseRecordingClock();
+      if (!discardRecording && !recordingStopRequested) {
+        showRecordingInterrupted('A gravação foi pausada pelo aparelho. Toque em “Retomar gravação” para continuar.');
+      }
+    });
+
+    mediaRecorder.addEventListener('resume', () => {
+      resumeRecordingClock();
+      clearRecordingInterruptedUi();
+      startRecordingTimerLoop();
+      void requestRecordingWakeLock();
+    });
+
+    const recorderInstance = mediaRecorder;
+    mediaRecorder.addEventListener('stop', () => handleVideoRecorderStopped(recorderInstance), { once: true });
     mediaRecorder.start(1000);
 
-    recordingStartedAt = Date.now();
+    resumeRecordingClock();
     $('start-recording').hidden = true;
+    $('resume-recording').hidden = true;
     $('stop-recording').hidden = false;
     $('stop-recording').disabled = true;
     $('stop-recording').textContent = 'Aguarde 01:30';
     $('cancel-camera').textContent = 'Cancelar gravação';
+    $('recording-paused-banner').hidden = true;
     $('recording-indicator').hidden = false;
     updateRecordingTimer();
-    recordingTimer = window.setInterval(updateRecordingTimer, 250);
+    startRecordingTimerLoop();
+    void requestRecordingWakeLock();
   } catch (error) {
     handleCameraError(error);
   }
@@ -926,9 +970,7 @@ function stopVideoRecording() {
     return;
   }
 
-  const elapsedSeconds = recordingStartedAt
-    ? (Date.now() - recordingStartedAt) / 1000
-    : 0;
+  const elapsedSeconds = getRecordedDurationSeconds();
 
   if (elapsedSeconds < VIDEO_MIN_DURATION_SECONDS) {
     const remaining = Math.max(1, Math.ceil(VIDEO_MIN_DURATION_SECONDS - elapsedSeconds));
@@ -936,12 +978,14 @@ function stopVideoRecording() {
     return;
   }
 
+  recordingStopRequested = true;
   mediaRecorder.stop();
 }
 
 function cancelCameraCapture() {
-  if (mediaRecorder?.state === 'recording') {
+  if (mediaRecorder && (mediaRecorder.state === 'recording' || mediaRecorder.state === 'paused')) {
     discardRecording = true;
+    recordingStopRequested = true;
     mediaRecorder.stop();
     return;
   }
@@ -949,17 +993,40 @@ function cancelCameraCapture() {
   closeCameraModal();
 }
 
+function handleVideoRecorderStopped(stoppedRecorder) {
+  if (stoppedRecorder !== mediaRecorder) {
+    return;
+  }
+
+  pauseRecordingClock();
+  stopRecordingTimerLoop();
+  void releaseRecordingWakeLock();
+
+  if (discardRecording || recordingStopRequested) {
+    finishVideoRecording();
+    return;
+  }
+
+  // Alguns aparelhos encerram a câmera ao bloquear a tela. Nesse caso não é seguro
+  // concatenar dois contêineres MP4/WebM no navegador. Mantemos a tela de retomada,
+  // mas reiniciamos a gravação do zero se o MediaRecorder tiver sido encerrado.
+  recordingInterrupted = true;
+  recordingMustRestart = true;
+  mediaRecorder = null;
+  showRecordingInterrupted('O aparelho encerrou a câmera enquanto a tela estava inativa. Toque em “Retomar gravação”; para garantir um vídeo íntegro, a gravação será reiniciada do início.');
+}
+
 function finishVideoRecording() {
-  const measuredDurationSeconds = recordingStartedAt
-    ? (Date.now() - recordingStartedAt) / 1000
-    : 0;
-  clearRecordingTimer();
+  const measuredDurationSeconds = getRecordedDurationSeconds();
+  stopRecordingTimerLoop();
+  void releaseRecordingWakeLock();
 
   if (discardRecording) {
     recordedChunks = [];
     recordedVideoBytes = 0;
     videoDurationSeconds = null;
     mediaRecorder = null;
+    resetRecordingClock();
     closeCameraModal();
     return;
   }
@@ -969,7 +1036,8 @@ function finishVideoRecording() {
     recordedChunks = [];
     recordedVideoBytes = 0;
     videoDurationSeconds = null;
-    handleCameraError(new Error('O vídeo precisa ter pelo menos 1 minuto e 30 segundos. Grave novamente e aguarde o encerramento automático.'));
+    resetRecordingClock();
+    handleCameraError(new Error('O vídeo precisa ter pelo menos 1 minuto e 30 segundos de gravação efetiva. Períodos em que a câmera ficou pausada não contam.'));
     return;
   }
 
@@ -982,6 +1050,7 @@ function finishVideoRecording() {
     recordedChunks = [];
     recordedVideoBytes = 0;
     videoDurationSeconds = null;
+    resetRecordingClock();
     handleCameraError(new Error(`O formato de vídeo gerado (${mimeType}) não é compatível. Use Chrome, Edge ou Safari atualizado.`));
     return;
   }
@@ -992,6 +1061,7 @@ function finishVideoRecording() {
     recordedChunks = [];
     recordedVideoBytes = 0;
     videoDurationSeconds = null;
+    resetRecordingClock();
     handleCameraError(new Error(`Este aparelho gerou um vídeo de ${formatBytes(blob.size)}, acima do limite de 10 MB. Grave novamente; o sistema usará a configuração compactada obrigatória de 1min30s.`));
     return;
   }
@@ -1019,9 +1089,255 @@ function finishVideoRecording() {
   mediaRecorder = null;
   recordedChunks = [];
   recordedVideoBytes = 0;
+  resetRecordingClock();
   closeCameraModal();
   updateCaptureSummary();
   scheduleDraftSave(0, 'Vídeo com duração mínima confirmada salvo neste aparelho para uma nova tentativa de envio.');
+}
+
+function getRecordedDurationMilliseconds() {
+  const activeSegment = recordingActiveSince ? Math.max(0, Date.now() - recordingActiveSince) : 0;
+  return Math.max(0, recordingElapsedMs + activeSegment);
+}
+
+function getRecordedDurationSeconds() {
+  return getRecordedDurationMilliseconds() / 1000;
+}
+
+function resumeRecordingClock() {
+  if (!recordingActiveSince) {
+    recordingActiveSince = Date.now();
+  }
+}
+
+function pauseRecordingClock() {
+  if (recordingActiveSince) {
+    recordingElapsedMs += Math.max(0, Date.now() - recordingActiveSince);
+    recordingActiveSince = null;
+  }
+}
+
+function resetRecordingClock() {
+  stopRecordingTimerLoop();
+  recordingElapsedMs = 0;
+  recordingActiveSince = null;
+}
+
+function startRecordingTimerLoop() {
+  stopRecordingTimerLoop();
+  recordingTimer = window.setInterval(updateRecordingTimer, 250);
+}
+
+function stopRecordingTimerLoop() {
+  if (recordingTimer) {
+    window.clearInterval(recordingTimer);
+    recordingTimer = null;
+  }
+}
+
+function showRecordingInterrupted(message) {
+  recordingInterrupted = true;
+  recordingInterruptionReason = message || 'A gravação foi pausada.';
+  stopRecordingTimerLoop();
+  $('recording-indicator').hidden = true;
+  $('stop-recording').hidden = true;
+  $('resume-recording').hidden = false;
+  $('recording-paused-banner').hidden = false;
+  $('recording-paused-text').textContent = recordingInterruptionReason;
+  void releaseRecordingWakeLock();
+}
+
+function clearRecordingInterruptedUi() {
+  recordingInterrupted = false;
+  recordingMustRestart = false;
+  recordingInterruptionReason = '';
+  $('resume-recording').hidden = true;
+  $('recording-paused-banner').hidden = true;
+  $('recording-indicator').hidden = false;
+  $('stop-recording').hidden = false;
+}
+
+function pauseVideoRecordingForInterruption(reason) {
+  if (captureMode !== 'video' || discardRecording || recordingStopRequested || !mediaRecorder) {
+    return;
+  }
+
+  if (mediaRecorder.state === 'recording') {
+    pauseRecordingClock();
+    try {
+      mediaRecorder.requestData?.();
+      mediaRecorder.pause();
+    } catch (_error) {
+      showRecordingInterrupted(reason);
+    }
+  } else if (mediaRecorder.state === 'paused') {
+    showRecordingInterrupted(reason);
+  }
+}
+
+async function resumeVideoRecording() {
+  if (!recordingInterrupted) return;
+  if (document.visibilityState === 'hidden') return;
+
+  clearMessage();
+
+  try {
+    const currentVideoTrack = activeStream?.getVideoTracks?.()[0];
+    const cameraEnded = !currentVideoTrack || currentVideoTrack.readyState === 'ended';
+
+    if (recordingMustRestart || !mediaRecorder || mediaRecorder.state === 'inactive' || cameraEnded) {
+      const previousRecorder = mediaRecorder;
+
+      if (previousRecorder && previousRecorder.state !== 'inactive') {
+        discardRecording = true;
+        recordingStopRequested = true;
+        await new Promise((resolve) => {
+          previousRecorder.addEventListener('stop', resolve, { once: true });
+          try {
+            previousRecorder.stop();
+          } catch (_error) {
+            resolve();
+          }
+        });
+      } else {
+        mediaRecorder = null;
+        closeCameraModal();
+      }
+
+      recordedChunks = [];
+      recordedVideoBytes = 0;
+      videoDurationSeconds = null;
+      resetRecordingClock();
+      recordingStopRequested = false;
+      discardRecording = false;
+      recordingMustRestart = false;
+
+      await openVideoCamera();
+      msg('A câmera foi encerrada pelo aparelho. A gravação foi reiniciada do início para garantir o vídeo completo de 1min30s.', 'success');
+      startVideoRecording();
+      return;
+    }
+
+    const preview = $('camera-preview');
+    if (preview?.paused) {
+      await preview.play();
+    }
+
+    if (currentVideoTrack.muted) {
+      showRecordingInterrupted('A câmera ainda está pausada pelo aparelho. Aguarde alguns segundos e toque novamente em “Retomar gravação”.');
+      return;
+    }
+
+    if (mediaRecorder.state === 'paused') {
+      mediaRecorder.resume();
+    } else if (mediaRecorder.state === 'recording') {
+      resumeRecordingClock();
+      clearRecordingInterruptedUi();
+      updateRecordingTimer();
+      startRecordingTimerLoop();
+      void requestRecordingWakeLock();
+    }
+  } catch (error) {
+    showRecordingInterrupted('Não foi possível retomar automaticamente. Toque novamente em “Retomar gravação”.');
+    msg(error?.message || 'Não foi possível retomar a câmera.');
+  }
+}
+
+function attachVideoTrackInterruptionListeners() {
+  const track = activeStream?.getVideoTracks?.()[0];
+  if (!track) return;
+
+  track.addEventListener('mute', () => {
+    if (captureMode === 'video' && mediaRecorder && !discardRecording) {
+      pauseVideoRecordingForInterruption('A câmera foi pausada pelo aparelho. Desbloqueie a tela e toque em “Retomar gravação”.');
+    }
+  });
+
+  track.addEventListener('ended', () => {
+    if (captureMode === 'video' && mediaRecorder && !discardRecording && !recordingStopRequested) {
+      pauseRecordingClock();
+      recordingMustRestart = true;
+      showRecordingInterrupted('A câmera foi encerrada pelo aparelho. Toque em “Retomar gravação” para reabrir a câmera.');
+    }
+  });
+}
+
+function configureTorchControl() {
+  const button = $('toggle-flash');
+  const track = activeStream?.getVideoTracks?.()[0];
+  torchEnabled = false;
+  torchSupported = false;
+
+  if (!button || captureMode !== 'video' || !track) {
+    if (button) button.hidden = true;
+    return;
+  }
+
+  try {
+    const capabilities = typeof track.getCapabilities === 'function' ? track.getCapabilities() : null;
+    torchSupported = Boolean(capabilities?.torch);
+  } catch (_error) {
+    torchSupported = false;
+  }
+
+  button.hidden = !torchSupported;
+  button.disabled = false;
+  button.textContent = 'Ligar flash';
+  button.setAttribute('aria-pressed', 'false');
+  button.title = torchSupported
+    ? 'Liga ou desliga a lanterna da câmera traseira durante o vídeo.'
+    : 'O flash não está disponível neste aparelho ou navegador.';
+}
+
+async function toggleVideoFlash() {
+  if (!torchSupported) return;
+  const track = activeStream?.getVideoTracks?.()[0];
+  if (!track || track.readyState !== 'live') return;
+
+  const button = $('toggle-flash');
+  const nextState = !torchEnabled;
+  button.disabled = true;
+
+  try {
+    await track.applyConstraints({ advanced: [{ torch: nextState }] });
+    torchEnabled = nextState;
+    button.textContent = torchEnabled ? 'Desligar flash' : 'Ligar flash';
+    button.setAttribute('aria-pressed', String(torchEnabled));
+  } catch (_error) {
+    torchSupported = false;
+    torchEnabled = false;
+    button.hidden = true;
+    msg('O flash não pôde ser ativado neste aparelho. A gravação pode continuar normalmente.', 'success');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function requestRecordingWakeLock() {
+  if (!('wakeLock' in navigator) || document.visibilityState === 'hidden' || !mediaRecorder || mediaRecorder.state !== 'recording') {
+    return;
+  }
+
+  try {
+    if (recordingWakeLock) return;
+    recordingWakeLock = await navigator.wakeLock.request('screen');
+    recordingWakeLock.addEventListener('release', () => {
+      recordingWakeLock = null;
+    }, { once: true });
+  } catch (_error) {
+    recordingWakeLock = null;
+  }
+}
+
+async function releaseRecordingWakeLock() {
+  const wakeLock = recordingWakeLock;
+  recordingWakeLock = null;
+  if (!wakeLock) return;
+  try {
+    await wakeLock.release();
+  } catch (_error) {
+    // O navegador pode liberar o wake lock automaticamente ao ocultar a página.
+  }
 }
 
 function selectRecordingMimeType() {
@@ -1041,11 +1357,7 @@ function selectRecordingMimeType() {
 }
 
 function updateRecordingTimer() {
-  if (!recordingStartedAt) {
-    return;
-  }
-
-  const elapsed = (Date.now() - recordingStartedAt) / 1000;
+  const elapsed = getRecordedDurationSeconds();
   const elapsedSeconds = Math.min(VIDEO_AUTO_STOP_SECONDS, Math.floor(elapsed));
   const minutes = String(Math.floor(elapsedSeconds / 60)).padStart(2, '0');
   const seconds = String(elapsedSeconds % 60).padStart(2, '0');
@@ -1059,30 +1371,32 @@ function updateRecordingTimer() {
     : 'Finalizando vídeo...';
 
   if (elapsed >= VIDEO_AUTO_STOP_SECONDS && mediaRecorder?.state === 'recording') {
+    recordingStopRequested = true;
     mediaRecorder.stop();
   }
 }
 
-function clearRecordingTimer() {
-  if (recordingTimer) {
-    window.clearInterval(recordingTimer);
-    recordingTimer = null;
-  }
-  recordingStartedAt = null;
-}
-
 function closeCameraModal() {
-  clearRecordingTimer();
+  resetRecordingClock();
+  void releaseRecordingWakeLock();
   stopCameraStream();
   $('camera-modal').hidden = true;
   $('capture-photo').hidden = true;
   $('start-recording').hidden = true;
+  $('resume-recording').hidden = true;
+  $('toggle-flash').hidden = true;
   $('stop-recording').hidden = true;
   $('stop-recording').disabled = false;
   $('stop-recording').textContent = 'Parar e usar vídeo';
+  $('recording-paused-banner').hidden = true;
   $('recording-indicator').hidden = true;
   $('cancel-camera').textContent = 'Cancelar';
   $('camera-preview').srcObject = null;
+  torchEnabled = false;
+  torchSupported = false;
+  recordingInterrupted = false;
+  recordingMustRestart = false;
+  recordingStopRequested = false;
   document.body.classList.remove('camera-open');
   captureMode = null;
   currentPhotoIndex = null;
@@ -1781,8 +2095,27 @@ $('discard-draft').addEventListener('click', async () => {
   location.reload();
 });
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden' && request && !$('upload-card').hidden) {
-    scheduleDraftSave(0, 'Rascunho atualizado neste aparelho.');
+  if (document.visibilityState === 'hidden') {
+    if (request && !$('upload-card').hidden) {
+      scheduleDraftSave(0, 'Rascunho atualizado neste aparelho.');
+    }
+
+    if (captureMode === 'video' && mediaRecorder && !discardRecording && !recordingStopRequested) {
+      pauseVideoRecordingForInterruption('A tela foi bloqueada ou o navegador ficou em segundo plano. Desbloqueie o aparelho e toque em “Retomar gravação”.');
+    }
+    return;
+  }
+
+  if (recordingInterrupted && captureMode === 'video') {
+    showRecordingInterrupted(recordingInterruptionReason || 'A gravação foi pausada. Toque em “Retomar gravação” para continuar.');
+  } else if (mediaRecorder?.state === 'recording') {
+    void requestRecordingWakeLock();
+  }
+});
+
+window.addEventListener('pageshow', () => {
+  if (recordingInterrupted && captureMode === 'video') {
+    showRecordingInterrupted(recordingInterruptionReason || 'A gravação foi pausada. Toque em “Retomar gravação” para continuar.');
   }
 });
 window.addEventListener('online', () => {
@@ -1825,5 +2158,8 @@ function escapeHtml(value) {
     .replaceAll("'", '&#039;');
 }
 
-window.addEventListener('beforeunload', stopCameraStream);
+window.addEventListener('beforeunload', () => {
+  void releaseRecordingWakeLock();
+  stopCameraStream();
+});
 load();

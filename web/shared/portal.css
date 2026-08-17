@@ -811,3 +811,49 @@ button:focus-visible,
   font-size: 0.78rem;
   line-height: 1.35;
 }
+
+
+/* Retrato NH: controles de flash e retomada da gravação de vídeo. */
+.camera-flash-button[aria-pressed="true"] {
+  background: #fff8a8;
+  border-color: #d6cd00;
+  color: var(--navy);
+}
+
+.recording-paused-banner {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 14px;
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(7, 12, 64, .92);
+  color: #fff;
+  border: 1px solid rgba(240, 236, 0, .72);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .28);
+  z-index: 2;
+}
+
+.recording-paused-banner strong {
+  color: var(--yellow);
+  font-size: 14px;
+}
+
+.recording-paused-banner span {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.resume-recording-button {
+  box-shadow: 0 3px 0 #d6cd00;
+}
+
+@media (max-width: 680px) {
+  .recording-paused-banner {
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+  }
+}
