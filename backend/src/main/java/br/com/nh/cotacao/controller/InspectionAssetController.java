@@ -69,7 +69,7 @@ public class InspectionAssetController {
             "/api/admin/inspections/{inspectionId}/assets/{assetId}",
             "/api/consultant-dashboard/inspections/{inspectionId}/assets/{assetId}"
     })
-    public ResponseEntity<?> content(
+    public ResponseEntity<StreamingResponseBody> content(
             @PathVariable UUID inspectionId,
             @PathVariable UUID assetId,
             @RequestParam(defaultValue = "false") boolean download,
@@ -104,11 +104,14 @@ public class InspectionAssetController {
                 .header("X-Content-Type-Options", "nosniff");
 
         if (compressedVideoDownload) {
-            // O WebM é gerado completamente antes da resposta. O resultado é
-            // limitado a 10 MB, evitando problemas de autenticação em um
-            // StreamingResponseBody enquanto o ffmpeg ainda está processando.
+            // O WebM é gerado por completo antes de a resposta HTTP começar,
+            // mas a resposta continua usando StreamingResponseBody. Manter o
+            // mesmo tipo de retorno em todos os caminhos é importante para o
+            // Spring selecionar corretamente o handler de streaming também
+            // para imagens, documentos e reprodução dos vídeos originais.
             byte[] bytes = storageService.compressedVideoDownloadBytes(asset);
-            return response.contentLength(bytes.length).body(bytes);
+            StreamingResponseBody body = output -> output.write(bytes);
+            return response.contentLength(bytes.length).body(body);
         }
 
         StreamingResponseBody body = output -> {
