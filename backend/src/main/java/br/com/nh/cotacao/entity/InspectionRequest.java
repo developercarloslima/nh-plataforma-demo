@@ -73,6 +73,16 @@ public class InspectionRequest {
     @Column(name = "reviewed_at")
     private OffsetDateTime reviewedAt;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "reviewed_by_collaborator_id")
+    private Consultant reviewedByCollaborator;
+
+    @Column(name = "reviewed_by_name", length = 160)
+    private String reviewedByName;
+
+    @Column(name = "reviewed_by_role", length = 20)
+    private String reviewedByRole;
+
     @Column(name = "completion_message_sent_at")
     private OffsetDateTime completionMessageSentAt;
 
@@ -306,6 +316,16 @@ public class InspectionRequest {
     }
 
     public void adminReview(InspectionRequestStatus newStatus, String note) {
+        adminReview(newStatus, note, null, null, null);
+    }
+
+    public void adminReview(
+            InspectionRequestStatus newStatus,
+            String note,
+            Consultant reviewerCollaborator,
+            String reviewerName,
+            String reviewerRole
+    ) {
         if (newStatus == null) throw new IllegalArgumentException("Informe o novo status do Retrato NH.");
         if (assets.isEmpty()
                 && newStatus != InspectionRequestStatus.WAITING_FILES
@@ -326,6 +346,9 @@ public class InspectionRequest {
         }
         this.adminNote = cleanNote(note);
         this.reviewedAt = OffsetDateTime.now();
+        this.reviewedByCollaborator = reviewerCollaborator;
+        this.reviewedByName = cleanReviewerName(reviewerName);
+        this.reviewedByRole = reviewerRole == null || reviewerRole.isBlank() ? null : reviewerRole.trim();
         if (newStatus == InspectionRequestStatus.COMPLETED
                 || newStatus == InspectionRequestStatus.APPROVED
                 || newStatus == InspectionRequestStatus.REJECTED
@@ -385,6 +408,13 @@ public class InspectionRequest {
         this.decisionMessageSentAt = OffsetDateTime.now();
     }
 
+    private String cleanReviewerName(String value) {
+        if (value == null || value.isBlank()) return null;
+        String clean = value.trim().replaceAll("\\s+", " ");
+        if (clean.length() > 160) clean = clean.substring(0, 160);
+        return clean;
+    }
+
     private String cleanNote(String note) {
         if (note == null || note.isBlank()) return null;
         String clean = note.trim();
@@ -411,6 +441,9 @@ public class InspectionRequest {
     public OffsetDateTime getCompletedAt() { return completedAt; }
     public String getAdminNote() { return adminNote; }
     public OffsetDateTime getReviewedAt() { return reviewedAt; }
+    public Consultant getReviewedByCollaborator() { return reviewedByCollaborator; }
+    public String getReviewedByName() { return reviewedByName; }
+    public String getReviewedByRole() { return reviewedByRole; }
     public OffsetDateTime getCompletionMessageSentAt() { return completionMessageSentAt; }
     public OffsetDateTime getDecisionMessageSentAt() { return decisionMessageSentAt; }
     public String getDriveFolderId() { return driveFolderId; }

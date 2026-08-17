@@ -40,7 +40,7 @@
   <section class="analysis-queues" style="margin-top:22px">
     <div class="section-head analysis-queues-head">
       <div><h2>Vistorias recebidas</h2><p>As solicitações mais recentes aparecem primeiro e estão separadas pelo tipo de atendimento.</p></div>
-      <div class="actions analysis-filter-actions" style="margin-top:0"><input id="filter" placeholder="Buscar associado, placa ou consultor"><button id="refresh" class="outline" type="button">Atualizar</button></div>
+      <div class="actions analysis-filter-actions" style="margin-top:0"><input id="filter" placeholder="Buscar associado, placa, consultor ou analista"><button id="refresh" class="outline" type="button">Atualizar</button></div>
     </div>
 
     <article class="card analysis-queue-card">
@@ -53,7 +53,7 @@
         <span id="new-inspections-count" class="analysis-queue-count">0 registros</span>
       </div>
       <div class="table-wrap"><table>
-        <thead><tr><th>Associado</th><th>Placa</th><th>Consultor</th><th>Enviada em</th><th>Status</th><th>Ação</th></tr></thead>
+        <thead><tr><th>Associado</th><th>Placa</th><th>Consultor</th><th>Analista responsável</th><th>Enviada em</th><th>Status</th><th>Ação</th></tr></thead>
         <tbody id="new-inspections-body"></tbody>
       </table></div>
     </article>
@@ -68,7 +68,7 @@
         <span id="billing-inspections-count" class="analysis-queue-count">0 registros</span>
       </div>
       <div class="table-wrap"><table>
-        <thead><tr><th>Associado</th><th>Placa</th><th>Consultor</th><th>Enviada em</th><th>Status</th><th>Ação</th></tr></thead>
+        <thead><tr><th>Associado</th><th>Placa</th><th>Consultor</th><th>Analista responsável</th><th>Enviada em</th><th>Status</th><th>Ação</th></tr></thead>
         <tbody id="billing-inspections-body"></tbody>
       </table></div>
     </article>
@@ -92,6 +92,15 @@
       <div id="inspection-files-grid" class="inspection-media-grid"></div>
     </section>
     <div class="form-grid" style="margin-top:18px">
+      <div id="inspection-analyst-wrap" class="span-2">
+        <label>Analista responsável<select id="inspection-analyst">
+          <option value="">Selecione o analista</option>
+        </select></label>
+        <label id="inspection-new-analyst-wrap" style="margin-top:10px" hidden>Nome do novo analista
+          <input id="inspection-new-analyst-name" maxlength="140" placeholder="Nome completo do analista">
+        </label>
+        <p id="inspection-analyst-helper" class="helper">O responsável ficará registrado no histórico desta análise.</p>
+      </div>
       <label>Status<select id="inspection-status">
         <option value="WAITING_FILES">Aguardando arquivos</option>
         <option value="UPLOADING_FILES">Envio em andamento</option>
@@ -143,7 +152,7 @@
 
 <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
-<script src="/analise/analise.js?v=20260810-v34"></script>
+<script src="/analise/analise.js?v=20260817-collaborators-v2"></script>
 <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
 </body>
 </html>

@@ -179,7 +179,9 @@ public final class AdminDtos {
 
     public record UpdateInspectionStatusRequest(
             @NotNull InspectionRequestStatus status,
-            @Size(max = 1200) String adminNote
+            @Size(max = 1200) String adminNote,
+            UUID analystId,
+            @Size(max = 140) String analystName
     ) {}
 
     public record AdminQuoteResponse(
@@ -245,6 +247,9 @@ public final class AdminDtos {
             OffsetDateTime completedAt,
             String adminNote,
             OffsetDateTime reviewedAt,
+            UUID reviewedByCollaboratorId,
+            String reviewedByName,
+            String reviewedByRole,
             String publicUrl,
             String driveFolderUrl,
             String reportUrl,

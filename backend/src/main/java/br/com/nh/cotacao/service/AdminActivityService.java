@@ -5,6 +5,7 @@ import br.com.nh.cotacao.entity.*;
 import br.com.nh.cotacao.repository.CatalogChangeAuditRepository;
 import br.com.nh.cotacao.repository.InspectionRequestRepository;
 import br.com.nh.cotacao.repository.QuotationRepository;
+import br.com.nh.cotacao.security.PortalRole;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +25,7 @@ public class AdminActivityService {
     private final CommunicationSettingsService settingsService;
     private final InspectionAssetStorageService storageService;
     private final ConsultantService consultantService;
+    private final PortalUserService portalUserService;
     private final RetratoService retratoService;
     private final String publicApiUrl;
     private final String publicWebUrl;
@@ -35,6 +37,7 @@ public class AdminActivityService {
             CommunicationSettingsService settingsService,
             InspectionAssetStorageService storageService,
             ConsultantService consultantService,
+            PortalUserService portalUserService,
             RetratoService retratoService,
             @Value("${app.public-api-url:http://localhost:8080}") String publicApiUrl,
             @Value("${app.public-web-url:https://aforma-demo.vercel.app}") String publicWebUrl
@@ -45,6 +48,7 @@ public class AdminActivityService {
         this.settingsService = settingsService;
         this.storageService = storageService;
         this.consultantService = consultantService;
+        this.portalUserService = portalUserService;
         this.retratoService = retratoService;
         this.publicApiUrl = stripTrailingSlash(publicApiUrl);
         this.publicWebUrl = normalizePublicWebUrl(publicWebUrl);
@@ -174,30 +178,71 @@ public class AdminActivityService {
 
     @Transactional
     public AdminInspectionResponse updateInspectionStatus(UUID id, UpdateInspectionStatusRequest request, String username) {
-        return updateInspectionStatus(id, request, username, false);
+        return updateInspectionStatus(id, request, username, PortalRole.ADMIN, false);
     }
 
     @Transactional
-    public AdminInspectionResponse updateInspectionStatusForAnalysis(UUID id, UpdateInspectionStatusRequest request, String username) {
-        return updateInspectionStatus(id, request, username, true);
+    public AdminInspectionResponse updateInspectionStatusForAnalysis(
+            UUID id,
+            UpdateInspectionStatusRequest request,
+            String username,
+            PortalRole actorRole
+    ) {
+        return updateInspectionStatus(id, request, username, actorRole, true);
     }
 
     private AdminInspectionResponse updateInspectionStatus(
             UUID id,
             UpdateInspectionStatusRequest request,
             String username,
+            PortalRole actorRole,
             boolean revealCpf
     ) {
         InspectionRequest inspection = inspectionRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
         String old = inspectionAnalysisSummary(inspection);
-        inspection.adminReview(request.status(), request.adminNote());
+
+        Consultant reviewerCollaborator = null;
+        String reviewerName;
+        String reviewerRole;
+        if (actorRole == PortalRole.ADMIN) {
+            reviewerName = "Análise feita pelo administrador";
+            reviewerRole = "ADMIN";
+        } else if (actorRole == PortalRole.ANALYST) {
+            reviewerCollaborator = resolveAnalystReviewer(request, username);
+            reviewerName = reviewerCollaborator.getName();
+            reviewerRole = "ANALYST";
+        } else {
+            throw new IllegalArgumentException("Este usuário não possui permissão para analisar vistorias.");
+        }
+
+        inspection.adminReview(
+                request.status(), request.adminNote(), reviewerCollaborator, reviewerName, reviewerRole
+        );
         inspectionRepository.flush();
         auditRepository.save(CatalogChangeAudit.createText(
-                "INSPECTION_STATUS", null, id.toString(), "Retrato NH de " + inspection.getAssociateName() + " analisado",
+                "INSPECTION_STATUS", null, id.toString(),
+                "Retrato NH de " + inspection.getAssociateName() + " analisado por " + reviewerName,
                 old, inspectionAnalysisSummary(inspection), username
         ));
         return toInspection(inspection, revealCpf);
+    }
+
+    private Consultant resolveAnalystReviewer(UpdateInspectionStatusRequest request, String username) {
+        var linkedAnalyst = portalUserService.linkedAnalystId(username);
+        if (linkedAnalyst.isPresent()) {
+            return consultantService.findActiveAnalyst(linkedAnalyst.get());
+        }
+        if (request.analystId() != null) {
+            return consultantService.findActiveAnalyst(request.analystId());
+        }
+        if (request.analystName() != null && !request.analystName().isBlank()) {
+            var created = consultantService.create(
+                    request.analystName(), CollaboratorRole.ANALYST, "CREATED_IN_ANALYSIS", username
+            );
+            return consultantService.findActiveAnalyst(created.id());
+        }
+        throw new IllegalArgumentException("Selecione o analista responsável ou informe o nome de um novo analista.");
     }
 
     @Transactional
@@ -327,6 +372,8 @@ public class AdminActivityService {
                 item.getQuotation() == null ? RearWindowBranding.NOT_APPLICABLE : item.getQuotation().getRearWindowBranding(), null,
                 item.getConsultant() == null ? null : item.getConsultant().getId(), item.getConsultantName(), displayStatus,
                 item.getCreatedAt(), item.getExpiresAt(), item.getCompletedAt(), item.getAdminNote(), item.getReviewedAt(),
+                item.getReviewedByCollaborator() == null ? null : item.getReviewedByCollaborator().getId(),
+                item.getReviewedByName(), item.getReviewedByRole(),
                 publicUrl, null, null, quotationPdfUrl, whatsappUrl(whatsapp, message), emailUrl(email, subject, message), associateInspectionUrl,
                 associateDecisionUrl, item.getDecisionMessageSentAt(), decisionMessagePending,
                 availableCount, expiredCount, filesExpireAt, assets
@@ -387,7 +434,9 @@ public class AdminActivityService {
     }
 
     private String inspectionAnalysisSummary(InspectionRequest item) {
-        return "status=" + item.getStatus() + "; observação=" + value(item.getAdminNote());
+        return "status=" + item.getStatus()
+                + "; observação=" + value(item.getAdminNote())
+                + "; responsável=" + value(item.getReviewedByName());
     }
 
     private String whatsappUrl(String phone, String message) {

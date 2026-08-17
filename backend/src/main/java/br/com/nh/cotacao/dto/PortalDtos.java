@@ -1,5 +1,6 @@
 package br.com.nh.cotacao.dto;
 
+import br.com.nh.cotacao.entity.CollaboratorRole;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -13,6 +14,7 @@ public final class PortalDtos {
             UUID id,
             String name,
             boolean active,
+            CollaboratorRole role,
             String source,
             OffsetDateTime createdAt,
             OffsetDateTime lastPortalLoginAt,
@@ -21,11 +23,13 @@ public final class PortalDtos {
     ) {}
 
     public record CreateConsultantRequest(
-            @NotBlank @Size(min = 3, max = 140) String name
+            @NotBlank @Size(min = 3, max = 140) String name,
+            CollaboratorRole role
     ) {}
 
     public record UpdateConsultantRequest(
             @Size(min = 3, max = 140) String name,
-            Boolean active
+            Boolean active,
+            CollaboratorRole role
     ) {}
 }

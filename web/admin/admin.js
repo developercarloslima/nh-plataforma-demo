@@ -337,14 +337,14 @@ function renderActivities() {
 
 function renderConsultants() {
   $('consultants-body').innerHTML = consultants.map(item => `<tr>
-    <td><strong>${esc(item.name)}</strong></td><td>${sourceLabel(item.source)}</td><td>${item.quoteCount}</td>
+    <td><strong>${esc(item.name)}</strong></td><td>${statusBadge(collaboratorRoleLabel(item.role), item.role === 'ANALYST' ? 'warn' : '')}</td><td>${item.quoteCount}</td>
     <td>${item.inspectionCount}</td><td>${statusBadge(item.active ? 'Ativo' : 'Inativo', item.active ? 'ok' : 'off')}</td>
     <td><div class="row-actions">
       <button class="secondary small-button" data-consultant-edit="${item.id}" type="button">Editar</button>
       <button class="outline small-button" data-consultant-toggle="${item.id}" type="button">${item.active ? 'Desativar' : 'Ativar'}</button>
       <button class="danger small-button" data-consultant-delete="${item.id}" type="button">Excluir</button>
     </div></td>
-  </tr>`).join('') || emptyRow(6, 'Nenhum consultor cadastrado.');
+  </tr>`).join('') || emptyRow(6, 'Nenhum colaborador cadastrado.');
 
   document.querySelectorAll('[data-consultant-edit]').forEach(button => button.addEventListener('click', () => openConsultantModal(button.dataset.consultantEdit)));
   document.querySelectorAll('[data-consultant-toggle]').forEach(button => button.addEventListener('click', () => toggleConsultant(button.dataset.consultantToggle)));
@@ -356,8 +356,8 @@ async function toggleConsultant(id) {
   if (!item) return;
   if (item.active) {
     const confirmed = await confirmAction(
-      'Desativar consultor?',
-      `${item.name} deixará de aparecer na seleção de novas atividades. O histórico será mantido.`,
+      'Desativar colaborador?',
+      `${item.name} deixará de aparecer nas novas seleções do cargo ${collaboratorRoleLabel(item.role).toLowerCase()}. O histórico será mantido.`,
       'Desativar'
     );
     if (!confirmed) return;
@@ -367,7 +367,7 @@ async function toggleConsultant(id) {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ active: !item.active })
     });
-    message(item.active ? 'Consultor desativado.' : 'Consultor ativado.', 'success');
+    message(item.active ? 'Colaborador desativado.' : 'Colaborador ativado.', 'success');
     await load();
   } catch (error) { message(error.message); }
 }
@@ -376,14 +376,14 @@ async function deleteConsultant(id) {
   const item = consultants.find(value => value.id === id);
   if (!item) return;
   const confirmed = await confirmAction(
-    'Excluir consultor?',
-    `${item.name} será removido da lista. As ${item.quoteCount} cotações e ${item.inspectionCount} atividades do Retrato NH continuarão salvas com o nome dele.`,
+    'Excluir colaborador?',
+    `${item.name} será removido da lista. O histórico já registrado continuará salvo com o nome do colaborador.`,
     'Excluir definitivamente'
   );
   if (!confirmed) return;
   try {
     await api(`/api/admin/consultants/${id}`, { method: 'DELETE' });
-    message('Consultor excluído. As atividades vinculadas foram preservadas.', 'success');
+    message('Colaborador excluído. O histórico vinculado foi preservado.', 'success');
     await load();
   } catch (error) { message(error.message); }
 }
@@ -392,9 +392,10 @@ function openConsultantModal(id = '') {
   const item = consultants.find(value => value.id === id);
   $('consultant-id').value = item?.id || '';
   $('consultant-name').value = item?.name || '';
+  $('consultant-role').value = item?.role || 'CONSULTANT';
   $('consultant-active-wrap').hidden = !item;
   $('consultant-active').checked = item?.active ?? true;
-  $('consultant-dialog-title').textContent = item ? 'Editar consultor' : 'Cadastrar consultor';
+  $('consultant-dialog-title').textContent = item ? 'Editar colaborador' : 'Cadastrar colaborador';
   openDialog('consultant-dialog');
   $('consultant-name').focus();
 }
@@ -403,12 +404,16 @@ function roleLabel(role) {
   return ({ ADMIN: 'Administrador', ANALYST: 'Analista', CONSULTANT: 'Consultor' })[role] || role || '—';
 }
 
+function collaboratorRoleLabel(role) {
+  return role === 'ANALYST' ? 'Analista' : 'Consultor';
+}
+
 function renderUsers() {
   $('users-body').innerHTML = users.map(item => `<tr>
     <td><strong>${esc(item.username)}</strong></td>
     <td>${esc(item.displayName || '—')}</td>
-    <td>${item.role === 'CONSULTANT'
-      ? esc(item.consultantName || (item.createdBy === 'BOOTSTRAP' ? 'Usuário padrão — seleção manual' : '—'))
+    <td>${['CONSULTANT', 'ANALYST'].includes(item.role)
+      ? esc(item.consultantName || (item.createdBy === 'BOOTSTRAP' ? 'Usuário padrão — identificação manual' : '—'))
       : '—'}</td>
     <td>${statusBadge(roleLabel(item.role), item.role === 'ADMIN' ? 'ok' : item.role === 'ANALYST' ? 'warn' : '')}</td>
     <td>${statusBadge(item.active ? 'Ativo' : 'Inativo', item.active ? 'ok' : 'off')}</td>
@@ -428,29 +433,39 @@ function renderUsers() {
 
 function populateUserConsultants(item = null) {
   const select = $('user-consultant');
-  const options = ['<option value="">Selecione um consultor ativo</option>'];
-  if (item?.role === 'CONSULTANT' && !item.consultantId && item.createdBy === 'BOOTSTRAP') {
-    options.push('<option value="__LEGACY__">Usuário padrão — seleção manual no login</option>');
+  const role = $('user-role').value;
+  const collaboratorRole = role === 'ANALYST' ? 'ANALYST' : 'CONSULTANT';
+  const roleLabelText = collaboratorRole === 'ANALYST' ? 'analista' : 'consultor';
+  $('user-collaborator-label').textContent = collaboratorRole === 'ANALYST' ? 'Analista vinculado' : 'Consultor vinculado';
+  $('user-new-collaborator-label').textContent = collaboratorRole === 'ANALYST' ? 'Nome do novo analista' : 'Nome do novo consultor';
+  $('user-new-consultant-name').placeholder = collaboratorRole === 'ANALYST' ? 'Nome completo do analista' : 'Nome completo do consultor';
+
+  const options = [`<option value="">Selecione um ${roleLabelText} ativo</option>`];
+  if (item?.role === role && !item.consultantId && item.createdBy === 'BOOTSTRAP') {
+    options.push('<option value="__LEGACY__">Usuário padrão — identificação manual</option>');
   }
-  consultants.filter(consultant => consultant.active).forEach(consultant => {
-    options.push(`<option value="${consultant.id}">${esc(consultant.name)}</option>`);
-  });
-  options.push('<option value="__NEW__">+ Cadastrar novo consultor</option>');
+  consultants
+    .filter(collaborator => collaborator.active && collaborator.role === collaboratorRole)
+    .forEach(collaborator => options.push(`<option value="${collaborator.id}">${esc(collaborator.name)}</option>`));
+  options.push(`<option value="__NEW__">+ Cadastrar novo ${roleLabelText}</option>`);
   select.innerHTML = options.join('');
-  if (item?.consultantId) select.value = item.consultantId;
-  else if (item?.role === 'CONSULTANT' && item.createdBy === 'BOOTSTRAP') select.value = '__LEGACY__';
+
+  if (item?.consultantId && item.role === role) select.value = item.consultantId;
+  else if (item?.role === role && item.createdBy === 'BOOTSTRAP') select.value = '__LEGACY__';
   else select.value = '';
 }
 
 function syncUserRoleFields() {
   const role = $('user-role').value;
-  const consultantMode = role === 'CONSULTANT';
-  $('user-consultant-wrap').hidden = !consultantMode;
-  if (!consultantMode) {
+  const collaboratorMode = role === 'CONSULTANT' || role === 'ANALYST';
+  $('user-consultant-wrap').hidden = !collaboratorMode;
+  if (!collaboratorMode) {
     $('user-new-consultant-wrap').hidden = true;
     $('user-new-consultant-name').required = false;
     return;
   }
+  const item = users.find(value => value.id === $('user-id').value) || null;
+  populateUserConsultants(item);
   syncUserConsultantMode();
 }
 
@@ -472,7 +487,6 @@ function openUserModal(id = '') {
   if (item?.role === 'ADMIN') roleSelect.insertAdjacentHTML('beforeend', '<option value="ADMIN">Administrador</option>');
   roleSelect.value = item?.role || 'CONSULTANT';
 
-  populateUserConsultants(item);
   $('user-new-consultant-name').value = '';
   $('user-password').value = '';
   $('user-password-wrap').hidden = Boolean(item);
@@ -610,7 +624,7 @@ function renderPublicQuoteAssignmentSettings() {
 
 function populateQuoteConsultantSelect(item) {
   const select = $('quote-analysis-consultant');
-  const active = consultants.filter(consultant => consultant.active);
+  const active = consultants.filter(consultant => consultant.active && consultant.role === 'CONSULTANT');
   const options = ['<option value="">Selecione um consultor</option>'];
   active.forEach(consultant => {
     options.push(`<option value="${esc(consultant.id)}">${esc(consultant.name)}</option>`);
@@ -626,7 +640,7 @@ function populateQuoteConsultantSelect(item) {
 function renderInspections() {
   const filter = $('inspection-filter').value.trim().toLowerCase();
   $('inspections-body').innerHTML = inspections
-    .filter(item => `${item.consultantName} ${item.associateName} ${item.plate || ""}`.toLowerCase().includes(filter))
+    .filter(item => `${item.consultantName} ${item.reviewedByName || ''} ${item.associateName} ${item.plate || ""}`.toLowerCase().includes(filter))
     .map(item => {
       const filesAvailable = hasInspectionFiles(item);
       const needsFiles = adminInspectionNeedsFiles(item);
@@ -641,12 +655,12 @@ function renderInspections() {
         ? `${item.associateInspectionWhatsappUrl ? `<a class="button secondary small-button" href="${esc(item.associateInspectionWhatsappUrl)}" target="_blank" rel="noopener">${partialResubmission ? 'Enviar pendências' : 'Enviar link'}</a>` : ''}${currentPublicUrl ? `<a class="button outline small-button" href="${esc(currentPublicUrl)}" target="_blank" rel="noopener">${partialResubmission ? 'Refazer pendências' : 'Fazer vistoria'}</a>` : ''}`
         : '';
       return `<tr>
-        <td><strong>${esc(item.associateName)}</strong></td><td>${esc(item.consultantName)}</td><td>${esc(item.plate || '0 km — sem placa')}</td>
+        <td><strong>${esc(item.associateName)}</strong></td><td>${esc(item.consultantName)}</td><td>${esc(item.reviewedByName || '—')}</td><td>${esc(item.plate || '0 km — sem placa')}</td>
         <td>${item.requestType === 'NEW_INSPECTION' ? 'Nova vistoria' : 'Atualização de boleto'}</td><td>${item.assetCount}</td>
         <td><div class="status-with-action">${inspectionBadge(item.status)}${statusAction}</div></td><td>${date(item.createdAt)}</td>
         <td><div class="row-actions">${pendingActions}<button class="secondary small-button" data-inspection-analyze="${item.id}" type="button">Analisar</button>${item.status === 'APPROVED' ? '' : `<button class="danger small-button" data-inspection-delete="${item.id}" type="button">Excluir</button>`}</div></td>
       </tr>`;
-    }).join('') || emptyRow(8, 'Nenhuma atividade do Retrato NH encontrada.');
+    }).join('') || emptyRow(9, 'Nenhuma atividade do Retrato NH encontrada.');
   document.querySelectorAll('[data-inspection-analyze]').forEach(button => button.addEventListener('click', () => openInspectionAnalysis(button.dataset.inspectionAnalyze)));
   document.querySelectorAll('[data-inspection-delete]').forEach(button => button.addEventListener('click', () => deleteInspection(button.dataset.inspectionDelete)));
 }
@@ -747,7 +761,8 @@ function openInspectionAnalysis(id) {
   inspectionDetails.push(
     ['Arquivos disponíveis', item.assetCount], ['Situação dos arquivos', filesAvailable ? (needsFiles ? `${pendingCount} ${pendingCount === 1 ? 'item pendente' : 'itens pendentes'}; os demais continuam armazenados` : `Armazenados no sistema até ${date(item.filesExpireAt)}`) : (Number(item.expiredAssetCount || 0) > 0 ? 'Arquivos apagados após 40 dias' : 'Aguardando envio do associado')],
     ['Criada em', date(item.createdAt)], ['Expira em', date(item.expiresAt)],
-    ['Concluída em', date(item.completedAt)], ['Última análise', date(item.reviewedAt)]
+    ['Concluída em', date(item.completedAt)], ['Última análise', date(item.reviewedAt)],
+    ['Responsável pela análise', item.reviewedByName || '—']
   );
   $('inspection-detail-grid').innerHTML = detailItems(inspectionDetails);
 
@@ -1466,23 +1481,23 @@ $('consultant-form').addEventListener('submit', async event => {
       const nextActive = $('consultant-active').checked;
       if (current?.active && !nextActive) {
         const confirmed = await confirmAction(
-          'Desativar consultor?',
+          'Desativar colaborador?',
           `${current.name} deixará de aparecer na seleção de novas atividades. Todo o histórico será mantido.`,
-          'Desativar consultor'
+          'Desativar colaborador'
         );
         if (!confirmed) return;
       }
       await api(`/api/admin/consultants/${id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: $('consultant-name').value.trim(), active: nextActive })
+        body: JSON.stringify({ name: $('consultant-name').value.trim(), active: nextActive, role: $('consultant-role').value })
       });
-      message('Consultor atualizado.', 'success');
+      message('Colaborador atualizado.', 'success');
     } else {
       await api('/api/admin/consultants', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: $('consultant-name').value.trim() })
+        body: JSON.stringify({ name: $('consultant-name').value.trim(), role: $('consultant-role').value })
       });
-      message('Consultor cadastrado.', 'success');
+      message('Colaborador cadastrado.', 'success');
     }
     closeDialog('consultant-dialog');
     await load();
@@ -1504,16 +1519,16 @@ $('user-form').addEventListener('submit', async event => {
     role
   };
 
-  if (role === 'CONSULTANT') {
+  if (role === 'CONSULTANT' || role === 'ANALYST') {
     if (consultantChoice === '__NEW__') {
       payload.newConsultantName = $('user-new-consultant-name').value.trim();
-      if (!payload.newConsultantName) return message('Informe o nome do novo consultor.');
+      if (!payload.newConsultantName) return message(`Informe o nome do novo ${role === 'ANALYST' ? 'analista' : 'consultor'}.`);
     } else if (consultantChoice === '__LEGACY__') {
       payload.consultantId = null;
     } else if (consultantChoice) {
       payload.consultantId = consultantChoice;
     } else {
-      return message('Selecione um consultor existente ou cadastre um novo consultor.');
+      return message(`Selecione um ${role === 'ANALYST' ? 'analista' : 'consultor'} existente ou cadastre um novo.`);
     }
   }
 
@@ -1529,9 +1544,7 @@ $('user-form').addEventListener('submit', async event => {
       await api('/api/admin/users', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       });
-      message(role === 'CONSULTANT'
-        ? 'Usuário criado e consultor vinculado com sucesso.'
-        : 'Usuário analista criado com sucesso.', 'success');
+      message('Usuário criado e colaborador vinculado com sucesso.', 'success');
     }
     closeDialog('user-dialog');
     await load();

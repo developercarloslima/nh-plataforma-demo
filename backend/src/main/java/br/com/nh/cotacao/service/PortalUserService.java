@@ -2,6 +2,7 @@ package br.com.nh.cotacao.service;
 
 import br.com.nh.cotacao.dto.AdminUserDtos.*;
 import br.com.nh.cotacao.entity.CatalogChangeAudit;
+import br.com.nh.cotacao.entity.CollaboratorRole;
 import br.com.nh.cotacao.entity.Consultant;
 import br.com.nh.cotacao.entity.PortalUser;
 import br.com.nh.cotacao.repository.CatalogChangeAuditRepository;
@@ -49,11 +50,16 @@ public class PortalUserService {
         }
 
         String consultantName = null;
-        if (user.getRole() == PortalRole.CONSULTANT && user.getConsultantId() != null) {
-            // Contas específicas de consultor são identificadas automaticamente no login.
-            // O consultor também precisa continuar ativo no cadastro operacional.
-            var consultant = consultantService.registerPortalLogin(user.getConsultantId());
-            consultantName = consultant.name();
+        if (user.getConsultantId() != null) {
+            if (user.getRole() == PortalRole.CONSULTANT) {
+                // Contas específicas de consultor são identificadas automaticamente no login.
+                var consultant = consultantService.registerPortalLogin(user.getConsultantId());
+                consultantName = consultant.name();
+            } else if (user.getRole() == PortalRole.ANALYST) {
+                // O mesmo vínculo operacional é usado para identificar contas específicas de analista.
+                var analyst = consultantService.findActiveAnalyst(user.getConsultantId());
+                consultantName = analyst.getName();
+            }
         }
 
         user.registerLogin();
@@ -80,9 +86,25 @@ public class PortalUserService {
     }
 
     @Transactional(readOnly = true)
+    public Optional<UUID> linkedCollaboratorId(String username) {
+        return repository.findByNormalizedUsername(PortalUser.normalizeUsername(username))
+                .filter(PortalUser::isActive)
+                .map(PortalUser::getConsultantId);
+    }
+
+    @Transactional(readOnly = true)
     public Optional<UUID> linkedConsultantId(String username) {
         return repository.findByNormalizedUsername(PortalUser.normalizeUsername(username))
                 .filter(PortalUser::isActive)
+                .filter(user -> user.getRole() == PortalRole.CONSULTANT)
+                .map(PortalUser::getConsultantId);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<UUID> linkedAnalystId(String username) {
+        return repository.findByNormalizedUsername(PortalUser.normalizeUsername(username))
+                .filter(PortalUser::isActive)
+                .filter(user -> user.getRole() == PortalRole.ANALYST)
                 .map(PortalUser::getConsultantId);
     }
 
@@ -216,60 +238,69 @@ public class PortalUserService {
 
     private UUID resolveConsultantForNewUser(
             PortalRole role,
-            UUID consultantId,
-            String newConsultantName,
+            UUID collaboratorId,
+            String newCollaboratorName,
             String adminUsername
     ) {
-        if (role != PortalRole.CONSULTANT) return null;
-        UUID resolved = resolveConsultant(consultantId, newConsultantName, adminUsername);
+        if (role != PortalRole.CONSULTANT && role != PortalRole.ANALYST) return null;
+        UUID resolved = resolveCollaborator(role, collaboratorId, newCollaboratorName, adminUsername);
         if (resolved == null) {
-            throw new IllegalArgumentException("Selecione um consultor existente ou informe o nome do novo consultor.");
+            throw new IllegalArgumentException("Selecione um colaborador existente ou informe o nome do novo colaborador.");
         }
-        ensureConsultantAvailable(resolved, null);
+        ensureCollaboratorAvailable(resolved, null);
         return resolved;
     }
 
     private UUID resolveConsultantForUpdate(
             PortalUser user,
             PortalRole nextRole,
-            UUID consultantId,
-            String newConsultantName,
+            UUID collaboratorId,
+            String newCollaboratorName,
             String adminUsername
     ) {
-        if (nextRole != PortalRole.CONSULTANT) return null;
+        if (nextRole != PortalRole.CONSULTANT && nextRole != PortalRole.ANALYST) return null;
 
-        UUID resolved = resolveConsultant(consultantId, newConsultantName, adminUsername);
+        UUID resolved = resolveCollaborator(nextRole, collaboratorId, newCollaboratorName, adminUsername);
         if (resolved == null) {
-            // Somente o usuário consultor padrão criado pelo bootstrap pode continuar
-            // sem consultor específico, preservando o funcionamento antigo.
-            if (user.getRole() == PortalRole.CONSULTANT
+            // Os usuários padrão criados no bootstrap podem continuar sem vínculo específico.
+            if (user.getRole() == nextRole
                     && user.getConsultantId() == null
                     && "BOOTSTRAP".equalsIgnoreCase(user.getCreatedBy())) {
                 return null;
             }
-            resolved = user.getConsultantId();
+            if (user.getRole() == nextRole) resolved = user.getConsultantId();
         }
         if (resolved == null) {
-            throw new IllegalArgumentException("Selecione um consultor existente ou informe o nome do novo consultor.");
+            throw new IllegalArgumentException("Selecione um colaborador existente ou informe o nome do novo colaborador.");
         }
-        ensureConsultantAvailable(resolved, user.getId());
+        ensureCollaboratorAvailable(resolved, user.getId());
         return resolved;
     }
 
-    private UUID resolveConsultant(UUID consultantId, String newConsultantName, String adminUsername) {
-        if (newConsultantName != null && !newConsultantName.isBlank()) {
-            return consultantService.create(newConsultantName, "CREATED_WITH_PORTAL_USER", adminUsername).id();
+    private UUID resolveCollaborator(
+            PortalRole role,
+            UUID collaboratorId,
+            String newCollaboratorName,
+            String adminUsername
+    ) {
+        CollaboratorRole collaboratorRole = role == PortalRole.ANALYST
+                ? CollaboratorRole.ANALYST
+                : CollaboratorRole.CONSULTANT;
+        if (newCollaboratorName != null && !newCollaboratorName.isBlank()) {
+            return consultantService.create(
+                    newCollaboratorName, collaboratorRole, "CREATED_WITH_PORTAL_USER", adminUsername
+            ).id();
         }
-        if (consultantId != null) {
-            return consultantService.findActive(consultantId).getId();
+        if (collaboratorId != null) {
+            return consultantService.findActiveWithRole(collaboratorId, collaboratorRole).getId();
         }
         return null;
     }
 
-    private void ensureConsultantAvailable(UUID consultantId, UUID currentUserId) {
-        repository.findByConsultantId(consultantId).ifPresent(existing -> {
+    private void ensureCollaboratorAvailable(UUID collaboratorId, UUID currentUserId) {
+        repository.findByConsultantId(collaboratorId).ifPresent(existing -> {
             if (currentUserId == null || !existing.getId().equals(currentUserId)) {
-                throw new IllegalArgumentException("Este consultor já possui um usuário específico vinculado.");
+                throw new IllegalArgumentException("Este colaborador já possui um usuário específico vinculado.");
             }
         });
     }
@@ -318,7 +349,7 @@ public class PortalUserService {
         return "usuario=" + user.getUsername()
                 + "; perfil=" + user.getRole()
                 + "; ativo=" + user.isActive()
-                + "; consultor=" + (consultantName(user.getConsultantId()) == null ? "sem vínculo específico" : consultantName(user.getConsultantId()));
+                + "; colaborador=" + (consultantName(user.getConsultantId()) == null ? "sem vínculo específico" : consultantName(user.getConsultantId()));
     }
 
     public record AuthenticatedPortalUser(

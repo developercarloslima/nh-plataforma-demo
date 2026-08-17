@@ -5,6 +5,8 @@ const $ = id => document.getElementById(id);
 
 let token = localStorage.getItem(TOKEN_KEY);
 let inspections = [];
+let analysts = [];
+let currentUser = null;
 let activeDecisionCommunication = null;
 const mediaObjectUrls = new Set();
 
@@ -75,6 +77,8 @@ function clearSession() {
   localStorage.removeItem(ROLE_KEY);
   localStorage.removeItem(CONSULTANT_KEY);
   token = null;
+  currentUser = null;
+  analysts = [];
 }
 
 function showLogin(text = '') {
@@ -173,6 +177,7 @@ async function boot() {
   if (!token) return;
   try {
     const me = await api('/api/auth/me');
+    currentUser = me;
     localStorage.setItem(ROLE_KEY, me.role);
     if (me.role === 'ADMIN') {
       location.replace('/admin/');
@@ -193,7 +198,10 @@ async function load() {
   const button = $('refresh');
   button.disabled = true;
   try {
-    inspections = await api('/api/analysis/inspections');
+    [inspections, analysts] = await Promise.all([
+      api('/api/analysis/inspections'),
+      api('/api/analysis/inspections/analysts')
+    ]);
     render();
   } finally {
     button.disabled = false;
@@ -207,7 +215,7 @@ function actionLink(url, label, style = 'outline') {
 
 function inspectionMatchesFilter(item, filter) {
   if (!filter) return true;
-  return `${item.associateName} ${item.plate || ''} ${item.consultantName} ${item.status}`
+  return `${item.associateName} ${item.plate || ''} ${item.consultantName} ${item.reviewedByName || ''} ${item.status}`
     .toLowerCase()
     .includes(filter);
 }
@@ -231,13 +239,14 @@ function inspectionRows(items, emptyMessage) {
       <td><strong>${esc(item.associateName)}</strong><small class="table-code">${esc(formatPhone(item.whatsapp) || 'Sem WhatsApp')}</small></td>
       <td>${esc(item.plate || '0 km — sem placa')}</td>
       <td>${esc(item.consultantName)}</td>
+      <td>${esc(item.reviewedByName || '—')}</td>
       <td>${date(item.completedAt || item.createdAt)}</td>
       <td><div class="status-with-action">${badge(item.status)}${statusActions}</div></td>
       <td><div class="row-actions">${pendingActions}<button class="secondary small-button" data-analyze="${item.id}" type="button">Analisar</button></div></td>
     </tr>`;
   }).join('');
 
-  return rows || `<tr><td colspan="6" class="empty-state">${esc(emptyMessage)}</td></tr>`;
+  return rows || `<tr><td colspan="7" class="empty-state">${esc(emptyMessage)}</td></tr>`;
 }
 
 function queueCountLabel(total) {
@@ -269,6 +278,52 @@ function links(items) {
     .filter(([url]) => url)
     .map(([url, label, style = 'outline']) => `<a class="button ${style}" href="${esc(url)}" target="_blank" rel="noopener">${esc(label)}</a>`)
     .join('');
+}
+
+function syncNewAnalystInput() {
+  const select = $('inspection-analyst');
+  const wrap = $('inspection-new-analyst-wrap');
+  const input = $('inspection-new-analyst-name');
+  const isNew = select.value === '__NEW__';
+  wrap.hidden = !isNew;
+  input.required = isNew;
+  if (!isNew) input.value = '';
+}
+
+function populateAnalystReviewer(item) {
+  const select = $('inspection-analyst');
+  const helper = $('inspection-analyst-helper');
+  const linkedId = currentUser?.role === 'ANALYST' ? currentUser?.consultantId : null;
+  const linkedName = currentUser?.role === 'ANALYST' ? currentUser?.consultantName : null;
+
+  if (linkedId) {
+    select.innerHTML = `<option value="${esc(linkedId)}">${esc(linkedName || 'Analista vinculado')}</option>`;
+    select.value = linkedId;
+    select.disabled = true;
+    helper.textContent = `Login identificado como ${linkedName || 'analista vinculado'}. Este nome ficará registrado na análise.`;
+    $('inspection-new-analyst-wrap').hidden = true;
+    $('inspection-new-analyst-name').required = false;
+    return;
+  }
+
+  select.disabled = false;
+  const options = ['<option value="">Selecione o analista responsável</option>'];
+  analysts.filter(item => item.active && item.role === 'ANALYST').forEach(analyst => {
+    options.push(`<option value="${analyst.id}">${esc(analyst.name)}</option>`);
+  });
+  options.push('<option value="__NEW__">+ Cadastrar novo analista</option>');
+  select.innerHTML = options.join('');
+
+  const previousId = item?.reviewedByRole === 'ANALYST' ? item.reviewedByCollaboratorId : null;
+  if (previousId && analysts.some(analyst => analyst.id === previousId && analyst.active)) {
+    select.value = previousId;
+  } else if (!analysts.some(analyst => analyst.active && analyst.role === 'ANALYST')) {
+    select.value = '__NEW__';
+  } else {
+    select.value = '';
+  }
+  helper.textContent = 'Selecione quem está realizando a análise. Se o nome não existir, cadastre-o aqui e ele será incluído automaticamente em Colaboradores como Analista.';
+  syncNewAnalystInput();
 }
 
 function configureStatusOptions(item) {
@@ -312,6 +367,7 @@ function openInspection(id) {
   $('inspection-id').value = item.id;
   $('dialog-title').textContent = `${item.plate || '0 km — sem placa'} — ${item.associateName}`;
   $('inspection-note').value = item.adminNote || '';
+  populateAnalystReviewer(item);
   configureStatusOptions(item);
 
   const retentionText = filesAvailable
@@ -362,7 +418,8 @@ function openInspection(id) {
     ['Concluída em', date(item.completedAt)],
     ['Arquivos disponíveis', item.assetCount],
     ['Situação dos arquivos', retentionText],
-    ['Endereço', item.residenceAddress || '—']
+    ['Endereço', item.residenceAddress || '—'],
+    ['Responsável pela última análise', item.reviewedByName || '—']
   );
 
   $('inspection-details').innerHTML = details(inspectionDetails);
@@ -566,16 +623,32 @@ $('inspection-form').addEventListener('submit', async event => {
   event.preventDefault();
   const id = $('inspection-id').value;
   try {
+    const analystChoice = $('inspection-analyst').value;
+    const payload = {
+      status: $('inspection-status').value,
+      adminNote: $('inspection-note').value.trim()
+    };
+    if (currentUser?.consultantId) {
+      payload.analystId = currentUser.consultantId;
+    } else if (analystChoice === '__NEW__') {
+      payload.analystName = $('inspection-new-analyst-name').value.trim();
+      if (!payload.analystName) return message('Informe o nome do analista responsável.');
+    } else if (analystChoice) {
+      payload.analystId = analystChoice;
+    } else {
+      return message('Selecione o analista responsável pela análise.');
+    }
+
     const updated = await api(`/api/analysis/inspections/${id}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        status: $('inspection-status').value,
-        adminNote: $('inspection-note').value.trim()
-      })
+      body: JSON.stringify(payload)
     });
     const index = inspections.findIndex(item => item.id === updated.id);
     if (index >= 0) inspections[index] = updated;
+    if (payload.analystName) {
+      analysts = await api('/api/analysis/inspections/analysts');
+    }
     render();
     showNotificationButton(updated);
     message('Análise salva com sucesso.', 'success');
@@ -624,6 +697,7 @@ async function sendDecisionCommunication() {
   }
 }
 
+$('inspection-analyst').addEventListener('change', syncNewAnalystInput);
 $('notify-associate').addEventListener('click', () => {
   const id = $('notify-associate').dataset.inspectionId;
   const item = inspections.find(value => value.id === id);
@@ -648,6 +722,7 @@ $('login-form').addEventListener('submit', async event => {
     localStorage.setItem(TOKEN_KEY, data.token);
     localStorage.setItem(ROLE_KEY, data.role);
     token = data.token;
+    currentUser = data;
     if (data.role === 'ADMIN') {
       location.href = '/admin/';
     } else if (data.role === 'ANALYST') {
