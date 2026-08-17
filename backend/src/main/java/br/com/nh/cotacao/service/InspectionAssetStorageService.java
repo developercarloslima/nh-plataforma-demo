@@ -442,12 +442,12 @@ public class InspectionAssetStorageService {
                 : asset.getFileName().trim();
         int dot = name.lastIndexOf('.');
         String base = dot > 0 ? name.substring(0, dot) : name;
-        return base + "-compactado.mp4";
+        return base + "-compactado.webm";
     }
 
     /**
      * Para vídeos legados acima de 10 MB, preserva o original no PostgreSQL e
-     * entrega uma cópia H.264/AAC compactada somente durante o download.
+     * entrega uma cópia WebM (VP8/Opus) compactada somente durante o download.
      */
     @Transactional(readOnly = true)
     public void writeForDownload(InspectionAsset asset, OutputStream output) {
@@ -457,6 +457,21 @@ public class InspectionAssetStorageService {
             return;
         }
         writeCompressedVideo(asset, output);
+    }
+
+    /**
+     * Gera a cópia compactada por completo antes de iniciar a resposta HTTP.
+     * Como o resultado é limitado a 10 MB, evitamos manter uma resposta
+     * assíncrona aberta durante o ffmpeg e eliminamos falsos 403 no download.
+     */
+    @Transactional(readOnly = true)
+    public byte[] compressedVideoDownloadBytes(InspectionAsset asset) {
+        if (asset == null || !requiresVideoDownloadCompression(asset)) {
+            throw new IllegalArgumentException("Este arquivo não requer compactação de vídeo.");
+        }
+        ByteArrayOutputStream output = new ByteArrayOutputStream((int) Math.min(MAX_VIDEO_BYTES, 10_000_000L));
+        writeCompressedVideo(asset, output);
+        return output.toByteArray();
     }
 
     private void writeCompressedVideo(InspectionAsset asset, OutputStream output) {
@@ -473,7 +488,7 @@ public class InspectionAssetStorageService {
                 throw new IllegalStateException("Não foi possível identificar a duração do vídeo para compactação.");
             }
 
-            compressed = Files.createTempFile("nh-video-download-", ".mp4");
+            compressed = Files.createTempFile("nh-video-download-", ".webm");
             long[] targets = {
                     8_500_000L,
                     7_500_000L,
@@ -482,7 +497,7 @@ public class InspectionAssetStorageService {
             boolean success = false;
             for (long targetBytes : targets) {
                 Files.deleteIfExists(compressed);
-                compressed = Files.createTempFile("nh-video-download-", ".mp4");
+                compressed = Files.createTempFile("nh-video-download-", ".webm");
                 transcodeVideo(source, compressed, durationSeconds, targetBytes);
                 long size = Files.size(compressed);
                 if (size > 0 && size <= MAX_VIDEO_BYTES) {
@@ -538,17 +553,18 @@ public class InspectionAssetStorageService {
                 "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
                 "-i", source.toAbsolutePath().toString(),
                 "-vf", "scale=min(640\\,iw):-2",
-                "-c:v", "libx264",
-                "-preset", "veryfast",
+                "-c:v", "libvpx",
+                "-deadline", "realtime",
+                "-cpu-used", "5",
+                "-threads", "2",
                 "-b:v", Long.toString(videoBps),
                 "-maxrate", Long.toString(videoBps),
                 "-bufsize", Long.toString(Math.max(160_000L, videoBps * 2)),
                 "-pix_fmt", "yuv420p",
-                "-c:a", "aac",
+                "-c:a", "libopus",
                 "-b:a", Long.toString(audioBps),
                 "-ac", "1",
-                "-ar", "32000",
-                "-movflags", "+faststart",
+                "-ar", "24000",
                 destination.toAbsolutePath().toString()
         ).redirectErrorStream(true).start();
 

@@ -169,15 +169,38 @@ async function api(path, options = {}) {
   return response.status === 204 ? null : response.json();
 }
 
+async function adminSessionStillValid() {
+  if (!token) return false;
+  const headers = new Headers({ Authorization: `Bearer ${token}` });
+  try {
+    const response = await fetch(window.NH_API?.backend('/api/auth/me') || '/api/auth/me', { headers, cache: 'no-store' });
+    return response.ok;
+  } catch (_) {
+    // Falha temporária de rede não deve apagar uma sessão válida.
+    return true;
+  }
+}
+
 async function apiBlob(path) {
   const headers = new Headers();
   if (token) headers.set('Authorization', `Bearer ${token}`);
   const response = await fetch(window.NH_API?.backend(path) || path, { headers, cache: 'no-store' });
-  if (token && (response.status === 401 || response.status === 403)) {
+  if (token && response.status === 401) {
     showLogin('Sua sessão administrativa expirou. Entre novamente.');
     const error = new Error('Sessão administrativa inválida.');
     error.authExpired = true;
     throw error;
+  }
+  if (token && response.status === 403) {
+    const sessionValid = await adminSessionStillValid();
+    if (!sessionValid) {
+      showLogin('Sua sessão administrativa expirou. Entre novamente.');
+      const error = new Error('Sessão administrativa inválida.');
+      error.authExpired = true;
+      throw error;
+    }
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.message || 'Não foi possível baixar este arquivo. Sua sessão continua ativa.');
   }
   if (!response.ok) {
     const body = await response.json().catch(() => null);
@@ -887,10 +910,10 @@ function renderAdminInspectionFiles(item) {
     const legacyLargeVideo = video && Number(asset.fileSize || 0) > 10 * 1024 * 1024;
     const downloadName = legacyLargeVideo ? compactedVideoFileName(asset.fileName) : asset.fileName;
     const compressionNote = legacyLargeVideo
-      ? '<small class="inspection-media-note">Original preservado · download compactado automaticamente para até 10 MB.</small>'
+      ? '<small class="inspection-media-note">Original preservado · download em WebM compactado automaticamente para até 10 MB.</small>'
       : '';
     const actions = asset.available
-      ? `<div class="inspection-media-actions">${video ? `<button class="outline" data-admin-play-video="${asset.id}" type="button">Reproduzir</button>` : ''}<button class="secondary" data-admin-download-asset="${asset.id}" data-file-name="${esc(downloadName)}" type="button">${legacyLargeVideo ? 'Baixar compactado' : 'Baixar'}</button>${canDelete ? `<button class="danger" data-admin-delete-asset="${asset.id}" data-file-name="${esc(title)}" type="button">Excluir / solicitar novamente</button>` : ''}</div>`
+      ? `<div class="inspection-media-actions">${video ? `<button class="outline" data-admin-play-video="${asset.id}" type="button">Reproduzir</button>` : ''}<button class="secondary" data-admin-download-asset="${asset.id}" data-file-name="${esc(downloadName)}" type="button">${legacyLargeVideo ? 'Baixar WebM' : 'Baixar'}</button>${canDelete ? `<button class="danger" data-admin-delete-asset="${asset.id}" data-file-name="${esc(title)}" type="button">Excluir / solicitar novamente</button>` : ''}</div>`
       : `<div class="inspection-media-expired">${adminInspectionNeedsFiles(item) && asset.type !== 'REPORT' ? 'Arquivo excluído / aguardando reenvio.' : 'Arquivo removido após 40 dias.'}</div>`;
     return `<article class="inspection-media-card ${asset.available ? '' : 'expired'}">${preview}<div class="inspection-media-body"><strong>${esc(title)}</strong><small>${esc(asset.fileName)}</small><small>${formatBytes(asset.fileSize)} · ${esc(asset.contentType || 'arquivo')}</small>${compressionNote}${actions}</div></article>`;
   }).join('');
@@ -973,7 +996,7 @@ function compactedVideoFileName(fileName) {
   const value = String(fileName || 'video-vistoria').trim();
   const dot = value.lastIndexOf('.');
   const base = dot > 0 ? value.slice(0, dot) : value;
-  return `${base}-compactado.mp4`;
+  return `${base}-compactado.webm`;
 }
 
 async function downloadAdminAsset(inspectionId, assetId, fileName, button) {

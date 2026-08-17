@@ -69,7 +69,7 @@ public class InspectionAssetController {
             "/api/admin/inspections/{inspectionId}/assets/{assetId}",
             "/api/consultant-dashboard/inspections/{inspectionId}/assets/{assetId}"
     })
-    public ResponseEntity<StreamingResponseBody> content(
+    public ResponseEntity<?> content(
             @PathVariable UUID inspectionId,
             @PathVariable UUID assetId,
             @RequestParam(defaultValue = "false") boolean download,
@@ -82,7 +82,7 @@ public class InspectionAssetController {
         MediaType mediaType;
         try {
             mediaType = compressedVideoDownload
-                    ? MediaType.parseMediaType("video/mp4")
+                    ? MediaType.parseMediaType("video/webm")
                     : MediaType.parseMediaType(asset.getContentType());
         } catch (Exception ignored) {
             mediaType = MediaType.APPLICATION_OCTET_STREAM;
@@ -97,16 +97,25 @@ public class InspectionAssetController {
                 .filename(responseFileName, StandardCharsets.UTF_8)
                 .build();
 
-        StreamingResponseBody body = output -> {
-            if (download) storageService.writeForDownload(asset, output);
-            else storageService.writeTo(assetId, output);
-        };
         ResponseEntity.BodyBuilder response = ResponseEntity.ok()
                 .contentType(mediaType)
                 .cacheControl(CacheControl.noStore().mustRevalidate())
                 .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
                 .header("X-Content-Type-Options", "nosniff");
-        if (!compressedVideoDownload) response.contentLength(asset.getFileSize());
+
+        if (compressedVideoDownload) {
+            // O WebM é gerado completamente antes da resposta. O resultado é
+            // limitado a 10 MB, evitando problemas de autenticação em um
+            // StreamingResponseBody enquanto o ffmpeg ainda está processando.
+            byte[] bytes = storageService.compressedVideoDownloadBytes(asset);
+            return response.contentLength(bytes.length).body(bytes);
+        }
+
+        StreamingResponseBody body = output -> {
+            if (download) storageService.writeForDownload(asset, output);
+            else storageService.writeTo(assetId, output);
+        };
+        response.contentLength(asset.getFileSize());
         return response.body(body);
     }
 

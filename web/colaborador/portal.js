@@ -161,6 +161,17 @@ async function api(path, options = {}) {
   return response.status === 204 ? null : response.json();
 }
 
+async function consultantSessionStillValid(authToken) {
+  if (!authToken) return false;
+  const headers = new Headers({ Authorization: `Bearer ${authToken}` });
+  try {
+    const response = await fetch(window.NH_API?.backend('/api/auth/me') || '/api/auth/me', { headers, cache: 'no-store' });
+    return response.ok;
+  } catch (_) {
+    return true;
+  }
+}
+
 async function apiBlob(path) {
   const headers = new Headers();
   const authToken = token();
@@ -168,9 +179,17 @@ async function apiBlob(path) {
   const response = await fetch(window.NH_API?.backend(path) || path, { headers, cache: 'no-store' });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    if (authToken && (response.status === 401 || response.status === 403)) {
+    if (authToken && response.status === 401) {
       expireSession();
       throw authExpiredError();
+    }
+    if (authToken && response.status === 403) {
+      const sessionValid = await consultantSessionStillValid(authToken);
+      if (!sessionValid) {
+        expireSession();
+        throw authExpiredError();
+      }
+      throw new Error(body?.message || 'Não foi possível baixar este arquivo. Sua sessão continua ativa.');
     }
     throw new Error(body?.message || 'Não foi possível carregar o arquivo.');
   }
