@@ -10,6 +10,7 @@ import java.util.UUID;
 
 public interface PortalUserRepository extends JpaRepository<PortalUser, UUID> {
     Optional<PortalUser> findByNormalizedUsername(String normalizedUsername);
+    Optional<PortalUser> findByConsultantId(UUID consultantId);
     List<PortalUser> findAllByOrderByRoleAscUsernameAsc();
     long countByRoleAndActiveTrue(PortalRole role);
 }

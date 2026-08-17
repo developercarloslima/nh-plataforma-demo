@@ -2,11 +2,14 @@ package br.com.nh.cotacao.controller;
 
 import br.com.nh.cotacao.dto.InspectionDtos.*;
 import br.com.nh.cotacao.entity.InspectionAssetType;
+import br.com.nh.cotacao.security.PortalPrincipal;
 import br.com.nh.cotacao.service.InspectionResumableUploadService;
+import br.com.nh.cotacao.service.PortalUserService;
 import br.com.nh.cotacao.service.RetratoService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -16,18 +19,25 @@ import java.util.List;
 public class RetratoController {
     private final RetratoService service;
     private final InspectionResumableUploadService resumableUploadService;
+    private final PortalUserService portalUserService;
 
     public RetratoController(
             RetratoService service,
-            InspectionResumableUploadService resumableUploadService
+            InspectionResumableUploadService resumableUploadService,
+            PortalUserService portalUserService
     ) {
         this.service = service;
         this.resumableUploadService = resumableUploadService;
+        this.portalUserService = portalUserService;
     }
 
     @PostMapping("/api/inspections")
     @ResponseStatus(HttpStatus.CREATED)
-    public InspectionResponse create(@Valid @RequestBody CreateInspectionRequest request) {
+    public InspectionResponse create(
+            @Valid @RequestBody CreateInspectionRequest request, Authentication auth
+    ) {
+        PortalPrincipal principal = (PortalPrincipal) auth.getPrincipal();
+        portalUserService.assertConsultantAccess(principal.username(), principal.role(), request.consultantId());
         return service.create(request);
     }
 

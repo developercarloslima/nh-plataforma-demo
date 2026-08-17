@@ -1,6 +1,8 @@
 package br.com.nh.cotacao.controller;
 
 import br.com.nh.cotacao.dto.QuoteDtos.*;
+import br.com.nh.cotacao.security.PortalPrincipal;
+import br.com.nh.cotacao.service.PortalUserService;
 import br.com.nh.cotacao.service.QuotePdfService;
 import br.com.nh.cotacao.service.QuoteService;
 import jakarta.validation.Valid;
@@ -10,6 +12,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -22,13 +25,16 @@ public class QuoteController {
 
     private final QuoteService quoteService;
     private final QuotePdfService pdfService;
+    private final PortalUserService portalUserService;
 
     public QuoteController(
             QuoteService quoteService,
-            QuotePdfService pdfService
+            QuotePdfService pdfService,
+            PortalUserService portalUserService
     ) {
         this.quoteService = quoteService;
         this.pdfService = pdfService;
+        this.portalUserService = portalUserService;
     }
 
     @PostMapping("/options")
@@ -37,7 +43,11 @@ public class QuoteController {
     }
 
     @PostMapping
-    public ResponseEntity<QuoteResponse> create(@Valid @RequestBody CreateQuoteRequest request) {
+    public ResponseEntity<QuoteResponse> create(
+            @Valid @RequestBody CreateQuoteRequest request, Authentication auth
+    ) {
+        PortalPrincipal principal = (PortalPrincipal) auth.getPrincipal();
+        portalUserService.assertConsultantAccess(principal.username(), principal.role(), request.consultantId());
         return ResponseEntity.status(201).body(quoteService.create(request));
     }
 

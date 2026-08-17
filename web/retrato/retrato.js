@@ -47,6 +47,9 @@ const allowedVideoTypes = new Set([
   'video/3gpp'
 ]);
 
+const VIDEO_MAX_BYTES = 10 * 1024 * 1024;
+const VIDEO_RECORDING_STOP_BYTES = Math.floor(VIDEO_MAX_BYTES * 0.95);
+
 let request = null;
 let inspectionProfile = VEHICLE_PROFILES.FOUR_WHEELS_OR_MORE;
 let labels = [];
@@ -58,6 +61,8 @@ let videoPreviewUrl = null;
 let activeStream = null;
 let mediaRecorder = null;
 let recordedChunks = [];
+let recordedVideoBytes = 0;
+let recordingStoppedBySizeLimit = false;
 let currentPhotoIndex = null;
 let captureMode = null;
 let selfieMirrorCorrection = false;
@@ -283,6 +288,9 @@ async function restoreDraftFromCache() {
     'image/jpeg'
   ));
   videoFile = restoredFile(draft.video, 'video-vistoria.webm', 'video/webm');
+  if (videoFile && videoFile.size > VIDEO_MAX_BYTES) {
+    videoFile = null;
+  }
   vehicleDocumentFile = restoredFile(draft.vehicleDocument, 'crlv-veiculo.pdf', 'application/pdf');
   identityDocumentFrontFile = restoredFile(draft.identityDocumentFront || draft.identityDocument, 'rg-cnh-frente.pdf', 'application/pdf');
   identityDocumentBackFile = restoredFile(draft.identityDocumentBack, 'rg-cnh-verso.pdf', 'application/pdf');
@@ -859,8 +867,9 @@ function startVideoRecording() {
 
   const mimeType = selectRecordingMimeType();
   const options = {
-    videoBitsPerSecond: 2_500_000,
-    audioBitsPerSecond: 96_000
+    // Mantém o vídeo próximo de 10 MB mesmo na gravação ideal de ~1min30s.
+    videoBitsPerSecond: 700_000,
+    audioBitsPerSecond: 64_000
   };
 
   if (mimeType) {
@@ -869,12 +878,19 @@ function startVideoRecording() {
 
   try {
     recordedChunks = [];
+    recordedVideoBytes = 0;
+    recordingStoppedBySizeLimit = false;
     discardRecording = false;
     mediaRecorder = new MediaRecorder(activeStream, options);
 
     mediaRecorder.addEventListener('dataavailable', (event) => {
       if (event.data && event.data.size > 0) {
         recordedChunks.push(event.data);
+        recordedVideoBytes += event.data.size;
+        if (recordedVideoBytes >= VIDEO_RECORDING_STOP_BYTES && mediaRecorder?.state === 'recording') {
+          recordingStoppedBySizeLimit = true;
+          mediaRecorder.stop();
+        }
       }
     });
 
@@ -914,6 +930,8 @@ function finishVideoRecording() {
 
   if (discardRecording) {
     recordedChunks = [];
+    recordedVideoBytes = 0;
+    recordingStoppedBySizeLimit = false;
     mediaRecorder = null;
     closeCameraModal();
     return;
@@ -926,11 +944,22 @@ function finishVideoRecording() {
   if (!allowedVideoTypes.has(mimeType)) {
     mediaRecorder = null;
     recordedChunks = [];
+    recordedVideoBytes = 0;
+    recordingStoppedBySizeLimit = false;
     handleCameraError(new Error(`O formato de vídeo gerado (${mimeType}) não é compatível. Use Chrome, Edge ou Safari atualizado.`));
     return;
   }
 
   const blob = new Blob(recordedChunks, { type: mimeType });
+  if (blob.size > VIDEO_MAX_BYTES) {
+    mediaRecorder = null;
+    recordedChunks = [];
+    recordedVideoBytes = 0;
+    recordingStoppedBySizeLimit = false;
+    handleCameraError(new Error(`O vídeo ultrapassou o limite de 10 MB (${formatBytes(blob.size)}). Grave novamente um vídeo mais curto.`));
+    return;
+  }
+
   const extension = videoExtension(mimeType);
   const plate = slugify(request?.plate || 'veiculo');
 
@@ -946,12 +975,14 @@ function finishVideoRecording() {
 
   $('video-preview').src = videoPreviewUrl;
   $('video-preview').hidden = false;
-  $('video-status').textContent = `Vídeo gravado pela câmera (${formatBytes(blob.size)}).`;
+  $('video-status').textContent = `Vídeo gravado pela câmera (${formatBytes(blob.size)} de 10 MB).${recordingStoppedBySizeLimit ? ' A gravação foi encerrada automaticamente ao atingir o limite.' : ''}`;
   $('record-video').textContent = 'Gravar novamente';
   $('record-video').classList.add('captured');
 
   mediaRecorder = null;
   recordedChunks = [];
+  recordedVideoBytes = 0;
+  recordingStoppedBySizeLimit = false;
   closeCameraModal();
   updateCaptureSummary();
   scheduleDraftSave(0, 'Vídeo salvo neste aparelho para uma nova tentativa de envio.');
@@ -1304,6 +1335,12 @@ $('upload-form').addEventListener('submit', async (event) => {
 
   if (!serverHasAsset('VIDEO', orders.video) && !videoFile) {
     msg('Grave o vídeo da vistoria antes de enviar.');
+    $('record-video').focus();
+    return;
+  }
+
+  if (!serverHasAsset('VIDEO', orders.video) && videoFile?.size > VIDEO_MAX_BYTES) {
+    msg(`O vídeo deve possuir no máximo 10 MB. O arquivo atual tem ${formatBytes(videoFile.size)}.`);
     $('record-video').focus();
     return;
   }

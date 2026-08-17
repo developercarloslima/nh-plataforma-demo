@@ -5,6 +5,7 @@ const $ = id => document.getElementById(id);
 
 let consultants = [];
 let selectedConsultant = null;
+let linkedConsultantLogin = false;
 let dashboardData = null;
 let dashboardTimer = null;
 let activeCompletionCommunication = null;
@@ -138,8 +139,19 @@ async function boot() {
       return;
     }
     $('admin-card-wrap').hidden = true;
-    await loadConsultants();
-    await restoreConsultant();
+    if (me.consultantId && me.consultantName) {
+      linkedConsultantLogin = true;
+      const consultant = { id: me.consultantId, name: me.consultantName, active: true };
+      consultants = [consultant];
+      $('consultants-list').innerHTML = `<option value="${escapeHtml(consultant.name)}"></option>`;
+      $('consultant-search').value = consultant.name;
+      applyConsultant(consultant, { locked: true });
+      message(`Login identificado automaticamente como ${consultant.name}.`, 'success');
+    } else {
+      linkedConsultantLogin = false;
+      await loadConsultants();
+      await restoreConsultant();
+    }
   } catch (error) {
     message(error.message);
   }
@@ -167,23 +179,32 @@ async function restoreConsultant() {
   }
 }
 
-function applyConsultant(consultant) {
+function applyConsultant(consultant, { locked = linkedConsultantLogin } = {}) {
   selectedConsultant = consultant;
   localStorage.setItem(CONSULTANT_KEY, JSON.stringify(consultant));
-  $('current-chip').textContent = `✓ ${consultant.name}`;
+  $('current-chip').textContent = locked ? `✓ Identificado: ${consultant.name}` : `✓ ${consultant.name}`;
   $('current-chip').hidden = false;
   $('tools').hidden = false;
   $('activity-dashboard').hidden = false;
-  $('change-consultant').hidden = false;
+  $('change-consultant').hidden = locked;
   $('select-consultant').hidden = true;
   $('show-create').hidden = true;
   $('consultant-search').disabled = true;
+  $('create-box').hidden = true;
+  if (locked) {
+    const card = $('consultant-identification-card');
+    const title = card?.querySelector('.section-head h2');
+    const text = card?.querySelector('.section-head p');
+    if (title) title.textContent = 'Consultor identificado pelo login';
+    if (text) text.textContent = 'Este usuário está vinculado a um consultor específico e não pode trocar o responsável.';
+  }
   clearMessage();
   startDashboardPolling();
   loadDashboard(consultant).catch(error => message(error.message));
 }
 
 function changeConsultant() {
+  if (linkedConsultantLogin) return;
   stopDashboardPolling();
   $('consultant-search').disabled = false;
   $('consultant-search').value = '';
@@ -782,12 +803,14 @@ $('select-consultant').addEventListener('click', async () => {
 });
 
 $('show-create').addEventListener('click', () => {
+  if (linkedConsultantLogin) return;
   $('create-box').hidden = false;
   $('new-consultant-name').value = $('consultant-search').value;
   $('new-consultant-name').focus();
 });
 $('cancel-create').addEventListener('click', () => { $('create-box').hidden = true; });
 $('create-consultant').addEventListener('click', async () => {
+  if (linkedConsultantLogin) return message('Este login já está vinculado a um consultor específico.');
   clearMessage();
   try {
     const consultant = await api('/api/consultants', {

@@ -47,6 +47,9 @@ public class PortalUser {
     @Column(name = "created_by", length = 160)
     private String createdBy;
 
+    @Column(name = "consultant_id")
+    private UUID consultantId;
+
     protected PortalUser() {}
 
     public static PortalUser create(
@@ -74,6 +77,11 @@ public class PortalUser {
         if (username != null && !username.isBlank()) setUsernameInternal(username);
         if (displayName != null) this.displayName = cleanOptional(displayName, 160);
         if (role != null) this.role = requireRole(role);
+        this.updatedAt = OffsetDateTime.now();
+    }
+
+    public void linkConsultant(UUID consultantId) {
+        this.consultantId = consultantId;
         this.updatedAt = OffsetDateTime.now();
     }
 
@@ -138,4 +146,5 @@ public class PortalUser {
     public OffsetDateTime getPasswordChangedAt() { return passwordChangedAt; }
     public OffsetDateTime getLastLoginAt() { return lastLoginAt; }
     public String getCreatedBy() { return createdBy; }
+    public UUID getConsultantId() { return consultantId; }
 }

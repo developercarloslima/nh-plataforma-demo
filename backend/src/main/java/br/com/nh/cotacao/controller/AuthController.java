@@ -30,7 +30,8 @@ public class AuthController {
             var authenticated = portalUserService.authenticate(request.username(), request.password());
             var issued = tokenService.issue(authenticated.username(), authenticated.role());
             return new LoginResponse(
-                    issued.token(), authenticated.role(), Instant.ofEpochSecond(issued.expiresAtEpochSecond())
+                    issued.token(), authenticated.role(), Instant.ofEpochSecond(issued.expiresAtEpochSecond()),
+                    authenticated.consultantId(), authenticated.consultantName()
             );
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Usuário ou senha inválidos.");
@@ -40,10 +41,17 @@ public class AuthController {
     @GetMapping("/me")
     public MeResponse me(Authentication authentication) {
         PortalPrincipal principal = (PortalPrincipal) authentication.getPrincipal();
-        return new MeResponse(principal.username(), principal.role());
+        var session = portalUserService.session(principal.username());
+        return new MeResponse(
+                session.username(), session.displayName(), session.role(), session.consultantId(), session.consultantName()
+        );
     }
 
     public record LoginRequest(@NotBlank String username, @NotBlank String password) {}
-    public record LoginResponse(String token, PortalRole role, Instant expiresAt) {}
-    public record MeResponse(String username, PortalRole role) {}
+    public record LoginResponse(
+            String token, PortalRole role, Instant expiresAt, java.util.UUID consultantId, String consultantName
+    ) {}
+    public record MeResponse(
+            String username, String displayName, PortalRole role, java.util.UUID consultantId, String consultantName
+    ) {}
 }

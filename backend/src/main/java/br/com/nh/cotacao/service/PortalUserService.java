@@ -2,8 +2,11 @@ package br.com.nh.cotacao.service;
 
 import br.com.nh.cotacao.dto.AdminUserDtos.*;
 import br.com.nh.cotacao.entity.CatalogChangeAudit;
+import br.com.nh.cotacao.entity.Consultant;
 import br.com.nh.cotacao.entity.PortalUser;
 import br.com.nh.cotacao.repository.CatalogChangeAuditRepository;
+import br.com.nh.cotacao.repository.ConsultantRepository;
+import br.com.nh.cotacao.repository.InspectionRequestRepository;
 import br.com.nh.cotacao.repository.PortalUserRepository;
 import br.com.nh.cotacao.security.PortalRole;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -11,17 +14,30 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
 public class PortalUserService {
     private final PortalUserRepository repository;
     private final CatalogChangeAuditRepository auditRepository;
+    private final ConsultantRepository consultantRepository;
+    private final InspectionRequestRepository inspectionRepository;
+    private final ConsultantService consultantService;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 
-    public PortalUserService(PortalUserRepository repository, CatalogChangeAuditRepository auditRepository) {
+    public PortalUserService(
+            PortalUserRepository repository,
+            CatalogChangeAuditRepository auditRepository,
+            ConsultantRepository consultantRepository,
+            InspectionRequestRepository inspectionRepository,
+            ConsultantService consultantService
+    ) {
         this.repository = repository;
         this.auditRepository = auditRepository;
+        this.consultantRepository = consultantRepository;
+        this.inspectionRepository = inspectionRepository;
+        this.consultantService = consultantService;
     }
 
     @Transactional
@@ -31,9 +47,18 @@ public class PortalUserService {
         if (!user.isActive() || !encoder.matches(password == null ? "" : password, user.getPasswordHash())) {
             throw new IllegalArgumentException("Usuário ou senha inválidos.");
         }
+
+        String consultantName = null;
+        if (user.getRole() == PortalRole.CONSULTANT && user.getConsultantId() != null) {
+            // Contas específicas de consultor são identificadas automaticamente no login.
+            // O consultor também precisa continuar ativo no cadastro operacional.
+            var consultant = consultantService.registerPortalLogin(user.getConsultantId());
+            consultantName = consultant.name();
+        }
+
         user.registerLogin();
         repository.flush();
-        return new AuthenticatedPortalUser(user.getUsername(), user.getRole());
+        return new AuthenticatedPortalUser(user.getUsername(), user.getRole(), user.getConsultantId(), consultantName);
     }
 
     @Transactional(readOnly = true)
@@ -42,6 +67,48 @@ public class PortalUserService {
                 .filter(PortalUser::isActive)
                 .map(user -> user.getRole() == role)
                 .orElse(false);
+    }
+
+    @Transactional(readOnly = true)
+    public PortalUserSession session(String username) {
+        PortalUser user = repository.findByNormalizedUsername(PortalUser.normalizeUsername(username))
+                .filter(PortalUser::isActive)
+                .orElseThrow(() -> new IllegalArgumentException("Conta de acesso não encontrada ou inativa."));
+        return new PortalUserSession(
+                user.getUsername(), user.getDisplayName(), user.getRole(), user.getConsultantId(), consultantName(user.getConsultantId())
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<UUID> linkedConsultantId(String username) {
+        return repository.findByNormalizedUsername(PortalUser.normalizeUsername(username))
+                .filter(PortalUser::isActive)
+                .map(PortalUser::getConsultantId);
+    }
+
+    @Transactional(readOnly = true)
+    public void assertConsultantAccess(String username, PortalRole role, UUID requestedConsultantId) {
+        if (role == PortalRole.ADMIN) return;
+        if (role != PortalRole.CONSULTANT) {
+            throw new IllegalArgumentException("Este usuário não possui acesso ao painel de consultor.");
+        }
+        Optional<UUID> linked = linkedConsultantId(username);
+        if (linked.isPresent() && !linked.get().equals(requestedConsultantId)) {
+            throw new IllegalArgumentException("Este login está vinculado a outro consultor.");
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public void assertInspectionAccess(String username, PortalRole role, UUID inspectionId) {
+        if (role == PortalRole.ADMIN) return;
+        Optional<UUID> linked = linkedConsultantId(username);
+        if (linked.isEmpty()) return; // usuário consultor padrão mantém o comportamento legado
+        var inspection = inspectionRepository.findById(inspectionId)
+                .orElseThrow(() -> new IllegalArgumentException("Vistoria não encontrada."));
+        UUID ownerId = inspection.getConsultant() == null ? null : inspection.getConsultant().getId();
+        if (!linked.get().equals(ownerId)) {
+            throw new IllegalArgumentException("Esta vistoria pertence a outro consultor.");
+        }
     }
 
     @Transactional(readOnly = true)
@@ -56,9 +123,16 @@ public class PortalUserService {
             throw new IllegalArgumentException("Já existe uma conta com esse usuário.");
         });
         validatePassword(request.password());
-        PortalUser user = PortalUser.create(
-                request.username(), request.displayName(), encoder.encode(request.password()), request.role(), adminUsername
+
+        UUID consultantId = resolveConsultantForNewUser(
+                request.role(), request.consultantId(), request.newConsultantName(), adminUsername
         );
+        String displayName = normalizeDisplayName(request.displayName(), request.username(), consultantId);
+
+        PortalUser user = PortalUser.create(
+                request.username(), displayName, encoder.encode(request.password()), request.role(), adminUsername
+        );
+        user.linkConsultant(consultantId);
         PortalUser saved = repository.save(user);
         auditRepository.save(CatalogChangeAudit.createText(
                 "PORTAL_USER", null, saved.getId().toString(),
@@ -83,7 +157,15 @@ public class PortalUserService {
         boolean nextActive = request.active() == null ? user.isActive() : request.active();
         protectLastAdmin(user, nextRole, nextActive);
 
-        user.updateProfile(requestedUsername, request.displayName(), request.role());
+        UUID nextConsultantId = resolveConsultantForUpdate(user, nextRole, request.consultantId(), request.newConsultantName(), adminUsername);
+        String nextUsername = requestedUsername == null || requestedUsername.isBlank() ? user.getUsername() : requestedUsername;
+        String displayName = request.displayName();
+        if (displayName == null || displayName.isBlank()) {
+            displayName = normalizeDisplayName(null, nextUsername, nextConsultantId);
+        }
+
+        user.updateProfile(requestedUsername, displayName, request.role());
+        user.linkConsultant(nextConsultantId);
         if (request.active() != null) user.setActive(request.active());
         PortalUser saved = repository.save(user);
         auditRepository.save(CatalogChangeAudit.createText(
@@ -112,8 +194,8 @@ public class PortalUserService {
             String analystUsername, String analystPassword,
             String consultantUsername, String consultantPassword
     ) {
-        // O bootstrap acontece uma única vez. Depois disso, o banco passa a ser a fonte
-        // de verdade e alterações feitas pelo administrador não são revertidas pelo .env.
+        // Os três usuários padrão continuam existindo. O consultor padrão permanece
+        // sem vínculo específico para preservar a seleção manual legada do portal.
         if (repository.count() > 0) return;
         createBootstrapUser(adminUsername, "Administrador principal", adminPassword, PortalRole.ADMIN);
         createBootstrapUser(analystUsername, "Equipe de análise", analystPassword, PortalRole.ANALYST);
@@ -130,6 +212,79 @@ public class PortalUserService {
                 ? configuredPassword
                 : encoder.encode(configuredPassword == null ? "" : configuredPassword);
         repository.save(PortalUser.create(username, displayName, hash, role, "BOOTSTRAP"));
+    }
+
+    private UUID resolveConsultantForNewUser(
+            PortalRole role,
+            UUID consultantId,
+            String newConsultantName,
+            String adminUsername
+    ) {
+        if (role != PortalRole.CONSULTANT) return null;
+        UUID resolved = resolveConsultant(consultantId, newConsultantName, adminUsername);
+        if (resolved == null) {
+            throw new IllegalArgumentException("Selecione um consultor existente ou informe o nome do novo consultor.");
+        }
+        ensureConsultantAvailable(resolved, null);
+        return resolved;
+    }
+
+    private UUID resolveConsultantForUpdate(
+            PortalUser user,
+            PortalRole nextRole,
+            UUID consultantId,
+            String newConsultantName,
+            String adminUsername
+    ) {
+        if (nextRole != PortalRole.CONSULTANT) return null;
+
+        UUID resolved = resolveConsultant(consultantId, newConsultantName, adminUsername);
+        if (resolved == null) {
+            // Somente o usuário consultor padrão criado pelo bootstrap pode continuar
+            // sem consultor específico, preservando o funcionamento antigo.
+            if (user.getRole() == PortalRole.CONSULTANT
+                    && user.getConsultantId() == null
+                    && "BOOTSTRAP".equalsIgnoreCase(user.getCreatedBy())) {
+                return null;
+            }
+            resolved = user.getConsultantId();
+        }
+        if (resolved == null) {
+            throw new IllegalArgumentException("Selecione um consultor existente ou informe o nome do novo consultor.");
+        }
+        ensureConsultantAvailable(resolved, user.getId());
+        return resolved;
+    }
+
+    private UUID resolveConsultant(UUID consultantId, String newConsultantName, String adminUsername) {
+        if (newConsultantName != null && !newConsultantName.isBlank()) {
+            return consultantService.create(newConsultantName, "CREATED_WITH_PORTAL_USER", adminUsername).id();
+        }
+        if (consultantId != null) {
+            return consultantService.findActive(consultantId).getId();
+        }
+        return null;
+    }
+
+    private void ensureConsultantAvailable(UUID consultantId, UUID currentUserId) {
+        repository.findByConsultantId(consultantId).ifPresent(existing -> {
+            if (currentUserId == null || !existing.getId().equals(currentUserId)) {
+                throw new IllegalArgumentException("Este consultor já possui um usuário específico vinculado.");
+            }
+        });
+    }
+
+    private String normalizeDisplayName(String displayName, String username, UUID consultantId) {
+        if (consultantId != null) {
+            return consultantName(consultantId);
+        }
+        if (displayName != null && !displayName.isBlank()) return displayName.trim();
+        return username == null ? null : username.trim();
+    }
+
+    private String consultantName(UUID consultantId) {
+        if (consultantId == null) return null;
+        return consultantRepository.findById(consultantId).map(Consultant::getName).orElse(null);
     }
 
     private void protectLastAdmin(PortalUser user, PortalRole nextRole, boolean nextActive) {
@@ -154,13 +309,30 @@ public class PortalUserService {
     private PortalUserResponse toResponse(PortalUser user) {
         return new PortalUserResponse(
                 user.getId(), user.getUsername(), user.getDisplayName(), user.getRole(), user.isActive(),
-                user.getCreatedAt(), user.getUpdatedAt(), user.getPasswordChangedAt(), user.getLastLoginAt(), user.getCreatedBy()
+                user.getCreatedAt(), user.getUpdatedAt(), user.getPasswordChangedAt(), user.getLastLoginAt(), user.getCreatedBy(),
+                user.getConsultantId(), consultantName(user.getConsultantId())
         );
     }
 
     private String summary(PortalUser user) {
-        return "usuario=" + user.getUsername() + "; perfil=" + user.getRole() + "; ativo=" + user.isActive();
+        return "usuario=" + user.getUsername()
+                + "; perfil=" + user.getRole()
+                + "; ativo=" + user.isActive()
+                + "; consultor=" + (consultantName(user.getConsultantId()) == null ? "sem vínculo específico" : consultantName(user.getConsultantId()));
     }
 
-    public record AuthenticatedPortalUser(String username, PortalRole role) {}
+    public record AuthenticatedPortalUser(
+            String username,
+            PortalRole role,
+            UUID consultantId,
+            String consultantName
+    ) {}
+
+    public record PortalUserSession(
+            String username,
+            String displayName,
+            PortalRole role,
+            UUID consultantId,
+            String consultantName
+    ) {}
 }

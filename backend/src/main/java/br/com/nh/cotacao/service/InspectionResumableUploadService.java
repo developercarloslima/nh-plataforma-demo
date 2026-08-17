@@ -22,7 +22,7 @@ import java.util.Set;
 @Service
 public class InspectionResumableUploadService {
     private static final long MAX_PHOTO_BYTES = 12L * 1024 * 1024;
-    private static final long MAX_VIDEO_BYTES = 220L * 1024 * 1024;
+    private static final long MAX_VIDEO_BYTES = 10L * 1024 * 1024;
     private static final long MAX_SIGNATURE_BYTES = 3L * 1024 * 1024;
     private static final long MAX_DOCUMENT_BYTES = 30L * 1024 * 1024;
     private static final long MAX_CHUNK_BYTES = 6L * 1024 * 1024;
@@ -294,7 +294,7 @@ public class InspectionResumableUploadService {
             }
             case VIDEO -> {
                 if (sortOrder != videoOrder) throw new IllegalArgumentException("A posição do vídeo é inválida para esta vistoria.");
-                if (totalSize > MAX_VIDEO_BYTES) throw new IllegalArgumentException("O vídeo deve possuir no máximo 220 MB.");
+                if (totalSize > MAX_VIDEO_BYTES) throw new IllegalArgumentException("O vídeo deve possuir no máximo 10 MB.");
                 if (!VIDEO_TYPES.contains(contentType)) throw new IllegalArgumentException("Envie o vídeo em MP4, MOV, WebM ou 3GP.");
             }
             case SIGNATURE -> {
@@ -326,7 +326,7 @@ public class InspectionResumableUploadService {
                 }
                 if (VIDEO_TYPES.contains(contentType)) {
                     if (totalSize > MAX_VIDEO_BYTES) {
-                        throw new IllegalArgumentException("Cada vídeo adicional deve possuir no máximo 220 MB.");
+                        throw new IllegalArgumentException("Cada vídeo adicional deve possuir no máximo 10 MB.");
                     }
                 } else if (PHOTO_TYPES.contains(contentType)) {
                     if (totalSize > MAX_PHOTO_BYTES) {

@@ -7,9 +7,12 @@ import br.com.nh.cotacao.dto.ConsultantDashboardDtos.ConsultantQuoteDecisionRequ
 import br.com.nh.cotacao.dto.ConsultantDashboardDtos.RedoQuoteRequest;
 import br.com.nh.cotacao.dto.ConsultantDashboardDtos.StartInspectionRequest;
 import br.com.nh.cotacao.dto.ConsultantDashboardDtos.UpdateQuoteDetailsRequest;
+import br.com.nh.cotacao.security.PortalPrincipal;
 import br.com.nh.cotacao.service.ConsultantDashboardService;
+import br.com.nh.cotacao.service.PortalUserService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,13 +29,16 @@ import java.util.UUID;
 @RequestMapping("/api/consultant-dashboard")
 public class ConsultantDashboardController {
     private final ConsultantDashboardService service;
+    private final PortalUserService portalUserService;
 
-    public ConsultantDashboardController(ConsultantDashboardService service) {
+    public ConsultantDashboardController(ConsultantDashboardService service, PortalUserService portalUserService) {
         this.service = service;
+        this.portalUserService = portalUserService;
     }
 
     @GetMapping("/{consultantId}")
-    public ConsultantDashboardResponse dashboard(@PathVariable UUID consultantId) {
+    public ConsultantDashboardResponse dashboard(@PathVariable UUID consultantId, Authentication auth) {
+        assertConsultant(auth, consultantId);
         return service.dashboard(consultantId);
     }
 
@@ -40,8 +46,10 @@ public class ConsultantDashboardController {
     public ConsultantInspectionSummary ensureInspection(
             @PathVariable UUID consultantId,
             @PathVariable UUID quoteId,
-            @Valid @RequestBody(required = false) StartInspectionRequest request
+            @Valid @RequestBody(required = false) StartInspectionRequest request,
+            Authentication auth
     ) {
+        assertConsultant(auth, consultantId);
         return service.ensureInspection(consultantId, quoteId, request == null ? null : request.cpf());
     }
 
@@ -50,8 +58,10 @@ public class ConsultantDashboardController {
     public ConsultantQuoteSummary redoQuote(
             @PathVariable UUID consultantId,
             @PathVariable UUID quoteId,
-            @Valid @RequestBody(required = false) RedoQuoteRequest request
+            @Valid @RequestBody(required = false) RedoQuoteRequest request,
+            Authentication auth
     ) {
+        assertConsultant(auth, consultantId);
         return service.redoQuote(consultantId, quoteId, request == null ? null : request.cpf());
     }
 
@@ -59,8 +69,10 @@ public class ConsultantDashboardController {
     public ConsultantQuoteSummary updateQuoteDetails(
             @PathVariable UUID consultantId,
             @PathVariable UUID quoteId,
-            @Valid @RequestBody UpdateQuoteDetailsRequest request
+            @Valid @RequestBody UpdateQuoteDetailsRequest request,
+            Authentication auth
     ) {
+        assertConsultant(auth, consultantId);
         return service.updateQuoteDetails(consultantId, quoteId, request);
     }
 
@@ -68,19 +80,29 @@ public class ConsultantDashboardController {
     public ConsultantQuoteSummary decideQuote(
             @PathVariable UUID consultantId,
             @PathVariable UUID quoteId,
-            @Valid @RequestBody ConsultantQuoteDecisionRequest request
+            @Valid @RequestBody ConsultantQuoteDecisionRequest request,
+            Authentication auth
     ) {
+        assertConsultant(auth, consultantId);
         return service.decideQuote(consultantId, quoteId, request.decision());
     }
 
     @DeleteMapping("/{consultantId}/quotes/{quoteId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteQuote(@PathVariable UUID consultantId, @PathVariable UUID quoteId) {
+    public void deleteQuote(@PathVariable UUID consultantId, @PathVariable UUID quoteId, Authentication auth) {
+        assertConsultant(auth, consultantId);
         service.deleteQuote(consultantId, quoteId);
     }
 
     @PostMapping("/inspections/{inspectionId}/completion-message-sent")
-    public ConsultantInspectionSummary markCompletionMessageSent(@PathVariable UUID inspectionId) {
+    public ConsultantInspectionSummary markCompletionMessageSent(@PathVariable UUID inspectionId, Authentication auth) {
+        PortalPrincipal principal = (PortalPrincipal) auth.getPrincipal();
+        portalUserService.assertInspectionAccess(principal.username(), principal.role(), inspectionId);
         return service.markCompletionMessageSent(inspectionId);
+    }
+
+    private void assertConsultant(Authentication auth, UUID consultantId) {
+        PortalPrincipal principal = (PortalPrincipal) auth.getPrincipal();
+        portalUserService.assertConsultantAccess(principal.username(), principal.role(), consultantId);
     }
 }

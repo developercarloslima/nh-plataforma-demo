@@ -21,21 +21,27 @@ public final class AdminUserDtos {
             OffsetDateTime updatedAt,
             OffsetDateTime passwordChangedAt,
             OffsetDateTime lastLoginAt,
-            String createdBy
+            String createdBy,
+            UUID consultantId,
+            String consultantName
     ) {}
 
     public record CreatePortalUserRequest(
             @NotBlank @Size(min = 3, max = 160) String username,
             @Size(max = 160) String displayName,
             @NotBlank @Size(min = 8, max = 120) String password,
-            @NotNull PortalRole role
+            @NotNull PortalRole role,
+            UUID consultantId,
+            @Size(max = 140) String newConsultantName
     ) {}
 
     public record UpdatePortalUserRequest(
             @Size(min = 3, max = 160) String username,
             @Size(max = 160) String displayName,
             PortalRole role,
-            Boolean active
+            Boolean active,
+            UUID consultantId,
+            @Size(max = 140) String newConsultantName
     ) {}
 
     public record ChangePortalUserPasswordRequest(

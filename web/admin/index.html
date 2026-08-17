@@ -235,6 +235,7 @@
               <tr>
                 <th>Usuário</th>
                 <th>Nome</th>
+                <th>Consultor vinculado</th>
                 <th>Perfil</th>
                 <th>Status</th>
                 <th>Último acesso</th>
@@ -689,28 +690,22 @@
         <input id="user-id" type="hidden" />
         <div class="form-grid">
           <label class="span-2"
-            >Usuário<input
+            >Nome do usuário<input
               id="user-username"
               autocomplete="off"
               maxlength="160"
               required
-              placeholder="Ex.: analista2 ou nome@nh.local"
+              placeholder="Ex.: carlos.lima"
           /></label>
-          <label class="span-2"
-            >Nome de identificação<input
-              id="user-display-name"
-              maxlength="160"
-              placeholder="Ex.: Maria - Análise"
-          /></label>
+          <input id="user-display-name" type="hidden" />
           <label
-            >Perfil<select id="user-role" required>
+            >Tipo de colaborador<select id="user-role" required>
               <option value="CONSULTANT">Consultor</option>
               <option value="ANALYST">Analista</option>
-              <option value="ADMIN">Administrador</option>
             </select></label
           >
           <label id="user-password-wrap"
-            >Senha inicial<input
+            >Senha<input
               id="user-password"
               type="password"
               autocomplete="new-password"
@@ -718,6 +713,24 @@
               maxlength="120"
               placeholder="Mínimo de 8 caracteres"
           /></label>
+          <div id="user-consultant-wrap" class="span-2">
+            <div class="form-grid">
+              <label class="span-2"
+                >Consultor vinculado<select id="user-consultant">
+                  <option value="">Selecione um consultor ativo</option>
+                </select></label
+              >
+              <label id="user-new-consultant-wrap" class="span-2" hidden
+                >Nome do novo consultor<input
+                  id="user-new-consultant-name"
+                  maxlength="140"
+                  placeholder="Nome completo do consultor"
+              /></label>
+            </div>
+            <p class="helper">
+              Se o consultor ainda não existir, escolha “Cadastrar novo consultor”. O nome será criado automaticamente e já aparecerá na lista de consultores ativos.
+            </p>
+          </div>
         </div>
         <div id="user-active-wrap" class="form-check form-switch" hidden>
           <input
@@ -729,8 +742,8 @@
           >
         </div>
         <p class="helper">
-          Contas de consultor acessam a Área do Colaborador; analistas acessam o
-          painel de análise; administradores acessam este painel.
+          Contas específicas de consultor entram já identificadas e só acessam os dados do consultor vinculado.
+          Os usuários padrão continuam disponíveis e mantêm o comportamento atual.
         </p>
         <div class="actions dialog-actions">
           <button class="outline" type="button" data-close-dialog="user-dialog">
@@ -1335,7 +1348,7 @@
     <script src="/shared/config.js?v=20260804-current-origin"></script>
     <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
     <script src="/shared/money-input.js?v=20260805-brl-mask"></script>
-    <script src="/admin/admin.js?v=20260815-v42-public-assignment"></script>
+    <script src="/admin/admin.js?v=20260817-v43-specific-users"></script>
     <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
   </body>
 </html>

@@ -407,6 +407,9 @@ function renderUsers() {
   $('users-body').innerHTML = users.map(item => `<tr>
     <td><strong>${esc(item.username)}</strong></td>
     <td>${esc(item.displayName || '—')}</td>
+    <td>${item.role === 'CONSULTANT'
+      ? esc(item.consultantName || (item.createdBy === 'BOOTSTRAP' ? 'Usuário padrão — seleção manual' : '—'))
+      : '—'}</td>
     <td>${statusBadge(roleLabel(item.role), item.role === 'ADMIN' ? 'ok' : item.role === 'ANALYST' ? 'warn' : '')}</td>
     <td>${statusBadge(item.active ? 'Ativo' : 'Inativo', item.active ? 'ok' : 'off')}</td>
     <td>${date(item.lastLoginAt)}</td>
@@ -416,11 +419,46 @@ function renderUsers() {
       <button class="outline small-button" data-user-password="${item.id}" type="button">Alterar senha</button>
       <button class="${item.active ? 'danger' : 'outline'} small-button" data-user-toggle="${item.id}" type="button">${item.active ? 'Desativar' : 'Ativar'}</button>
     </div></td>
-  </tr>`).join('') || emptyRow(7, 'Nenhum usuário cadastrado.');
+  </tr>`).join('') || emptyRow(8, 'Nenhum usuário cadastrado.');
 
   document.querySelectorAll('[data-user-edit]').forEach(button => button.addEventListener('click', () => openUserModal(button.dataset.userEdit)));
   document.querySelectorAll('[data-user-password]').forEach(button => button.addEventListener('click', () => openPasswordModal(button.dataset.userPassword)));
   document.querySelectorAll('[data-user-toggle]').forEach(button => button.addEventListener('click', () => toggleUser(button.dataset.userToggle)));
+}
+
+function populateUserConsultants(item = null) {
+  const select = $('user-consultant');
+  const options = ['<option value="">Selecione um consultor ativo</option>'];
+  if (item?.role === 'CONSULTANT' && !item.consultantId && item.createdBy === 'BOOTSTRAP') {
+    options.push('<option value="__LEGACY__">Usuário padrão — seleção manual no login</option>');
+  }
+  consultants.filter(consultant => consultant.active).forEach(consultant => {
+    options.push(`<option value="${consultant.id}">${esc(consultant.name)}</option>`);
+  });
+  options.push('<option value="__NEW__">+ Cadastrar novo consultor</option>');
+  select.innerHTML = options.join('');
+  if (item?.consultantId) select.value = item.consultantId;
+  else if (item?.role === 'CONSULTANT' && item.createdBy === 'BOOTSTRAP') select.value = '__LEGACY__';
+  else select.value = '';
+}
+
+function syncUserRoleFields() {
+  const role = $('user-role').value;
+  const consultantMode = role === 'CONSULTANT';
+  $('user-consultant-wrap').hidden = !consultantMode;
+  if (!consultantMode) {
+    $('user-new-consultant-wrap').hidden = true;
+    $('user-new-consultant-name').required = false;
+    return;
+  }
+  syncUserConsultantMode();
+}
+
+function syncUserConsultantMode() {
+  const isNew = $('user-consultant').value === '__NEW__';
+  $('user-new-consultant-wrap').hidden = !isNew;
+  $('user-new-consultant-name').required = isNew;
+  if (!isNew) $('user-new-consultant-name').value = '';
 }
 
 function openUserModal(id = '') {
@@ -428,13 +466,21 @@ function openUserModal(id = '') {
   $('user-id').value = item?.id || '';
   $('user-username').value = item?.username || '';
   $('user-display-name').value = item?.displayName || '';
-  $('user-role').value = item?.role || 'CONSULTANT';
+
+  const roleSelect = $('user-role');
+  roleSelect.innerHTML = '<option value="CONSULTANT">Consultor</option><option value="ANALYST">Analista</option>';
+  if (item?.role === 'ADMIN') roleSelect.insertAdjacentHTML('beforeend', '<option value="ADMIN">Administrador</option>');
+  roleSelect.value = item?.role || 'CONSULTANT';
+
+  populateUserConsultants(item);
+  $('user-new-consultant-name').value = '';
   $('user-password').value = '';
   $('user-password-wrap').hidden = Boolean(item);
   $('user-password').required = !item;
   $('user-active-wrap').hidden = !item;
   $('user-active').checked = item?.active ?? true;
   $('user-dialog-title').textContent = item ? 'Editar usuário' : 'Novo usuário';
+  syncUserRoleFields();
   openDialog('user-dialog');
   $('user-username').focus();
 }
@@ -1444,14 +1490,33 @@ $('consultant-form').addEventListener('submit', async event => {
 });
 
 
+$('user-role').addEventListener('change', syncUserRoleFields);
+$('user-consultant').addEventListener('change', syncUserConsultantMode);
+
 $('user-form').addEventListener('submit', async event => {
   event.preventDefault();
   const id = $('user-id').value;
+  const role = $('user-role').value;
+  const consultantChoice = $('user-consultant').value;
   const payload = {
     username: $('user-username').value.trim(),
-    displayName: $('user-display-name').value.trim(),
-    role: $('user-role').value
+    displayName: $('user-display-name').value.trim() || $('user-username').value.trim(),
+    role
   };
+
+  if (role === 'CONSULTANT') {
+    if (consultantChoice === '__NEW__') {
+      payload.newConsultantName = $('user-new-consultant-name').value.trim();
+      if (!payload.newConsultantName) return message('Informe o nome do novo consultor.');
+    } else if (consultantChoice === '__LEGACY__') {
+      payload.consultantId = null;
+    } else if (consultantChoice) {
+      payload.consultantId = consultantChoice;
+    } else {
+      return message('Selecione um consultor existente ou cadastre um novo consultor.');
+    }
+  }
+
   try {
     if (id) {
       payload.active = $('user-active').checked;
@@ -1464,7 +1529,9 @@ $('user-form').addEventListener('submit', async event => {
       await api('/api/admin/users', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       });
-      message('Usuário criado com sucesso.', 'success');
+      message(role === 'CONSULTANT'
+        ? 'Usuário criado e consultor vinculado com sucesso.'
+        : 'Usuário analista criado com sucesso.', 'success');
     }
     closeDialog('user-dialog');
     await load();

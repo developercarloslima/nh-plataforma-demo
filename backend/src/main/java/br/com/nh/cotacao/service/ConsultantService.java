@@ -43,6 +43,10 @@ public class ConsultantService {
         return repository.findAllByOrderByNameAsc().stream().map(this::toResponse).toList();
     }
 
+    @Transactional(readOnly = true)
+    public ConsultantResponse active(UUID id) {
+        return toResponse(findActive(id));
+    }
 
     @Transactional
     public ConsultantResponse registerPortalLogin(UUID id) {

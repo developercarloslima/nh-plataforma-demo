@@ -16,7 +16,7 @@ import java.util.*;
 public class RetratoService {
     private static final String DEFAULT_PUBLIC_WEB_URL = "https://aforma-demo.vercel.app";
     private static final long MAX_PHOTO_BYTES = 12L * 1024 * 1024;
-    private static final long MAX_VIDEO_BYTES = 220L * 1024 * 1024;
+    private static final long MAX_VIDEO_BYTES = 10L * 1024 * 1024;
     private static final long MAX_SIGNATURE_BYTES = 3L * 1024 * 1024;
     private static final long MAX_DOCUMENT_BYTES = 30L * 1024 * 1024;
     private static final Set<String> PHOTO_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
@@ -398,7 +398,7 @@ public class RetratoService {
     }
 
     private void validateVideo(MultipartFile file) {
-        if (file.getSize() > MAX_VIDEO_BYTES) throw new IllegalArgumentException("O vídeo deve possuir no máximo 220 MB.");
+        if (file.getSize() > MAX_VIDEO_BYTES) throw new IllegalArgumentException("O vídeo deve possuir no máximo 10 MB.");
         if (!VIDEO_TYPES.contains(cleanType(file.getContentType()))) throw new IllegalArgumentException("Envie o vídeo em MP4, MOV, WebM ou 3GP.");
     }
 
