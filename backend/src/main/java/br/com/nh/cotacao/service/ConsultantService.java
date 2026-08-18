@@ -91,6 +91,11 @@ public class ConsultantService {
 
     @Transactional
     public ConsultantResponse create(String name, CollaboratorRole role, String source, String username) {
+        return create(name, role, null, source, username);
+    }
+
+    @Transactional
+    public ConsultantResponse create(String name, CollaboratorRole role, String whatsapp, String source, String username) {
         CollaboratorRole requestedRole = role == null ? CollaboratorRole.CONSULTANT : role;
         String normalized = Consultant.normalize(name);
         Consultant collaborator = repository.findByNormalizedName(normalized)
@@ -104,6 +109,7 @@ public class ConsultantService {
                     return existing;
                 })
                 .orElseGet(() -> Consultant.create(name, source, requestedRole));
+        if (whatsapp != null) collaborator.setWhatsapp(whatsapp);
         Consultant saved = repository.save(collaborator);
         auditRepository.save(CatalogChangeAudit.createText(
                 "COLLABORATOR", null, saved.getId().toString(),
@@ -141,6 +147,18 @@ public class ConsultantService {
             CollaboratorRole role,
             String username
     ) {
+        return update(id, name, active, role, null, username);
+    }
+
+    @Transactional
+    public ConsultantResponse update(
+            UUID id,
+            String name,
+            Boolean active,
+            CollaboratorRole role,
+            String whatsapp,
+            String username
+    ) {
         Consultant collaborator = findActiveOrInactive(id);
         String old = collaboratorSummary(collaborator);
 
@@ -165,6 +183,7 @@ public class ConsultantService {
             collaborator.setRole(role);
         }
         if (active != null) collaborator.setActive(active);
+        if (whatsapp != null) collaborator.setWhatsapp(whatsapp);
 
         Consultant saved = repository.save(collaborator);
         auditRepository.save(CatalogChangeAudit.createText(
@@ -214,7 +233,7 @@ public class ConsultantService {
 
     private ConsultantResponse toResponse(Consultant collaborator) {
         return new ConsultantResponse(
-                collaborator.getId(), collaborator.getName(), collaborator.isActive(), collaborator.getRole(), collaborator.getSource(),
+                collaborator.getId(), collaborator.getName(), collaborator.isActive(), collaborator.getRole(), collaborator.getWhatsapp(), collaborator.getSource(),
                 collaborator.getCreatedAt(), collaborator.getLastPortalLoginAt(),
                 quotationRepository.countByConsultantId(collaborator.getId()),
                 inspectionRepository.countByConsultantId(collaborator.getId())
@@ -224,6 +243,7 @@ public class ConsultantService {
     private String collaboratorSummary(Consultant collaborator) {
         return "nome=" + collaborator.getName()
                 + "; cargo=" + collaborator.getRole()
+                + "; whatsapp=" + (collaborator.getWhatsapp() == null ? "não cadastrado" : collaborator.getWhatsapp())
                 + "; ativo=" + collaborator.isActive()
                 + "; origem=" + collaborator.getSource();
     }

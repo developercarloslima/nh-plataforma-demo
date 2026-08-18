@@ -406,6 +406,7 @@ function setDiscount(percent) {
     checkbox.checked = false;
   }
   updateSelectionSummary();
+  if (state.plans.length) { renderComparison(); renderOptionals(); }
 }
 
 function setLoading(button, loading, loadingText, normalText) {
@@ -455,6 +456,7 @@ function formSnapshot() {
 }
 
 function persistSession() {
+  if (!isSelfService) return;
   try {
     localStorage.setItem(SESSION_KEY, JSON.stringify({
       vehicleType: state.vehicleType,
@@ -471,6 +473,11 @@ function persistSession() {
 }
 
 async function restoreSession() {
+  if (!isSelfService) {
+    try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
+    try { sessionStorage.removeItem(SESSION_KEY); } catch (_) {}
+    return;
+  }
   try {
     const saved = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
     if (!saved) return;
@@ -588,6 +595,125 @@ function renderPlans() {
   updateSelectionSummary();
 }
 
+function coverageDetailForCurrentDiscount(coverage) {
+  const detail = String(coverage?.detail || '');
+  const code = String(coverage?.code || '').toUpperCase();
+  if (isSelfService || Number(state.discountPercent || 0) <= 0 || !['THIRD_PARTY', 'THIRD_PARTY_BASE'].includes(code)) {
+    return detail;
+  }
+  const map = { '100': '50', '50': '35', '35': '20', '10': '7' };
+  return detail.replace(/R\$\s*(100|50|35|10)\s*mil/gi, (_, amount) => `R$ ${map[amount]} mil`);
+}
+
+function whatsappTarget(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return '';
+  return (digits.length === 10 || digits.length === 11) ? `55${digits}` : digits;
+}
+
+function normalizedConsultantWhatsapp(value) {
+  const target = whatsappTarget(value);
+  if (!/^55\d{10,11}$/.test(target)) {
+    throw new Error('Informe um WhatsApp válido do consultor, com DDD.');
+  }
+  return target;
+}
+
+function updateSelectedConsultantProfile(consultant) {
+  if (!consultant || !selectedConsultant) return;
+  selectedConsultant.name = consultant.name || selectedConsultant.name;
+  selectedConsultant.whatsapp = consultant.whatsapp || '';
+  localStorage.setItem(CONSULTANT_KEY, JSON.stringify(selectedConsultant));
+  const input = $('consultantWhatsapp');
+  if (input) input.value = formatWhatsapp(selectedConsultant.whatsapp || '');
+}
+
+async function loadCurrentConsultantProfile() {
+  if (isSelfService || !selectedConsultant?.id) return;
+  try {
+    const items = await api('/api/consultants');
+    const consultant = (Array.isArray(items) ? items : []).find(item => item.id === selectedConsultant.id);
+    if (consultant) updateSelectedConsultantProfile(consultant);
+  } catch (_) {
+    // A cotação continua disponível mesmo se o perfil não puder ser atualizado agora.
+    const input = $('consultantWhatsapp');
+    if (input && selectedConsultant?.whatsapp) input.value = formatWhatsapp(selectedConsultant.whatsapp);
+  }
+}
+
+async function saveConsultantWhatsappFromQuote() {
+  const input = $('consultantWhatsapp');
+  const whatsapp = normalizedConsultantWhatsapp(input?.value || selectedConsultant?.whatsapp || '');
+  const current = String(selectedConsultant?.whatsapp || '').replace(/\D/g, '');
+  if (current === whatsapp) {
+    if (input) input.value = formatWhatsapp(whatsapp);
+    return whatsapp;
+  }
+
+  const updated = await api(`/api/consultants/${encodeURIComponent(selectedConsultant.id)}/whatsapp`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ whatsapp })
+  });
+  updateSelectedConsultantProfile(updated);
+  return whatsapp;
+}
+
+function planComparisonPayload() {
+  return {
+    consultantId: selectedConsultant.id,
+    customerName: $('customerName').value.trim(),
+    model: $('model').value.trim(),
+    plate: isZeroKm() ? '' : $('plate').value.trim().toUpperCase(),
+    categoryCode: categoryCode(),
+    region: effectiveRegion(),
+    motorcycleOrigin: effectiveMotorcycleOrigin(),
+    fipeValue: parseMoney($('fipeValue').value),
+    motorcycle: isMotorcycle(),
+    motorcycleCc: motorcycleCcValue(),
+    promoMotorcycleTier: isPromoMotorcycleCategory() ? state.promoMotorcycleTier : null,
+    discountPercent: Number(state.discountPercent || 0)
+  };
+}
+
+async function sharePlanComparisonWithAssociate() {
+  if (!state.plans.length) return showError('Calcule os planos antes de enviar a comparação.');
+  const target = whatsappTarget($('whatsapp').value);
+  if (!target) return showError('Informe o WhatsApp do associado antes de enviar a comparação.');
+  if (!$('customerName').value.trim()) return showError('Informe o nome do associado antes de enviar a comparação.');
+  if (!$('model').value.trim()) return showError('Informe o modelo do veículo antes de enviar a comparação.');
+  if ([15, 30].includes(Number(state.discountPercent)) && !state.discountConfirmed) {
+    return showError('Confirme a condição do desconto antes de gerar o link de comparação.');
+  }
+
+  const button = $('share-plan-comparison');
+  setLoading(button, true, 'Gerando link...', 'Enviar comparação de plano para associado');
+  try {
+    await saveConsultantWhatsappFromQuote();
+    const result = await api('/api/plan-comparisons', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(planComparisonPayload())
+    });
+    const customer = $('customerName').value.trim();
+    const message = [
+      `Olá, ${customer}!`,
+      '',
+      'Preparei uma comparação dos planos da Novo Horizonte Proteção Veicular para o seu veículo.',
+      'No link abaixo você pode comparar os planos, marcar os adicionais que desejar e ver o valor mensal atualizado:',
+      '',
+      (String(result.url || '').startsWith('/') ? `${location.origin}${result.url}` : result.url),
+      '',
+      'Depois é só tocar em “Escolher este plano e enviar ao consultor”.'
+    ].join('\n');
+    window.open(`https://wa.me/${target}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+  } catch (error) {
+    showError(error.message || 'Não foi possível gerar o link de comparação.');
+  } finally {
+    setLoading(button, false, 'Gerando link...', 'Enviar comparação de plano para associado');
+  }
+}
+
 function renderComparison() {
   const coverageMap = new Map();
 
@@ -610,7 +736,7 @@ function renderComparison() {
         ${state.plans.map(plan => {
           const coverage = (plan.coverages || []).find(item => item.code === code && !isOptionalCoverage(item));
           const status = normalizedCoverageStatus(coverage) === 'INCLUDED' ? 'INCLUDED' : 'NOT_INCLUDED';
-          const detail = coverage?.detail || (status === 'INCLUDED' ? 'Incluído' : 'Não incluído');
+          const detail = coverage ? (coverageDetailForCurrentDiscount(coverage) || (status === 'INCLUDED' ? 'Incluído' : 'Não incluído')) : 'Não incluído';
 
           return `<div class="coverage-state ${status.toLowerCase()}" title="${escapeHtml(detail)}"><span>${coverageIcon(status)}</span><small>${escapeHtml(detail)}</small></div>`;
         }).join('')}
@@ -639,7 +765,7 @@ function renderOptionals() {
       <label class="optional-card ${checked ? 'selected' : ''} ${!hasPrice ? 'unavailable' : ''}">
         <input type="checkbox" value="${escapeHtml(coverage.code)}" ${checked ? 'checked' : ''} ${!hasPrice ? 'disabled' : ''}>
         <span class="optional-check">${checked ? '✓' : '+'}</span>
-        <span class="optional-content"><strong>${escapeHtml(coverage.name)}</strong><small>${escapeHtml(coverage.detail || 'Cobertura adicional')}</small></span>
+        <span class="optional-content"><strong>${escapeHtml(coverage.name)}</strong><small>${escapeHtml(coverageDetailForCurrentDiscount(coverage) || 'Cobertura adicional')}</small></span>
         <span class="optional-price">${hasPrice ? `+ ${brl.format(coverage.monthlyPrice)}<small>/mês</small>` : 'Valor indisponível'}</span>
       </label>
     `;
@@ -736,7 +862,7 @@ function renderQuote(quote, scroll = true) {
     (total, item) => total + Number(item.monthlyPrice || 0), 0
   );
 
-  $('proposal-title').textContent = `Cotação ${quote.quoteNumber} gerada`;
+  $('proposal-title').textContent = `${quote.selectedPlanName || 'Plano'} ${quote.quoteNumber} gerada`;
   $('proposal-description').innerHTML = `O plano escolhido foi <strong>${escapeHtml(quote.selectedPlanName)}</strong>, com mensalidade total de <strong>${brl.format(quote.monthlyValue)} por mês</strong>.`;
   $('quote-details').innerHTML = `
     <div><span>Cliente</span><strong>${escapeHtml(quote.customerName)}</strong></div>
@@ -1203,7 +1329,7 @@ renderBillingDueOptions();
 $('firstBillingDueDate')?.addEventListener('change', persistSession);
 
 $('plate').addEventListener('input', event => event.target.value = event.target.value.toUpperCase());
-$('manufactureYear').value = new Date().getFullYear();
+$('manufactureYear').value = '';
 $('manufactureYear').max = new Date().getFullYear() + 1;
 
 $('quote-form').addEventListener('submit', async event => {
@@ -1295,7 +1421,7 @@ $('share-client-pdf').addEventListener('click', sharePdfWithClient);
 
 $('new-quote').addEventListener('click', () => {
   $('quote-form').reset();
-  $('manufactureYear').value = new Date().getFullYear();
+  $('manufactureYear').value = '';
   const zeroKmNo = document.querySelector('input[name="zeroKm"][value="false"]');
   if (zeroKmNo) zeroKmNo.checked = true;
   syncZeroKmOptions();
@@ -1383,10 +1509,20 @@ function formatWhatsapp(value) {
 
 function configurePageMode() {
   if (!isSelfService) {
+    // Cada abertura da aba de cotação começa limpa. Mantemos somente a identidade
+    // do consultor logado; os campos comerciais voltam aos respectivos placeholders.
+    $('quote-form').reset();
+    $('manufactureYear').value = '';
+    $('fipeValue').value = '';
+    window.NHMoney?.refresh($('fipeValue'));
     if ($('discount-section')) $('discount-section').hidden = false;
     $('consultantName').value = selectedConsultant.name;
     $('customer-cpf-field').hidden = false;
     $('customerCpf').required = true;
+    const comparisonShareActions = $('comparison-share-actions');
+    if (comparisonShareActions) comparisonShareActions.hidden = false;
+    const consultantWhatsappInput = $('consultantWhatsapp');
+    if (consultantWhatsappInput) consultantWhatsappInput.value = formatWhatsapp(selectedConsultant?.whatsapp || '');
     return;
   }
 
@@ -1413,16 +1549,22 @@ function configurePageMode() {
   }
   $('plate').value = (pageParams.get('placa') || '').toUpperCase();
   syncZeroKmOptions();
+  const comparisonShareActions = $('comparison-share-actions');
+  if (comparisonShareActions) comparisonShareActions.hidden = isSelfService;
 }
 
 $('customerCpf')?.addEventListener('input', event => { event.target.value = formatCpf(event.target.value); });
 $('whatsapp').addEventListener('input', event => { event.target.value = formatWhatsapp(event.target.value); });
+$('consultantWhatsapp')?.addEventListener('input', event => { event.target.value = formatWhatsapp(event.target.value); });
 
 configurePageMode();
 updateConditionalFields();
-Promise.all([loadVehicleCategories(), loadPromotionalMotorcyclePrices()]).finally(() => {
+Promise.all([loadVehicleCategories(), loadPromotionalMotorcyclePrices(), loadCurrentConsultantProfile()]).finally(() => {
   syncVehicleCategoryAvailability();
-  restoreSession().finally(() => {
+  
+$('share-plan-comparison')?.addEventListener('click', sharePlanComparisonWithAssociate);
+
+restoreSession().finally(() => {
     if (isSelfService) {
       // Os dados vindos do botão público devem prevalecer sobre uma sessão antiga salva no navegador.
       configurePageMode();
@@ -1430,4 +1572,12 @@ Promise.all([loadVehicleCategories(), loadPromotionalMotorcyclePrices()]).finall
       $('consultantName').value = selectedConsultant.name;
     }
   });
+});
+
+
+window.addEventListener('pageshow', event => {
+  if (!isSelfService && event.persisted) {
+    // Evita que o navegador restaure via BFCache os valores digitados numa cotação anterior.
+    location.reload();
+  }
 });

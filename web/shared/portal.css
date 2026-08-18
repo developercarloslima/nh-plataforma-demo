@@ -857,3 +857,60 @@ button:focus-visible,
     bottom: 10px;
   }
 }
+
+/* Painel de Análises: filas por situação */
+.analysis-status-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0 8px;
+}
+.analysis-status-tab {
+  min-width: 0;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid #cfd3df;
+  border-radius: 14px;
+  background: #fff;
+  color: #070c40;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+}
+.analysis-status-tab span {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 7px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef0f6;
+  font-size: 12px;
+}
+.analysis-status-tab.active {
+  background: #070c40;
+  color: #f4ef00;
+  border-color: #070c40;
+  box-shadow: 0 3px 0 #e9ef00;
+}
+.analysis-status-tab.active span {
+  background: #f4ef00;
+  color: #070c40;
+}
+.analysis-status-description {
+  margin: 0 0 16px;
+  color: #586074;
+}
+@media (max-width: 900px) {
+  .analysis-status-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .analysis-status-tabs { grid-template-columns: 1fr; }
+  .analysis-status-tab { justify-content: space-between; text-align: left; }
+}

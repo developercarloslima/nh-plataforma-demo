@@ -205,6 +205,11 @@ public class AdminActivityService {
         Consultant reviewerCollaborator = null;
         String reviewerName;
         String reviewerRole;
+        if (actorRole == PortalRole.ADMIN
+                && (request.status() == InspectionRequestStatus.APPROVED || request.status() == InspectionRequestStatus.REJECTED)
+                && (request.adminNote() == null || request.adminNote().isBlank())) {
+            throw new IllegalArgumentException("Informe uma observação explicando o motivo da aprovação ou rejeição da vistoria.");
+        }
         if (actorRole == PortalRole.ADMIN) {
             reviewerName = "Análise feita pelo administrador";
             reviewerRole = "ADMIN";
@@ -217,7 +222,8 @@ public class AdminActivityService {
         }
 
         inspection.adminReview(
-                request.status(), request.adminNote(), reviewerCollaborator, reviewerName, reviewerRole
+                request.status(), request.adminNote(), reviewerCollaborator, reviewerName, reviewerRole,
+                actorRole == PortalRole.ADMIN
         );
         inspectionRepository.flush();
         auditRepository.save(CatalogChangeAudit.createText(
@@ -249,9 +255,6 @@ public class AdminActivityService {
     public void deleteInspection(UUID id, String username) {
         InspectionRequest inspection = inspectionRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
-        if (inspection.getStatus() == InspectionRequestStatus.APPROVED) {
-            throw new IllegalArgumentException("Vistorias aprovadas não podem ser excluídas manualmente. Elas serão removidas automaticamente após 40 dias.");
-        }
         String old = "associado=" + inspection.getAssociateName() + "; placa=" + plateLabel(inspection.getPlate(), false)
                 + "; status=" + inspection.getStatus();
         inspectionRepository.delete(inspection);
@@ -264,15 +267,14 @@ public class AdminActivityService {
 
     @Transactional
     public DeleteSummary deleteAllAllowedInspections(String username) {
-        int protectedApproved = Math.toIntExact(inspectionRepository.countByStatus(InspectionRequestStatus.APPROVED));
-        int deleted = inspectionRepository.deleteAllExceptStatus(InspectionRequestStatus.APPROVED);
+        int deleted = inspectionRepository.deleteAllInspections();
         auditRepository.save(CatalogChangeAudit.createText(
-                "INSPECTION_DELETE", null, "BULK", "Exclusão administrativa das vistorias permitidas",
-                "aprovadas protegidas=" + protectedApproved, "excluídas=" + deleted, username
+                "INSPECTION_DELETE", null, "BULK", "Exclusão administrativa de todas as vistorias",
+                "sem proteção por status", "excluídas=" + deleted, username
         ));
         return new DeleteSummary(
-                deleted, protectedApproved,
-                deleted + " vistoria(s) excluída(s). " + protectedApproved + " vistoria(s) aprovada(s) preservada(s)."
+                deleted, 0,
+                deleted + " vistoria(s) excluída(s), independentemente do status ou de documentos pendentes."
         );
     }
 

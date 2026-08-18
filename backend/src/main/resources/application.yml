@@ -49,6 +49,8 @@ app:
     admin-username: ${ADMIN_USERNAME:admin@nh.local}
     admin-password: ${ADMIN_PASSWORD:altere-agora}
   allowed-origins: ${ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000,https://aforma-demo.vercel.app,https://*.vercel.app}
+  plan-comparison:
+    valid-hours: ${PLAN_COMPARISON_VALID_HOURS:120}
   whatsapp-cloud:
     enabled: ${WHATSAPP_CLOUD_ENABLED:false}
     api-version: ${WHATSAPP_CLOUD_API_VERSION:v23.0}

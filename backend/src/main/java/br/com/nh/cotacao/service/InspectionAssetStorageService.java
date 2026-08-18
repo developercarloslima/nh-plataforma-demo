@@ -38,6 +38,7 @@ public class InspectionAssetStorageService {
     private static final Logger log = LoggerFactory.getLogger(InspectionAssetStorageService.class);
     private static final int DIRECT_CHUNK_BYTES = 4 * 1024 * 1024;
     private static final long MAX_VIDEO_BYTES = 10L * 1024 * 1024;
+    private static final Path VIDEO_DOWNLOAD_CACHE_DIR = Path.of(System.getProperty("java.io.tmpdir"), "nh-video-download-cache");
 
     private final InspectionAssetRepository assetRepository;
     private final JdbcTemplate jdbcTemplate;
@@ -478,6 +479,20 @@ public class InspectionAssetStorageService {
         Path source = null;
         Path compressed = null;
         try {
+            Files.createDirectories(VIDEO_DOWNLOAD_CACHE_DIR);
+            Path cached = cachedVideoPath(asset);
+            if (Files.exists(cached)) {
+                long cachedSize = Files.size(cached);
+                if (cachedSize > 0 && cachedSize <= MAX_VIDEO_BYTES) {
+                    try (InputStream input = Files.newInputStream(cached)) {
+                        input.transferTo(output);
+                    }
+                    log.info("Retrato NH: download de vídeo compactado servido do cache assetId={} bytes={}", asset.getId(), cachedSize);
+                    return;
+                }
+                Files.deleteIfExists(cached);
+            }
+
             source = Files.createTempFile("nh-video-original-", videoSourceExtension(asset.getContentType()));
             try (OutputStream fileOut = Files.newOutputStream(source)) {
                 writeTo(asset.getId(), fileOut);
@@ -489,11 +504,7 @@ public class InspectionAssetStorageService {
             }
 
             compressed = Files.createTempFile("nh-video-download-", ".webm");
-            long[] targets = {
-                    8_500_000L,
-                    7_500_000L,
-                    6_500_000L
-            };
+            long[] targets = { 7_500_000L, 6_500_000L };
             boolean success = false;
             for (long targetBytes : targets) {
                 Files.deleteIfExists(compressed);
@@ -509,11 +520,12 @@ public class InspectionAssetStorageService {
                 throw new IllegalStateException("Não foi possível compactar o vídeo para até 10 MB.");
             }
 
-            try (InputStream input = Files.newInputStream(compressed)) {
+            Files.copy(compressed, cached, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            try (InputStream input = Files.newInputStream(cached)) {
                 input.transferTo(output);
             }
-            log.info("Retrato NH: vídeo legado compactado somente para download assetId={} originalBytes={} downloadBytes={}",
-                    asset.getId(), asset.getFileSize(), Files.size(compressed));
+            log.info("Retrato NH: vídeo legado compactado e armazenado em cache assetId={} originalBytes={} downloadBytes={}",
+                    asset.getId(), asset.getFileSize(), Files.size(cached));
         } catch (IllegalArgumentException exception) {
             throw exception;
         } catch (Exception exception) {
@@ -522,6 +534,11 @@ public class InspectionAssetStorageService {
             if (source != null) try { Files.deleteIfExists(source); } catch (Exception ignored) {}
             if (compressed != null) try { Files.deleteIfExists(compressed); } catch (Exception ignored) {}
         }
+    }
+
+    private Path cachedVideoPath(InspectionAsset asset) {
+        String key = asset.getId() + "-" + asset.getFileSize() + ".webm";
+        return VIDEO_DOWNLOAD_CACHE_DIR.resolve(key);
     }
 
     private double probeVideoDuration(Path source) throws Exception {

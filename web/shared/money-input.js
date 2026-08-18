@@ -105,8 +105,14 @@
       return input.value;
     };
 
-    input.addEventListener('input', () => {
+    input.addEventListener('input', event => {
       const raw = input.value;
+      const deleting = String(event.inputType || '').startsWith('delete');
+      const remainingDigits = digitsOnly(raw);
+      if (deleting && remainingDigits && /^0+$/.test(remainingDigits)) {
+        input.value = '';
+        return;
+      }
       const caret = input.selectionStart ?? raw.length;
       const separator = decimalSeparatorInfo(raw);
       const isDecimalEditing = separator.index >= 0 && caret > separator.index;

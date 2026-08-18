@@ -297,8 +297,8 @@ public class InspectionResumableUploadService {
             case VIDEO -> {
                 if (sortOrder != videoOrder) throw new IllegalArgumentException("A posição do vídeo é inválida para esta vistoria.");
                 if (totalSize > MAX_VIDEO_BYTES) throw new IllegalArgumentException("O vídeo deve possuir no máximo 10 MB.");
-                if (videoDurationSeconds == null || !Double.isFinite(videoDurationSeconds) || videoDurationSeconds < 90.0) {
-                    throw new IllegalArgumentException("O vídeo deve possuir pelo menos 1 minuto e 30 segundos.");
+                if (videoDurationSeconds == null || !Double.isFinite(videoDurationSeconds) || videoDurationSeconds <= 0 || videoDurationSeconds > 90.5) {
+                    throw new IllegalArgumentException("O vídeo deve possuir no máximo 1 minuto e 30 segundos.");
                 }
                 if (!VIDEO_TYPES.contains(contentType)) throw new IllegalArgumentException("Envie o vídeo em MP4, MOV, WebM ou 3GP.");
             }

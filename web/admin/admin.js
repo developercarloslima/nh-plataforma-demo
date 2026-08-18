@@ -35,7 +35,7 @@ const QUOTE_STATUS_LABELS = Object.freeze({
 const INSPECTION_STATUS_LABELS = Object.freeze({
   WAITING_FILES: ['Aguardando arquivos', 'warn'], UPLOADING_FILES: ['Envio em andamento', 'warn'], CREATED: ['Pendente', 'warn'],
   UNDER_REVIEW: ['Em análise', 'warn'], COMPLETED: ['Material enviado', 'ok'],
-  APPROVED: ['Aprovada', 'ok'], REJECTED: ['Reprovada', 'off'], CANCELLED: ['Cancelada', 'off'], EXPIRED: ['Expirada', 'off']
+  APPROVED: ['Aprovada', 'ok'], REJECTED: ['Rejeitada', 'off'], CANCELLED: ['Cancelada', 'off'], EXPIRED: ['Expirada', 'off']
 });
 const AUDIT_TYPE_LABELS = Object.freeze({
   PLAN: 'Plano', VEHICLE_CATEGORY: 'Categoria de veículo', PRICE_RANGE: 'Faixa de valor', PROMO_MOTORCYCLE_PRICE: 'Tabela promocional', PLAN_COVERAGE: 'Cobertura', OPTIONAL: 'Opcional',
@@ -231,7 +231,49 @@ function releaseAdminMediaUrls() {
   adminMediaObjectUrls.clear();
 }
 
+function activeAdminDialog() {
+  const opened = [...document.querySelectorAll('dialog.admin-dialog[open]')];
+  return opened.length ? opened[opened.length - 1] : null;
+}
+
+function dialogMessageElement(dialog) {
+  if (!dialog) return null;
+  let element = dialog.querySelector('[data-dialog-message]');
+  if (element) return element;
+
+  const card = dialog.querySelector('.dialog-card');
+  if (!card) return null;
+
+  element = document.createElement('div');
+  element.dataset.dialogMessage = 'true';
+  element.setAttribute('role', 'alert');
+  element.setAttribute('aria-live', 'polite');
+
+  const head = card.querySelector('.dialog-head');
+  if (head) head.insertAdjacentElement('afterend', element);
+  else card.prepend(element);
+  return element;
+}
+
+function clearDialogMessage(dialog) {
+  const element = dialog?.querySelector('[data-dialog-message]');
+  if (!element) return;
+  element.className = '';
+  element.textContent = '';
+}
+
 function message(text, type = 'error') {
+  const dialog = activeAdminDialog();
+  if (dialog) {
+    const element = dialogMessageElement(dialog);
+    if (element) {
+      element.className = `message ${type} dialog-message`;
+      element.textContent = text;
+      element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return;
+    }
+  }
+
   const element = $('message');
   element.className = `message ${type}`;
   element.textContent = text;
@@ -241,6 +283,7 @@ function message(text, type = 'error') {
 function clearMessage() {
   $('message').className = '';
   $('message').textContent = '';
+  document.querySelectorAll('dialog.admin-dialog').forEach(clearDialogMessage);
 }
 
 function statusBadge(text, kind = '') {
@@ -321,11 +364,15 @@ function emptyRow(columns, text) {
 
 function openDialog(id) {
   const dialog = $(id);
+  $('message').className = '';
+  $('message').textContent = '';
+  clearDialogMessage(dialog);
   if (!dialog.open) dialog.showModal();
 }
 
 function closeDialog(id) {
   const dialog = $(id);
+  clearDialogMessage(dialog);
   if (id === 'inspection-dialog') releaseAdminMediaUrls();
   if (dialog.open) dialog.close();
 }
@@ -437,14 +484,14 @@ function renderActivities() {
 
 function renderConsultants() {
   $('consultants-body').innerHTML = consultants.map(item => `<tr>
-    <td><strong>${esc(item.name)}</strong></td><td>${statusBadge(collaboratorRoleLabel(item.role), item.role === 'ANALYST' ? 'warn' : '')}</td><td>${item.quoteCount}</td>
+    <td><strong>${esc(item.name)}</strong></td><td>${statusBadge(collaboratorRoleLabel(item.role), item.role === 'ANALYST' ? 'warn' : '')}</td><td>${esc(formatPhone(item.whatsapp) || 'Não cadastrado')}</td><td>${item.quoteCount}</td>
     <td>${item.inspectionCount}</td><td>${statusBadge(item.active ? 'Ativo' : 'Inativo', item.active ? 'ok' : 'off')}</td>
     <td><div class="row-actions">
       <button class="secondary small-button" data-consultant-edit="${item.id}" type="button">Editar</button>
       <button class="outline small-button" data-consultant-toggle="${item.id}" type="button">${item.active ? 'Desativar' : 'Ativar'}</button>
       <button class="danger small-button" data-consultant-delete="${item.id}" type="button">Excluir</button>
     </div></td>
-  </tr>`).join('') || emptyRow(6, 'Nenhum colaborador cadastrado.');
+  </tr>`).join('') || emptyRow(7, 'Nenhum colaborador cadastrado.');
 
   document.querySelectorAll('[data-consultant-edit]').forEach(button => button.addEventListener('click', () => openConsultantModal(button.dataset.consultantEdit)));
   document.querySelectorAll('[data-consultant-toggle]').forEach(button => button.addEventListener('click', () => toggleConsultant(button.dataset.consultantToggle)));
@@ -493,6 +540,8 @@ function openConsultantModal(id = '') {
   $('consultant-id').value = item?.id || '';
   $('consultant-name').value = item?.name || '';
   $('consultant-role').value = item?.role || 'CONSULTANT';
+  $('consultant-whatsapp').value = formatPhone(item?.whatsapp) || '';
+  syncConsultantWhatsappField();
   $('consultant-active-wrap').hidden = !item;
   $('consultant-active').checked = item?.active ?? true;
   $('consultant-dialog-title').textContent = item ? 'Editar colaborador' : 'Cadastrar colaborador';
@@ -506,6 +555,15 @@ function roleLabel(role) {
 
 function collaboratorRoleLabel(role) {
   return role === 'ANALYST' ? 'Analista' : 'Consultor';
+}
+
+function syncConsultantWhatsappField() {
+  const isConsultant = $('consultant-role').value === 'CONSULTANT';
+  $('consultant-whatsapp-wrap').hidden = false;
+  $('consultant-whatsapp-help').hidden = false;
+  $('consultant-whatsapp-help').textContent = isConsultant
+    ? 'O Admin pode alterar este número a qualquer momento. Ele também será usado para receber a escolha de plano e adicionais enviada pelo associado.'
+    : 'O Admin pode cadastrar ou alterar o WhatsApp deste colaborador a qualquer momento.';
 }
 
 function renderUsers() {
@@ -666,7 +724,6 @@ async function deleteAllQuotes() {
 async function deleteInspection(id) {
   const item = inspections.find(value => value.id === id);
   if (!item) return;
-  if (item.status === 'APPROVED') return message('Vistorias aprovadas não podem ser excluídas manualmente.');
   const confirmed = await confirmAction(
     'Excluir vistoria do banco?',
     `A vistoria de ${item.associateName} será excluída junto com fotos, vídeos, documentos e relatório armazenados.`,
@@ -681,13 +738,11 @@ async function deleteInspection(id) {
 }
 
 async function deleteAllAllowedInspections() {
-  const allowed = inspections.filter(item => item.status !== 'APPROVED');
-  const approved = inspections.length - allowed.length;
-  if (!allowed.length) return message(`Não existem vistorias permitidas para excluir. ${approved} aprovada(s) permanece(m) protegida(s).`);
+  if (!inspections.length) return message('Não existem vistorias para excluir.');
   const confirmed = await confirmAction(
-    'Excluir vistorias permitidas?',
-    `Serão excluídas definitivamente ${allowed.length} vistorias e seus arquivos. ${approved} vistoria(s) aprovada(s) será(ão) preservada(s).`,
-    'Excluir vistorias'
+    'Excluir TODAS as vistorias?',
+    `Serão excluídas definitivamente ${inspections.length} vistorias e seus arquivos, inclusive aprovadas, rejeitadas e com documentos pendentes.`,
+    'Excluir todas as vistorias'
   );
   if (!confirmed) return;
   try {
@@ -758,7 +813,7 @@ function renderInspections() {
         <td><strong>${esc(item.associateName)}</strong></td><td>${esc(item.consultantName)}</td><td>${esc(item.reviewedByName || '—')}</td><td>${esc(item.plate || '0 km — sem placa')}</td>
         <td>${item.requestType === 'NEW_INSPECTION' ? 'Nova vistoria' : 'Atualização de boleto'}</td><td>${item.assetCount}</td>
         <td><div class="status-with-action">${inspectionBadge(item.status)}${statusAction}</div></td><td>${date(item.createdAt)}</td>
-        <td><div class="row-actions">${pendingActions}<button class="secondary small-button" data-inspection-analyze="${item.id}" type="button">Analisar</button>${item.status === 'APPROVED' ? '' : `<button class="danger small-button" data-inspection-delete="${item.id}" type="button">Excluir</button>`}</div></td>
+        <td><div class="row-actions">${pendingActions}<button class="secondary small-button" data-inspection-analyze="${item.id}" type="button">Analisar</button><button class="danger small-button" data-inspection-delete="${item.id}" type="button">Excluir</button></div></td>
       </tr>`;
     }).join('') || emptyRow(9, 'Nenhuma atividade do Retrato NH encontrada.');
   document.querySelectorAll('[data-inspection-analyze]').forEach(button => button.addEventListener('click', () => openInspectionAnalysis(button.dataset.inspectionAnalyze)));
@@ -830,10 +885,11 @@ function openInspectionAnalysis(id) {
   $('inspection-analysis-note').value = item.adminNote || '';
 
   const statusSelect = $('inspection-analysis-status');
-  const readyForAnalysis = filesAvailable && Array.isArray(item.assets) && item.assets.some(asset => asset.type === 'REPORT' && asset.available) && Boolean(item.completedAt);
+  const readyForAnalysis = filesAvailable && Boolean(item.completedAt);
   const allowedWhileWaiting = new Set(['WAITING_FILES', 'UPLOADING_FILES', 'CANCELLED', 'EXPIRED']);
   Array.from(statusSelect.options).forEach(option => {
-    option.disabled = !readyForAnalysis && !allowedWhileWaiting.has(option.value);
+    const adminDecision = option.value === 'APPROVED' || option.value === 'REJECTED';
+    option.disabled = !adminDecision && !readyForAnalysis && !allowedWhileWaiting.has(option.value);
   });
   if (!filesAvailable) {
     statusSelect.value = item.status === 'CANCELLED' || item.status === 'EXPIRED' ? item.status : 'WAITING_FILES';
@@ -842,6 +898,8 @@ function openInspectionAnalysis(id) {
   } else {
     statusSelect.value = item.status;
   }
+  $('admin-inspection-approve').hidden = false;
+  $('admin-inspection-reject').hidden = false;
 
   const inspectionDiscount = Number(item.discountPercent || 0);
   const inspectionDetails = [
@@ -862,7 +920,8 @@ function openInspectionAnalysis(id) {
     ['Arquivos disponíveis', item.assetCount], ['Situação dos arquivos', filesAvailable ? (needsFiles ? `${pendingCount} ${pendingCount === 1 ? 'item pendente' : 'itens pendentes'}; os demais continuam armazenados` : `Armazenados no sistema até ${date(item.filesExpireAt)}`) : (Number(item.expiredAssetCount || 0) > 0 ? 'Arquivos apagados após 40 dias' : 'Aguardando envio do associado')],
     ['Criada em', date(item.createdAt)], ['Expira em', date(item.expiresAt)],
     ['Concluída em', date(item.completedAt)], ['Última análise', date(item.reviewedAt)],
-    ['Responsável pela análise', item.reviewedByName || '—']
+    ['Responsável pela análise', item.reviewedByName || '—'],
+    ['Observação da análise', item.adminNote || '—']
   );
   $('inspection-detail-grid').innerHTML = detailItems(inspectionDetails);
 
@@ -882,7 +941,10 @@ function renderAdminInspectionFiles(item) {
   releaseAdminMediaUrls();
   const section = $('admin-inspection-files-section');
   const grid = $('admin-inspection-files-grid');
-  const assets = Array.isArray(item.assets) ? item.assets : [];
+  const sourceAssets = Array.isArray(item.assets) ? item.assets : [];
+  const assets = item.completedAt && !sourceAssets.some(asset => asset.type === 'REPORT')
+    ? [...sourceAssets, { id: 'regenerated-report', type: 'REPORT', label: 'Relatório da vistoria', fileName: 'relatorio-vistoria.pdf', fileSize: 0, contentType: 'application/pdf', available: false }]
+    : sourceAssets;
   const available = assets.filter(asset => asset.available);
   section.hidden = assets.length === 0;
   if (section.hidden) {
@@ -912,14 +974,18 @@ function renderAdminInspectionFiles(item) {
     const compressionNote = legacyLargeVideo
       ? '<small class="inspection-media-note">Original preservado · download em WebM compactado automaticamente para até 10 MB.</small>'
       : '';
-    const actions = asset.available
-      ? `<div class="inspection-media-actions">${video ? `<button class="outline" data-admin-play-video="${asset.id}" type="button">Reproduzir</button>` : ''}<button class="secondary" data-admin-download-asset="${asset.id}" data-file-name="${esc(downloadName)}" type="button">${legacyLargeVideo ? 'Baixar WebM' : 'Baixar'}</button>${canDelete ? `<button class="danger" data-admin-delete-asset="${asset.id}" data-file-name="${esc(title)}" type="button">Excluir / solicitar novamente</button>` : ''}</div>`
-      : `<div class="inspection-media-expired">${adminInspectionNeedsFiles(item) && asset.type !== 'REPORT' ? 'Arquivo excluído / aguardando reenvio.' : 'Arquivo removido após 40 dias.'}</div>`;
+    const canRegenerateReport = asset.type === 'REPORT' && Boolean(item.completedAt);
+    const actions = canRegenerateReport
+      ? `<div class="inspection-media-actions"><button class="secondary" data-admin-download-report="${item.id}" type="button">Baixar relatório</button></div>`
+      : asset.available
+        ? `<div class="inspection-media-actions">${video ? `<button class="outline" data-admin-play-video="${asset.id}" type="button">Reproduzir</button>` : ''}<button class="secondary" data-admin-download-asset="${asset.id}" data-file-name="${esc(downloadName)}" type="button">${legacyLargeVideo ? 'Baixar WebM' : 'Baixar'}</button>${canDelete ? `<button class="danger" data-admin-delete-asset="${asset.id}" data-file-name="${esc(title)}" type="button">Excluir / solicitar novamente</button>` : ''}</div>`
+        : `<div class="inspection-media-expired">${adminInspectionNeedsFiles(item) && asset.type !== 'REPORT' ? 'Arquivo excluído / aguardando reenvio.' : 'Arquivo removido após 40 dias.'}</div>`;
     return `<article class="inspection-media-card ${asset.available ? '' : 'expired'}">${preview}<div class="inspection-media-body"><strong>${esc(title)}</strong><small>${esc(asset.fileName)}</small><small>${formatBytes(asset.fileSize)} · ${esc(asset.contentType || 'arquivo')}</small>${compressionNote}${actions}</div></article>`;
   }).join('');
 
   available.filter(asset => String(asset.contentType || '').startsWith('image/')).forEach(asset => loadAdminImagePreview(item.id, asset));
   grid.querySelectorAll('[data-admin-download-asset]').forEach(button => button.addEventListener('click', () => downloadAdminAsset(item.id, button.dataset.adminDownloadAsset, button.dataset.fileName, button)));
+  grid.querySelectorAll('[data-admin-download-report]').forEach(button => button.addEventListener('click', () => downloadAdminReport(item.id, button)));
   grid.querySelectorAll('[data-admin-play-video]').forEach(button => button.addEventListener('click', () => playAdminVideo(item.id, button.dataset.adminPlayVideo, button)));
   grid.querySelectorAll('[data-admin-delete-asset]').forEach(button => {
     button.addEventListener('click', () => deleteAdminInspectionAsset(
@@ -1008,6 +1074,22 @@ async function downloadAdminAsset(inspectionId, assetId, fileName, button) {
     triggerAdminDownload(blob, fileName || 'arquivo-vistoria');
   } catch (error) {
     message(error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
+async function downloadAdminReport(inspectionId, button) {
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Gerando relatório...';
+  try {
+    const blob = await apiBlob(`/api/admin/inspections/${inspectionId}/report`);
+    triggerAdminDownload(blob, `relatorio-vistoria-${inspectionId}.pdf`);
+  } catch (error) {
+    message(error.message);
+    await confirmAction('Erro ao baixar relatório', error.message || 'Não foi possível gerar o relatório desta vistoria.', 'Fechar');
   } finally {
     button.disabled = false;
     button.textContent = original;
@@ -1603,13 +1685,13 @@ $('consultant-form').addEventListener('submit', async event => {
       }
       await api(`/api/admin/consultants/${id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: $('consultant-name').value.trim(), active: nextActive, role: $('consultant-role').value })
+        body: JSON.stringify({ name: $('consultant-name').value.trim(), active: nextActive, role: $('consultant-role').value, whatsapp: $('consultant-whatsapp').value.trim() })
       });
       message('Colaborador atualizado.', 'success');
     } else {
       await api('/api/admin/consultants', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: $('consultant-name').value.trim(), role: $('consultant-role').value })
+        body: JSON.stringify({ name: $('consultant-name').value.trim(), role: $('consultant-role').value, whatsapp: $('consultant-whatsapp').value.trim() })
       });
       message('Colaborador cadastrado.', 'success');
     }
@@ -1619,6 +1701,7 @@ $('consultant-form').addEventListener('submit', async event => {
 });
 
 
+$('consultant-role').addEventListener('change', syncConsultantWhatsappField);
 $('user-role').addEventListener('change', syncUserRoleFields);
 $('user-consultant').addEventListener('change', syncUserConsultantMode);
 
@@ -1844,13 +1927,56 @@ $('public-quote-assignment-form').addEventListener('submit', async event => {
   } catch (error) { message(error.message); }
 });
 
-$('inspection-analysis-form').addEventListener('submit', async event => {
-  event.preventDefault();
+async function setAdminInspectionDecision(status) {
   const id = $('inspection-analysis-id').value;
+  if (!id) return;
+  const approved = status === 'APPROVED';
+  const note = $('inspection-analysis-note').value.trim();
+  if (!note) {
+    message(approved
+      ? 'Informe na observação por que esta vistoria está sendo aprovada.'
+      : 'Informe na observação por que esta vistoria está sendo rejeitada.');
+    $('inspection-analysis-note').focus();
+    return;
+  }
+  const confirmed = await confirmAction(
+    approved ? 'Aprovar vistoria?' : 'Rejeitar vistoria?',
+    approved
+      ? 'A vistoria será marcada como aprovada pelo administrador com a observação registrada.'
+      : 'A vistoria será marcada como rejeitada pelo administrador com o motivo registrado.',
+    approved ? 'Aprovar vistoria' : 'Rejeitar vistoria'
+  );
+  if (!confirmed) return;
   try {
     await api(`/api/admin/inspections/${id}/status`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: $('inspection-analysis-status').value, adminNote: $('inspection-analysis-note').value.trim() })
+      body: JSON.stringify({ status, adminNote: note })
+    });
+    closeDialog('inspection-dialog');
+    message(approved ? 'Vistoria aprovada pelo administrador.' : 'Vistoria rejeitada pelo administrador.', 'success');
+    await load();
+  } catch (error) { message(error.message); }
+}
+
+$('admin-inspection-approve').addEventListener('click', () => setAdminInspectionDecision('APPROVED'));
+$('admin-inspection-reject').addEventListener('click', () => setAdminInspectionDecision('REJECTED'));
+
+$('inspection-analysis-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const id = $('inspection-analysis-id').value;
+  const status = $('inspection-analysis-status').value;
+  const adminNote = $('inspection-analysis-note').value.trim();
+  if ((status === 'APPROVED' || status === 'REJECTED') && !adminNote) {
+    message(status === 'APPROVED'
+      ? 'Informe na observação por que esta vistoria está sendo aprovada.'
+      : 'Informe na observação por que esta vistoria está sendo rejeitada.');
+    $('inspection-analysis-note').focus();
+    return;
+  }
+  try {
+    await api(`/api/admin/inspections/${id}/status`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, adminNote })
     });
     closeDialog('inspection-dialog');
     message('Análise do Retrato NH salva.', 'success');

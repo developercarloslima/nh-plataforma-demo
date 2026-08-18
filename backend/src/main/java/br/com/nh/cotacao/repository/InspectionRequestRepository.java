@@ -50,6 +50,10 @@ public interface InspectionRequestRepository extends JpaRepository<InspectionReq
     @Query("delete from InspectionRequest i where i.status <> :protectedStatus")
     int deleteAllExceptStatus(@Param("protectedStatus") InspectionRequestStatus protectedStatus);
 
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from InspectionRequest i")
+    int deleteAllInspections();
+
     @Override
     @EntityGraph(attributePaths = {"assets", "consultant", "quotation"})
     Optional<InspectionRequest> findById(UUID id);

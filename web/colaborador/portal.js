@@ -559,7 +559,7 @@ function collectQuoteEditPayload() {
   const phoneDigits = whatsapp.replace(/\D/g, '');
   if (phoneDigits && (phoneDigits.length < 10 || phoneDigits.length > 13)) { setQuoteEditMessage('Informe um WhatsApp válido com DDD.'); return null; }
   if (!model) { setQuoteEditMessage('Informe o modelo do veículo.'); return null; }
-  if (!Number.isInteger(manufactureYear) || manufactureYear < 1950 || manufactureYear > 2100) { setQuoteEditMessage('Informe um ano de fabricação válido.'); return null; }
+  if (!Number.isInteger(manufactureYear) || manufactureYear < 1950 || manufactureYear > 2100) { setQuoteEditMessage('Informe um ano de modelo válido.'); return null; }
   const plateDigits = plateValue.replace(/[^A-Za-z0-9]/g, '');
   if (!zeroKm && (plateDigits.length < 7 || plateDigits.length > 10)) { setQuoteEditMessage('Informe uma placa válida.'); return null; }
   return { customerName, cpf, whatsapp, plate: plateValue, model, manufactureYear, zeroKm, observation };
@@ -695,7 +695,7 @@ function renderDashboard(data) {
     <td>${date(item.completedAt)}</td>
     <td>${badge(item.status, INSPECTION_STATUS)}</td>
     <td>${inspectionActions(item)}</td>
-    <td><div class="row-actions">${Array.isArray(item.assets) && item.assets.some(asset => asset.type === 'REPORT' && asset.available) ? `<button class="button outline small-button" data-download-report="${item.id}" type="button">Relatório</button>` : '<button class="outline small-button" type="button" disabled>Sem relatório</button>'}</div></td>
+    <td><div class="row-actions">${item.completedAt ? `<button class="button outline small-button" data-download-report="${item.id}" type="button">Relatório</button>` : '<button class="outline small-button" type="button" disabled>Sem relatório</button>'}</div></td>
     <td>${communicationCell(item)}</td>
   </tr>`).join('') || empty(9, 'Nenhuma vistoria encontrada para este consultor.');
 
@@ -821,10 +821,19 @@ async function downloadConsultantAsset(inspectionId, assetId, fileName, button) 
 }
 
 async function downloadConsultantReport(inspectionId, button) {
-  const item = (dashboardData?.inspections || []).find(value => value.id === inspectionId);
-  const report = item?.assets?.find(asset => asset.type === 'REPORT' && asset.available);
-  if (!report) return;
-  await downloadConsultantAsset(inspectionId, report.id, report.fileName || 'relatorio-vistoria.pdf', button);
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Gerando...';
+  try {
+    const blob = await apiBlob(`/api/consultant-dashboard/inspections/${inspectionId}/report`);
+    triggerConsultantDownload(blob, `relatorio-vistoria-${inspectionId}.pdf`);
+  } catch (error) {
+    message(error.message);
+    await confirmConsultantAction('Erro ao baixar relatório', error.message || 'Não foi possível gerar o relatório desta vistoria.', 'Fechar');
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
 }
 
 async function downloadAllConsultantFiles() {

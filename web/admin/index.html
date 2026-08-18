@@ -8,12 +8,13 @@
     />
     <meta name="theme-color" content="#070c40" />
     <title>Painel Administrativo NH</title>
-    <link
-      rel="icon"
-      type="image/png"
-      href="web/assets/simbolo-fundo-azul.png"
-    />
-    <link
+  <link rel="icon" type="image/png" href="/assets/simbolo-fundo-azul.png" />
+  <link rel="shortcut icon" type="image/png" href="/assets/simbolo-fundo-azul.png" />
+  <link rel="apple-touch-icon" href="/assets/simbolo-fundo-azul.png" />
+  <meta property="og:image" content="https://nhprotecao.com.br/assets/simbolo-fundo-azul.png" />
+  <meta property="og:image:type" content="image/png" />
+  <meta name="twitter:image" content="https://nhprotecao.com.br/assets/simbolo-fundo-azul.png" />
+<link
       rel="stylesheet"
       href="/shared/portal.css?v=20260817-video-legacy-v1"
     />
@@ -198,6 +199,7 @@
               <tr>
                 <th>Nome</th>
                 <th>Cargo</th>
+                <th>WhatsApp</th>
                 <th>Cotações</th>
                 <th>Retratos NH</th>
                 <th>Status</th>
@@ -313,9 +315,9 @@
           <div>
             <h2>Retrato NH</h2>
             <p>
-              Analise novas vistorias e atualizações de boleto. A exclusão
-              manual preserva as aprovadas; a limpeza automática de 40 dias
-              remove todas, inclusive as aprovadas.
+              Analise novas vistorias e atualizações de boleto. O administrador
+              pode aprovar, rejeitar ou excluir qualquer vistoria, inclusive com
+              documentos pendentes. A limpeza automática de 40 dias permanece ativa.
             </p>
           </div>
           <div class="section-head-actions">
@@ -325,7 +327,7 @@
               style="max-width: 360px"
             />
             <button id="delete-all-inspections" class="danger" type="button">
-              Excluir vistorias permitidas
+              Excluir todas as vistorias
             </button>
           </div>
         </div>
@@ -652,7 +654,11 @@
               <option value="ANALYST">Analista</option>
             </select></label
           >
+          <label id="consultant-whatsapp-wrap"
+            >WhatsApp do colaborador<input id="consultant-whatsapp" inputmode="tel" maxlength="18" placeholder="(82) 99999-9999"
+          /></label>
         </div>
+        <p id="consultant-whatsapp-help" class="helper">O Admin pode alterar este número a qualquer momento. Para consultores, ele também será usado para receber a escolha de plano e adicionais feita pelo associado no link de comparação.</p>
         <div id="consultant-active-wrap" class="form-check form-switch" hidden>
           <input
             id="consultant-active"
@@ -1201,11 +1207,11 @@
             </select></label
           >
           <label class="span-2"
-            >Observação administrativa<textarea
+            >Observação da aprovação/rejeição<textarea
               id="quote-analysis-note"
               maxlength="1200"
               rows="4"
-              placeholder="Registre a análise, pendências ou decisão."
+              placeholder="Obrigatória ao aprovar ou rejeitar: informe o motivo da decisão."
             ></textarea>
           </label>
         </div>
@@ -1274,21 +1280,25 @@
               <option value="UNDER_REVIEW">Em análise</option>
               <option value="COMPLETED">Material enviado</option>
               <option value="APPROVED">Aprovada</option>
-              <option value="REJECTED">Reprovada</option>
+              <option value="REJECTED">Rejeitada</option>
               <option value="CANCELLED">Cancelada</option>
               <option value="EXPIRED">Expirada</option>
             </select></label
           >
           <label class="span-2"
-            >Observação administrativa<textarea
+            >Observação da aprovação/rejeição<textarea
               id="inspection-analysis-note"
               maxlength="1200"
               rows="4"
-              placeholder="Registre a análise, pendências ou decisão."
+              placeholder="Obrigatória ao aprovar ou rejeitar: informe o motivo da decisão."
             ></textarea>
           </label>
         </div>
         <div id="inspection-links" class="actions"></div>
+        <div id="admin-inspection-decision-actions" class="actions" style="margin-top:18px">
+          <button id="admin-inspection-reject" class="danger" type="button">Rejeitar vistoria</button>
+          <button id="admin-inspection-approve" class="primary" type="button">Aprovar vistoria</button>
+        </div>
         <div class="actions dialog-actions">
           <button
             class="outline"
@@ -1350,7 +1360,7 @@
     <script src="/shared/config.js?v=20260804-current-origin"></script>
     <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
     <script src="/shared/money-input.js?v=20260805-brl-mask"></script>
-    <script src="/admin/admin.js?v=20260817-video-webm-v2"></script>
+    <script src="/admin/admin.js?v=20260818-admin-collaborator-whatsapp-v2"></script>
     <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
   </body>
 </html>

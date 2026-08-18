@@ -29,6 +29,9 @@ public class Consultant {
     @Column(name = "collaborator_role", nullable = false, length = 20)
     private CollaboratorRole role;
 
+    @Column(length = 30)
+    private String whatsapp;
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
@@ -76,6 +79,18 @@ public class Consultant {
         this.updatedAt = OffsetDateTime.now();
     }
 
+    public void setWhatsapp(String whatsapp) {
+        String digits = whatsapp == null ? "" : whatsapp.replaceAll("\\D", "");
+        if (!digits.isBlank()) {
+            if (digits.length() == 10 || digits.length() == 11) digits = "55" + digits;
+            if (digits.length() < 12 || digits.length() > 13 || !digits.startsWith("55")) {
+                throw new IllegalArgumentException("Informe um WhatsApp válido do colaborador, com DDD.");
+            }
+        }
+        this.whatsapp = digits.isBlank() ? null : digits;
+        this.updatedAt = OffsetDateTime.now();
+    }
+
     public void registerPortalLogin() {
         OffsetDateTime now = OffsetDateTime.now();
         this.lastPortalLoginAt = now;
@@ -106,6 +121,7 @@ public class Consultant {
     public boolean isActive() { return active; }
     public String getSource() { return source; }
     public CollaboratorRole getRole() { return role; }
+    public String getWhatsapp() { return whatsapp; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
     public OffsetDateTime getLastPortalLoginAt() { return lastPortalLoginAt; }

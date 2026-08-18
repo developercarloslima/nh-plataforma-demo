@@ -15,6 +15,7 @@ public final class PortalDtos {
             String name,
             boolean active,
             CollaboratorRole role,
+            String whatsapp,
             String source,
             OffsetDateTime createdAt,
             OffsetDateTime lastPortalLoginAt,
@@ -24,12 +25,18 @@ public final class PortalDtos {
 
     public record CreateConsultantRequest(
             @NotBlank @Size(min = 3, max = 140) String name,
-            CollaboratorRole role
+            CollaboratorRole role,
+            @Size(max = 30) String whatsapp
     ) {}
 
     public record UpdateConsultantRequest(
             @Size(min = 3, max = 140) String name,
             Boolean active,
-            CollaboratorRole role
+            CollaboratorRole role,
+            @Size(max = 30) String whatsapp
+    ) {}
+
+    public record UpdateConsultantWhatsappRequest(
+            @NotBlank @Size(max = 30) String whatsapp
     ) {}
 }

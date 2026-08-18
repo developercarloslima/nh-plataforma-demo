@@ -3,6 +3,7 @@ package br.com.nh.cotacao.controller;
 import br.com.nh.cotacao.entity.InspectionAsset;
 import br.com.nh.cotacao.security.PortalPrincipal;
 import br.com.nh.cotacao.service.InspectionAssetStorageService;
+import br.com.nh.cotacao.service.InspectionReportDownloadService;
 import br.com.nh.cotacao.service.PortalUserService;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ContentDisposition;
@@ -25,10 +26,35 @@ import java.util.UUID;
 public class InspectionAssetController {
     private final InspectionAssetStorageService storageService;
     private final PortalUserService portalUserService;
+    private final InspectionReportDownloadService reportDownloadService;
 
-    public InspectionAssetController(InspectionAssetStorageService storageService, PortalUserService portalUserService) {
+    public InspectionAssetController(InspectionAssetStorageService storageService, PortalUserService portalUserService, InspectionReportDownloadService reportDownloadService) {
         this.storageService = storageService;
         this.portalUserService = portalUserService;
+        this.reportDownloadService = reportDownloadService;
+    }
+
+
+    @GetMapping({
+            "/api/analysis/inspections/{inspectionId}/report",
+            "/api/admin/inspections/{inspectionId}/report",
+            "/api/consultant-dashboard/inspections/{inspectionId}/report"
+    })
+    public ResponseEntity<byte[]> downloadReport(
+            @PathVariable UUID inspectionId, Authentication auth, HttpServletRequest request
+    ) {
+        assertConsultantInspectionAccessIfNeeded(request, auth, inspectionId);
+        byte[] report = reportDownloadService.generate(inspectionId);
+        ContentDisposition disposition = ContentDisposition.attachment()
+                .filename("relatorio-vistoria-" + inspectionId + ".pdf", StandardCharsets.UTF_8)
+                .build();
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .contentLength(report.length)
+                .cacheControl(CacheControl.noStore().mustRevalidate())
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+                .header("X-Content-Type-Options", "nosniff")
+                .body(report);
     }
 
     @GetMapping({

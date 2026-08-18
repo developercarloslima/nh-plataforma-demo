@@ -316,7 +316,7 @@ public class InspectionRequest {
     }
 
     public void adminReview(InspectionRequestStatus newStatus, String note) {
-        adminReview(newStatus, note, null, null, null);
+        adminReview(newStatus, note, null, null, null, false);
     }
 
     public void adminReview(
@@ -326,18 +326,31 @@ public class InspectionRequest {
             String reviewerName,
             String reviewerRole
     ) {
+        adminReview(newStatus, note, reviewerCollaborator, reviewerName, reviewerRole, false);
+    }
+
+    public void adminReview(
+            InspectionRequestStatus newStatus,
+            String note,
+            Consultant reviewerCollaborator,
+            String reviewerName,
+            String reviewerRole,
+            boolean bypassCompletionRequirements
+    ) {
         if (newStatus == null) throw new IllegalArgumentException("Informe o novo status do Retrato NH.");
-        if (assets.isEmpty()
-                && newStatus != InspectionRequestStatus.WAITING_FILES
-                && newStatus != InspectionRequestStatus.CANCELLED
-                && newStatus != InspectionRequestStatus.EXPIRED) {
-            throw new IllegalArgumentException("Esta vistoria ainda não possui arquivos. Mantenha o status Aguardando arquivos.");
-        }
-        if (newStatus == InspectionRequestStatus.UNDER_REVIEW
-                || newStatus == InspectionRequestStatus.COMPLETED
-                || newStatus == InspectionRequestStatus.APPROVED
-                || newStatus == InspectionRequestStatus.REJECTED) {
-            assertStoredCompletionRequirements(true);
+        if (!bypassCompletionRequirements) {
+            if (assets.isEmpty()
+                    && newStatus != InspectionRequestStatus.WAITING_FILES
+                    && newStatus != InspectionRequestStatus.CANCELLED
+                    && newStatus != InspectionRequestStatus.EXPIRED) {
+                throw new IllegalArgumentException("Esta vistoria ainda não possui arquivos. Mantenha o status Aguardando arquivos.");
+            }
+            if (newStatus == InspectionRequestStatus.UNDER_REVIEW
+                    || newStatus == InspectionRequestStatus.COMPLETED
+                    || newStatus == InspectionRequestStatus.APPROVED
+                    || newStatus == InspectionRequestStatus.REJECTED) {
+                assertStoredCompletionRequirements(true);
+            }
         }
         InspectionRequestStatus previousStatus = this.status;
         this.status = newStatus;

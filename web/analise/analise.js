@@ -13,6 +13,7 @@ let inspections = [];
 let analysts = [];
 let currentUser = null;
 let activeDecisionCommunication = null;
+let activeAnalysisQueue = 'review';
 const mediaObjectUrls = new Set();
 
 const STATUS = {
@@ -22,7 +23,7 @@ const STATUS = {
   UNDER_REVIEW: ['Em análise', 'warn'],
   COMPLETED: ['Aguardando análise', 'warn'],
   APPROVED: ['Aprovada', 'ok'],
-  REJECTED: ['Recusada', 'off'],
+  REJECTED: ['Rejeitada', 'off'],
   CANCELLED: ['Cancelada', 'off'],
   EXPIRED: ['Expirada', 'off']
 };
@@ -61,6 +62,20 @@ function inspectionPendingCount(item) {
 
 function inspectionNeedsFiles(item) {
   return inspectionPendingCount(item) > 0;
+}
+
+const ANALYSIS_QUEUE_INFO = {
+  review: { label: 'Em análise', description: 'Vistorias com todos os arquivos necessários enviados e que ainda aguardam decisão.' },
+  approved: { label: 'Aprovadas', description: 'Vistorias que já foram aprovadas.' },
+  rejected: { label: 'Rejeitadas', description: 'Vistorias que já foram rejeitadas.' },
+  pending: { label: 'Pendentes de arquivos', description: 'Vistorias com um ou mais arquivos faltando ou com reenvio solicitado.' }
+};
+
+function inspectionQueueKey(item) {
+  if (item?.status === 'APPROVED') return 'approved';
+  if (item?.status === 'REJECTED') return 'rejected';
+  if (inspectionNeedsFiles(item)) return 'pending';
+  return 'review';
 }
 
 function badge(status) {
@@ -170,7 +185,48 @@ function showView() {
   $('logout').hidden = false;
 }
 
+function activeAnalysisDialog() {
+  const opened = [...document.querySelectorAll('dialog.admin-dialog[open]')];
+  return opened.length ? opened[opened.length - 1] : null;
+}
+
+function analysisDialogMessageElement(dialog) {
+  if (!dialog) return null;
+  let element = dialog.querySelector('[data-dialog-message]');
+  if (element) return element;
+
+  const card = dialog.querySelector('.dialog-card');
+  if (!card) return null;
+
+  element = document.createElement('div');
+  element.dataset.dialogMessage = 'true';
+  element.setAttribute('role', 'alert');
+  element.setAttribute('aria-live', 'polite');
+  const head = card.querySelector('.dialog-head');
+  if (head) head.insertAdjacentElement('afterend', element);
+  else card.prepend(element);
+  return element;
+}
+
+function clearAnalysisDialogMessage(dialog) {
+  const element = dialog?.querySelector('[data-dialog-message]');
+  if (!element) return;
+  element.className = '';
+  element.textContent = '';
+}
+
 function message(text, type = 'error') {
+  const dialog = activeAnalysisDialog();
+  if (dialog) {
+    const element = analysisDialogMessageElement(dialog);
+    if (element) {
+      element.className = `message ${type} dialog-message`;
+      element.textContent = text;
+      element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return;
+    }
+  }
+
   const element = $('message');
   element.className = `message ${type}`;
   element.textContent = text;
@@ -362,11 +418,27 @@ function queueCountLabel(total) {
 function render() {
   const filter = $('filter').value.trim().toLowerCase();
   const filtered = inspections.filter(item => inspectionMatchesFilter(item, filter));
-  const newInspections = filtered.filter(item => item.requestType === 'NEW_INSPECTION');
-  const billingUpdates = filtered.filter(item => item.requestType !== 'NEW_INSPECTION');
 
-  $('new-inspections-body').innerHTML = inspectionRows(newInspections, 'Nenhuma nova vistoria encontrada.');
-  $('billing-inspections-body').innerHTML = inspectionRows(billingUpdates, 'Nenhuma atualização de boleto encontrada.');
+  const counts = { review: 0, approved: 0, rejected: 0, pending: 0 };
+  filtered.forEach(item => { counts[inspectionQueueKey(item)] += 1; });
+  Object.entries(counts).forEach(([key, value]) => {
+    const counter = $(`analysis-tab-${key}-count`);
+    if (counter) counter.textContent = value;
+  });
+
+  document.querySelectorAll('[data-analysis-queue]').forEach(button => {
+    button.classList.toggle('active', button.dataset.analysisQueue === activeAnalysisQueue);
+    button.setAttribute('aria-pressed', button.dataset.analysisQueue === activeAnalysisQueue ? 'true' : 'false');
+  });
+  const queueInfo = ANALYSIS_QUEUE_INFO[activeAnalysisQueue] || ANALYSIS_QUEUE_INFO.review;
+  $('analysis-status-description').textContent = queueInfo.description;
+
+  const queueItems = filtered.filter(item => inspectionQueueKey(item) === activeAnalysisQueue);
+  const newInspections = queueItems.filter(item => item.requestType === 'NEW_INSPECTION');
+  const billingUpdates = queueItems.filter(item => item.requestType !== 'NEW_INSPECTION');
+
+  $('new-inspections-body').innerHTML = inspectionRows(newInspections, `Nenhuma nova vistoria em “${queueInfo.label}”.`);
+  $('billing-inspections-body').innerHTML = inspectionRows(billingUpdates, `Nenhuma atualização de boleto em “${queueInfo.label}”.`);
   $('new-inspections-count').textContent = queueCountLabel(newInspections.length);
   $('billing-inspections-count').textContent = queueCountLabel(billingUpdates.length);
 
@@ -525,7 +597,8 @@ function openInspection(id) {
     ['Arquivos disponíveis', item.assetCount],
     ['Situação dos arquivos', retentionText],
     ['Endereço', item.residenceAddress || '—'],
-    ['Responsável pela última análise', item.reviewedByName || '—']
+    ['Responsável pela última análise', item.reviewedByName || '—'],
+    ['Observação da última análise', item.adminNote || '—']
   );
 
   $('inspection-details').innerHTML = details(inspectionDetails);
@@ -551,13 +624,19 @@ function openInspection(id) {
 
   renderInspectionFiles(item);
   showNotificationButton(item);
+  $('message').className = '';
+  $('message').textContent = '';
+  clearAnalysisDialogMessage($('inspection-dialog'));
   $('inspection-dialog').showModal();
 }
 
 function renderInspectionFiles(item) {
   const section = $('inspection-files-section');
   const grid = $('inspection-files-grid');
-  const assets = Array.isArray(item.assets) ? item.assets : [];
+  const sourceAssets = Array.isArray(item.assets) ? item.assets : [];
+  const assets = item.completedAt && !sourceAssets.some(asset => asset.type === 'REPORT')
+    ? [...sourceAssets, { id: 'regenerated-report', type: 'REPORT', label: 'Relatório da vistoria', fileName: 'relatorio-vistoria.pdf', fileSize: 0, contentType: 'application/pdf', available: false }]
+    : sourceAssets;
   const available = assets.filter(asset => asset.available);
   const expired = assets.filter(asset => !asset.available && asset.purgedAt);
 
@@ -588,15 +667,21 @@ function renderInspectionFiles(item) {
     const compressionNote = legacyLargeVideo
       ? '<small class="inspection-media-note">Original preservado · download em WebM compactado automaticamente para até 10 MB.</small>'
       : '';
-    const actions = asset.available
-      ? `<div class="inspection-media-actions">${video ? `<button class="outline" data-play-video="${asset.id}" type="button">Reproduzir</button>` : ''}<button class="secondary" data-download-asset="${asset.id}" data-file-name="${esc(downloadName)}" type="button">${legacyLargeVideo ? 'Baixar WebM' : 'Baixar'}</button>${canDelete ? `<button class="danger" data-delete-asset="${asset.id}" data-file-name="${esc(title)}" type="button">Excluir / solicitar novamente</button>` : ''}</div>`
-      : '<div class="inspection-media-expired">Arquivo removido após 40 dias.</div>';
+    const canRegenerateReport = asset.type === 'REPORT' && Boolean(item.completedAt);
+    const actions = canRegenerateReport
+      ? `<div class="inspection-media-actions"><button class="secondary" data-analysis-download-report="${item.id}" type="button">Baixar relatório</button></div>`
+      : asset.available
+        ? `<div class="inspection-media-actions">${video ? `<button class="outline" data-play-video="${asset.id}" type="button">Reproduzir</button>` : ''}<button class="secondary" data-download-asset="${asset.id}" data-file-name="${esc(downloadName)}" type="button">${legacyLargeVideo ? 'Baixar WebM' : 'Baixar'}</button>${canDelete ? `<button class="danger" data-delete-asset="${asset.id}" data-file-name="${esc(title)}" type="button">Excluir / solicitar novamente</button>` : ''}</div>`
+        : `<div class="inspection-media-expired">${inspectionNeedsFiles(item) && asset.type !== 'REPORT' ? 'Arquivo excluído / aguardando reenvio.' : 'Arquivo removido após 40 dias.'}</div>`;
     return `<article class="inspection-media-card ${asset.available ? '' : 'expired'}">${preview}<div class="inspection-media-body"><strong>${esc(title)}</strong><small>${esc(asset.fileName)}</small><small>${formatBytes(asset.fileSize)} · ${esc(asset.contentType || 'arquivo')}</small>${compressionNote}${actions}</div></article>`;
   }).join('');
 
   available.filter(asset => String(asset.contentType || '').startsWith('image/')).forEach(asset => loadImagePreview(item.id, asset));
   grid.querySelectorAll('[data-download-asset]').forEach(button => {
     button.addEventListener('click', () => downloadAsset(item.id, button.dataset.downloadAsset, button.dataset.fileName, button));
+  });
+  grid.querySelectorAll('[data-analysis-download-report]').forEach(button => {
+    button.addEventListener('click', () => downloadAnalysisReport(item.id, button));
   });
   grid.querySelectorAll('[data-play-video]').forEach(button => {
     button.addEventListener('click', () => playVideo(item.id, button.dataset.playVideo, button));
@@ -689,6 +774,22 @@ async function downloadAsset(inspectionId, assetId, fileName, button) {
     triggerDownload(blob, fileName || 'arquivo-vistoria');
   } catch (error) {
     message(error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
+async function downloadAnalysisReport(inspectionId, button) {
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Gerando relatório...';
+  try {
+    const blob = await apiBlob(`/api/analysis/inspections/${inspectionId}/report`);
+    triggerDownload(blob, `relatorio-vistoria-${inspectionId}.pdf`);
+  } catch (error) {
+    message(error.message);
+    await confirmAnalysisAction('Erro ao baixar relatório', error.message || 'Não foi possível gerar o relatório desta vistoria.', 'Fechar');
   } finally {
     button.disabled = false;
     button.textContent = original;
@@ -788,8 +889,11 @@ function openDecisionCommunication(item) {
   $('decision-whatsapp-icon').classList.toggle('rejected', !approved);
   $('decision-whatsapp-text').textContent = approved
     ? `A vistoria de ${item.associateName} foi aprovada. Comunique a aprovação ao associado.`
-    : `A vistoria de ${item.associateName} foi recusada. Comunique a recusa e as orientações ao associado.`;
-  $('decision-whatsapp-details').innerHTML = `<div><span>Associado</span><strong>${esc(item.associateName)}</strong></div><div><span>Veículo</span><strong>${esc(item.plate || '0 km — sem placa')}</strong></div><div><span>Novo status</span><strong>${approved ? 'Aprovada' : 'Recusada'}</strong></div>`;
+    : `A vistoria de ${item.associateName} foi rejeitada. Comunique a rejeição e as orientações ao associado.`;
+  $('decision-whatsapp-details').innerHTML = `<div><span>Associado</span><strong>${esc(item.associateName)}</strong></div><div><span>Veículo</span><strong>${esc(item.plate || '0 km — sem placa')}</strong></div><div><span>Novo status</span><strong>${approved ? 'Aprovada' : 'Rejeitada'}</strong></div>`;
+  $('message').className = '';
+  $('message').textContent = '';
+  clearAnalysisDialogMessage($('decision-whatsapp-dialog'));
   $('decision-whatsapp-dialog').showModal();
 }
 
@@ -858,11 +962,17 @@ $('login-form').addEventListener('submit', async event => {
 });
 
 $('download-all-files').addEventListener('click', downloadAllFiles);
+document.querySelectorAll('[data-analysis-queue]').forEach(button => {
+  button.addEventListener('click', () => {
+    activeAnalysisQueue = button.dataset.analysisQueue || 'review';
+    render();
+  });
+});
 $('filter').addEventListener('input', render);
 $('refresh').addEventListener('click', () => load().catch(error => message(error.message)));
 $('close-dialog').addEventListener('click', () => { releaseMediaUrls(); $('inspection-dialog').close(); });
 $('cancel-dialog').addEventListener('click', () => { releaseMediaUrls(); $('inspection-dialog').close(); });
-$('inspection-dialog').addEventListener('close', releaseMediaUrls);
+$('inspection-dialog').addEventListener('close', () => { clearAnalysisDialogMessage($('inspection-dialog')); releaseMediaUrls(); });
 $('logout').addEventListener('click', () => showLogin());
 
 window.addEventListener('pageshow', () => {

@@ -48,6 +48,18 @@ public class ConsultantController {
         return service.registerPortalLogin(id);
     }
 
+    @PatchMapping("/{id}/whatsapp")
+    public ConsultantResponse updateWhatsapp(
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateConsultantWhatsappRequest request,
+            Authentication auth
+    ) {
+        PortalPrincipal principal = principal(auth);
+        portalUserService.assertConsultantAccess(principal.username(), principal.role(), id);
+        service.findActiveConsultant(id);
+        return service.update(id, null, null, null, request.whatsapp(), principal.username());
+    }
+
     private PortalPrincipal principal(Authentication auth) {
         return (PortalPrincipal) auth.getPrincipal();
     }

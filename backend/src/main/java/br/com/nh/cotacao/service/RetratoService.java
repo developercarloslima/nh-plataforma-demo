@@ -405,8 +405,8 @@ public class RetratoService {
     }
 
     private void validateVideoDuration(Double durationSeconds) {
-        if (durationSeconds == null || !Double.isFinite(durationSeconds) || durationSeconds < 90.0) {
-            throw new IllegalArgumentException("O vídeo deve possuir pelo menos 1 minuto e 30 segundos.");
+        if (durationSeconds == null || !Double.isFinite(durationSeconds) || durationSeconds <= 0 || durationSeconds > 90.5) {
+            throw new IllegalArgumentException("O vídeo deve possuir no máximo 1 minuto e 30 segundos.");
         }
     }
 

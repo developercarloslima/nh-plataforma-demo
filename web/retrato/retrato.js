@@ -14,7 +14,7 @@ const VEHICLE_PROFILES = {
       { label: 'Odômetro', guide: '/assets/inspection-guides/moto-07-odometro.webp' }
     ],
     videoGuide: '/assets/guia-vistoria-moto.png',
-    videoInstruction: 'Com o veículo ligado, inicie a gravação mostrando o chassi legível. Fale seu nome completo, o dia, o mês e o ano. Mostre os 4 lados da motocicleta detalhadamente, dando um giro de 360° em torno do veículo. Finalize mostrando o odômetro com o KM total. A gravação deve ter no mínimo 1 minuto e 30 segundos e será encerrada automaticamente logo após atingir esse tempo.'
+    videoInstruction: 'Com o veículo ligado, inicie a gravação mostrando o chassi legível. Fale seu nome completo, o dia, o mês e o ano. Mostre os 4 lados da motocicleta detalhadamente, dando um giro de 360° em torno do veículo. Finalize mostrando o odômetro com o KM total. A gravação deve ter no máximo 1 minuto e 30 segundos e será encerrada automaticamente ao atingir esse tempo.'
   },
   FOUR_WHEELS_OR_MORE: {
     title: 'Carro, utilitário ou veículo com 4 rodas ou mais',
@@ -36,7 +36,7 @@ const VEHICLE_PROFILES = {
       { label: 'Foto do chassi', guide: '/assets/inspection-guides/carro-15-chassi.webp' }
     ],
     videoGuide: '/assets/guia-vistoria-carro.png',
-    videoInstruction: 'Com o veículo ligado, inicie a gravação mostrando o chassi legível. Fale seu nome completo, o dia, o mês e o ano. Mostre os 4 lados do veículo detalhadamente, dando um giro de 360° em torno do veículo. Finalize abrindo a porta do motorista e mostrando o odômetro com o KM total. A gravação deve ter no mínimo 1 minuto e 30 segundos e será encerrada automaticamente logo após atingir esse tempo.'
+    videoInstruction: 'Com o veículo ligado, inicie a gravação mostrando o chassi legível. Fale seu nome completo, o dia, o mês e o ano. Mostre os 4 lados do veículo detalhadamente, dando um giro de 360° em torno do veículo. Finalize abrindo a porta do motorista e mostrando o odômetro com o KM total. A gravação deve ter no máximo 1 minuto e 30 segundos e será encerrada automaticamente ao atingir esse tempo.'
   }
 };
 
@@ -48,8 +48,8 @@ const allowedVideoTypes = new Set([
 ]);
 
 const VIDEO_MAX_BYTES = 10 * 1024 * 1024;
-const VIDEO_MIN_DURATION_SECONDS = 90;
-const VIDEO_AUTO_STOP_SECONDS = 91;
+const VIDEO_MAX_DURATION_SECONDS = 90;
+const VIDEO_AUTO_STOP_SECONDS = 90;
 const VIDEO_TARGET_VIDEO_BITRATE = 480_000;
 const VIDEO_TARGET_AUDIO_BITRATE = 32_000;
 
@@ -952,8 +952,8 @@ function startVideoRecording() {
     $('start-recording').hidden = true;
     $('resume-recording').hidden = true;
     $('stop-recording').hidden = false;
-    $('stop-recording').disabled = true;
-    $('stop-recording').textContent = 'Aguarde 01:30';
+    $('stop-recording').disabled = false;
+    $('stop-recording').textContent = 'Finalizar vídeo';
     $('cancel-camera').textContent = 'Cancelar gravação';
     $('recording-paused-banner').hidden = true;
     $('recording-indicator').hidden = false;
@@ -967,14 +967,6 @@ function startVideoRecording() {
 
 function stopVideoRecording() {
   if (mediaRecorder?.state !== 'recording') {
-    return;
-  }
-
-  const elapsedSeconds = getRecordedDurationSeconds();
-
-  if (elapsedSeconds < VIDEO_MIN_DURATION_SECONDS) {
-    const remaining = Math.max(1, Math.ceil(VIDEO_MIN_DURATION_SECONDS - elapsedSeconds));
-    msg(`O vídeo precisa ter pelo menos 1 minuto e 30 segundos. Aguarde mais ${remaining} segundo${remaining === 1 ? '' : 's'}.`);
     return;
   }
 
@@ -1031,13 +1023,13 @@ function finishVideoRecording() {
     return;
   }
 
-  if (measuredDurationSeconds < VIDEO_MIN_DURATION_SECONDS) {
+  if (measuredDurationSeconds > VIDEO_MAX_DURATION_SECONDS + 0.5) {
     mediaRecorder = null;
     recordedChunks = [];
     recordedVideoBytes = 0;
     videoDurationSeconds = null;
     resetRecordingClock();
-    handleCameraError(new Error('O vídeo precisa ter pelo menos 1 minuto e 30 segundos de gravação efetiva. Períodos em que a câmera ficou pausada não contam.'));
+    handleCameraError(new Error('O vídeo deve ter no máximo 1 minuto e 30 segundos. Grave novamente.'));
     return;
   }
 
@@ -1062,7 +1054,7 @@ function finishVideoRecording() {
     recordedVideoBytes = 0;
     videoDurationSeconds = null;
     resetRecordingClock();
-    handleCameraError(new Error(`Este aparelho gerou um vídeo de ${formatBytes(blob.size)}, acima do limite de 10 MB. Grave novamente; o sistema usará a configuração compactada obrigatória de 1min30s.`));
+    handleCameraError(new Error(`Este aparelho gerou um vídeo de ${formatBytes(blob.size)}, acima do limite de 10 MB. Grave novamente; o sistema usará a configuração compactada com duração máxima de 1min30s.`));
     return;
   }
 
@@ -1213,7 +1205,7 @@ async function resumeVideoRecording() {
       recordingMustRestart = false;
 
       await openVideoCamera();
-      msg('A câmera foi encerrada pelo aparelho. A gravação foi reiniciada do início para garantir o vídeo completo de 1min30s.', 'success');
+      msg('A câmera foi encerrada pelo aparelho. A gravação foi reiniciada do início para garantir um vídeo íntegro.', 'success');
       startVideoRecording();
       return;
     }
@@ -1364,11 +1356,8 @@ function updateRecordingTimer() {
   $('recording-time').textContent = `${minutes}:${seconds}`;
 
   const stopButton = $('stop-recording');
-  const remaining = Math.max(0, Math.ceil(VIDEO_MIN_DURATION_SECONDS - elapsed));
-  stopButton.disabled = elapsed < VIDEO_MIN_DURATION_SECONDS;
-  stopButton.textContent = remaining > 0
-    ? `Aguarde ${String(Math.floor(remaining / 60)).padStart(2, '0')}:${String(remaining % 60).padStart(2, '0')}`
-    : 'Finalizando vídeo...';
+  stopButton.disabled = false;
+  stopButton.textContent = elapsed >= VIDEO_AUTO_STOP_SECONDS ? 'Finalizando vídeo...' : 'Finalizar vídeo';
 
   if (elapsed >= VIDEO_AUTO_STOP_SECONDS && mediaRecorder?.state === 'recording') {
     recordingStopRequested = true;
@@ -1748,8 +1737,8 @@ $('upload-form').addEventListener('submit', async (event) => {
       $('record-video').focus();
       return;
     }
-    if (videoDurationSeconds < VIDEO_MIN_DURATION_SECONDS) {
-      msg(`O vídeo precisa ter pelo menos 1 minuto e 30 segundos. O vídeo atual possui ${Math.floor(videoDurationSeconds)} segundos.`);
+    if (videoDurationSeconds > VIDEO_MAX_DURATION_SECONDS + 0.5) {
+      msg(`O vídeo deve ter no máximo 1 minuto e 30 segundos. O vídeo atual possui ${Math.floor(videoDurationSeconds)} segundos.`);
       $('record-video').focus();
       return;
     }
@@ -2100,9 +2089,10 @@ document.addEventListener('visibilitychange', () => {
       scheduleDraftSave(0, 'Rascunho atualizado neste aparelho.');
     }
 
-    if (captureMode === 'video' && mediaRecorder && !discardRecording && !recordingStopRequested) {
-      pauseVideoRecordingForInterruption('A tela foi bloqueada ou o navegador ficou em segundo plano. Desbloqueie o aparelho e toque em “Retomar gravação”.');
-    }
+    // Não pausamos a gravação apenas porque a página ficou oculta. Em aparelhos/navegadores
+    // que permitem a câmera em segundo plano, o MediaRecorder pode continuar normalmente.
+    // Quando o sistema operacional realmente suspender a câmera, os eventos pause/mute/ended
+    // abaixo acionam a tela de “Retomar gravação”. O Wake Lock é a primeira linha de defesa.
     return;
   }
 

@@ -5,8 +5,13 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#070c40">
   <title>Equipe de Análise | Novo Horizonte</title>
-  <link rel="icon" type="image/png" href="web/assets/simbolo-fundo-azul.png" />
-  <link rel="stylesheet" href="/shared/portal.css?v=20260817-video-legacy-v1">
+  <link rel="icon" type="image/png" href="/assets/simbolo-fundo-azul.png" />
+  <link rel="shortcut icon" type="image/png" href="/assets/simbolo-fundo-azul.png" />
+  <link rel="apple-touch-icon" href="/assets/simbolo-fundo-azul.png" />
+  <meta property="og:image" content="https://nhprotecao.com.br/assets/simbolo-fundo-azul.png" />
+  <meta property="og:image:type" content="image/png" />
+  <meta name="twitter:image" content="https://nhprotecao.com.br/assets/simbolo-fundo-azul.png" />
+<link rel="stylesheet" href="/shared/portal.css?v=20260818-analysis-tabs-v2">
   <link rel="stylesheet" href="/shared/responsive.css?v=20260807-responsive-audit-v4">
   <link rel="stylesheet" href="/shared/brand-system.css?v=20260807-modals-v5">
 </head>
@@ -34,14 +39,22 @@
   <section class="hero-panel">
     <span class="eyebrow">RETRATO NH</span>
     <h1>Análise de vistorias</h1>
-    <p>Confira os materiais enviados, atualize o status e informe o associado quando a vistoria for aprovada ou recusada.</p>
+    <p>Confira os materiais enviados, atualize o status e informe o associado quando a vistoria for aprovada ou rejeitada.</p>
   </section>
   <div id="message" aria-live="polite"></div>
   <section class="analysis-queues" style="margin-top:22px">
     <div class="section-head analysis-queues-head">
-      <div><h2>Vistorias recebidas</h2><p>As solicitações mais recentes aparecem primeiro e estão separadas pelo tipo de atendimento.</p></div>
+      <div><h2>Vistorias recebidas</h2><p>Use as abas para separar o fluxo por situação dos arquivos e pela decisão da análise.</p></div>
       <div class="actions analysis-filter-actions" style="margin-top:0"><input id="filter" placeholder="Buscar associado, placa, consultor ou analista"><button id="refresh" class="outline" type="button">Atualizar</button></div>
     </div>
+
+    <nav id="analysis-status-tabs" class="analysis-status-tabs" aria-label="Situação das vistorias">
+      <button type="button" class="analysis-status-tab active" data-analysis-queue="review">Em análise <span id="analysis-tab-review-count">0</span></button>
+      <button type="button" class="analysis-status-tab" data-analysis-queue="approved">Aprovadas <span id="analysis-tab-approved-count">0</span></button>
+      <button type="button" class="analysis-status-tab" data-analysis-queue="rejected">Rejeitadas <span id="analysis-tab-rejected-count">0</span></button>
+      <button type="button" class="analysis-status-tab" data-analysis-queue="pending">Pendentes de arquivos <span id="analysis-tab-pending-count">0</span></button>
+    </nav>
+    <p id="analysis-status-description" class="analysis-status-description">Vistorias com todos os arquivos necessários enviados e que ainda aguardam decisão.</p>
 
     <article class="card analysis-queue-card">
       <div class="analysis-queue-title">
@@ -107,11 +120,11 @@
         <option value="COMPLETED">Aguardando análise</option>
         <option value="UNDER_REVIEW">Em análise</option>
         <option value="APPROVED">Aprovada</option>
-        <option value="REJECTED">Recusada</option>
+        <option value="REJECTED">Rejeitada</option>
         <option value="CANCELLED">Cancelada</option>
         <option value="EXPIRED">Expirada</option>
       </select></label>
-      <label class="span-2">Observação da análise<textarea id="inspection-note" maxlength="1200" rows="4" placeholder="Informe pendências, motivo da recusa ou orientações."></textarea></label>
+      <label class="span-2">Observação da análise<textarea id="inspection-note" maxlength="1200" rows="4" placeholder="Informe pendências, motivo da rejeição ou orientações."></textarea></label>
     </div>
     <div id="inspection-links" class="actions"></div>
     <div id="associate-notification" class="message success" hidden>
@@ -152,7 +165,7 @@
 
 <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
-<script src="/analise/analise.js?v=20260817-video-webm-v2"></script>
+<script src="/analise/analise.js?v=20260818-dialog-errors-v1"></script>
 <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
 </body>
 </html>

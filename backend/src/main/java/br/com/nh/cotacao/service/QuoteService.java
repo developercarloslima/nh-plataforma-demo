@@ -128,7 +128,7 @@ public class QuoteService {
                 selection.pricing().mandatoryFeeDescription()
         );
         quotation.configureBillingDueDate(request.firstBillingDueDate());
-        applyCatalogSnapshot(quotation, selection.plan(), selection.optionals());
+        applyCatalogSnapshot(quotation, selection.plan(), selection.optionals(), request.discountPercent());
         quotation.applyDiscount(request.discountPercent(), request.rearWindowBranding());
         return toResponse(quotationRepository.save(quotation));
     }
@@ -184,7 +184,7 @@ public class QuoteService {
                 selection.pricing().mandatoryFeeDescription()
         );
         quotation.configureBillingDueDate(request.firstBillingDueDate());
-        applyCatalogSnapshot(quotation, selection.plan(), selection.optionals());
+        applyCatalogSnapshot(quotation, selection.plan(), selection.optionals(), 0);
         return toResponse(quotationRepository.save(quotation));
     }
 
@@ -244,7 +244,7 @@ public class QuoteService {
                 selection.pricing().mandatoryFeeDescription()
         );
         recreated.configureBillingDueDate(resolveBillingDueDateForRecreatedQuote(recreated, source.getBillingDueDay()));
-        applyCatalogSnapshot(recreated, selection.plan(), selection.optionals());
+        applyCatalogSnapshot(recreated, selection.plan(), selection.optionals(), source.getDiscountPercent());
         recreated.applyDiscount(source.getDiscountPercent(), source.getRearWindowBranding());
         return quotationRepository.save(recreated);
     }
@@ -375,11 +375,11 @@ public class QuoteService {
         return new PlanSelection(selectedPlan, pricing, optionals);
     }
 
-    private void applyCatalogSnapshot(Quotation quotation, Plan selectedPlan, List<PlanCoverage> selectedOptionals) {
+    private void applyCatalogSnapshot(Quotation quotation, Plan selectedPlan, List<PlanCoverage> selectedOptionals, Integer discountPercent) {
         selectedOptionals.forEach(item -> quotation.addOptional(
                 item.getCoverage().getCode(),
                 item.getCoverage().getName(),
-                item.getDetail(),
+                coverageDetailForDiscount(item.getCoverage().getCode(), item.getDetail(), discountPercent),
                 item.getMonthlyPrice()
         ));
 
@@ -389,10 +389,30 @@ public class QuoteService {
                         item.getCoverage().getCode(),
                         item.getCoverage().getName(),
                         item.getStatus(),
-                        item.getDetail(),
+                        coverageDetailForDiscount(item.getCoverage().getCode(), item.getDetail(), discountPercent),
                         item.getMonthlyPrice(),
                         item.getSortOrder()
                 ));
+    }
+
+    private String coverageDetailForDiscount(String coverageCode, String detail, Integer discountPercent) {
+        if (detail == null || detail.isBlank() || discountPercent == null || discountPercent <= 0) return detail;
+        String code = coverageCode == null ? "" : coverageCode.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!"THIRD_PARTY".equals(code) && !"THIRD_PARTY_BASE".equals(code)) return detail;
+
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("R\\$\\s*(100|50|35|10)\\s*mil", java.util.regex.Pattern.CASE_INSENSITIVE)
+                .matcher(detail);
+        return matcher.replaceAll(match -> {
+            String adjusted = switch (match.group(1)) {
+                case "100" -> "50";
+                case "50" -> "35";
+                case "35" -> "20";
+                case "10" -> "7";
+                default -> match.group(1);
+            };
+            return java.util.regex.Matcher.quoteReplacement("R$ " + adjusted + " mil");
+        });
     }
 
     @Transactional(readOnly = true)
