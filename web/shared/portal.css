@@ -1001,3 +1001,88 @@ button:focus-visible,
   .coverage-rules-head button, #add-coverage-rule { width:100%; justify-self:stretch; }
   .coverage-rule-row { grid-template-columns:1fr; }
 }
+
+
+/* Responsividade global reforçada - portal e áreas internas */
+.portal-header{
+  flex-wrap:wrap;
+}
+.header-actions{
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+.header-actions a,
+.header-actions button{
+  min-height:42px;
+  text-align:center;
+  white-space:nowrap;
+}
+.table-wrap{max-width:100%;}
+@media (max-width: 1024px){
+  .portal-header{
+    padding:12px 18px;
+    align-items:center;
+  }
+  .portal-brand{
+    min-width:0;
+    flex:1 1 220px;
+  }
+  .header-actions{
+    flex:999 1 100%;
+    justify-content:flex-start;
+  }
+}
+@media (max-width: 820px){
+  .shell{width:min(100%,calc(100% - 24px));margin:22px auto 56px;}
+  .card{padding:18px; border-radius:18px;}
+  .hero-panel{padding:22px 18px; border-radius:20px;}
+  .hero-panel h1{font-size:clamp(26px,8vw,40px);}
+  .header-actions{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    width:100%;
+    gap:10px;
+  }
+  .header-actions a,
+  .header-actions button{
+    width:100%;
+    min-width:0;
+    white-space:normal;
+    padding:10px 12px;
+    font-size:13px;
+    line-height:1.2;
+  }
+  .portal-brand{
+    justify-content:center;
+    flex:1 1 100%;
+  }
+  .portal-brand span{display:block; min-width:0;}
+  .portal-brand strong{font-size:15px;}
+  .portal-brand small{font-size:12px;}
+  .section-head{align-items:stretch;}
+  .section-head > *{width:100%;}
+  .actions{display:grid; grid-template-columns:1fr;}
+  .actions > *{width:100%;}
+  .admin-tabs{display:grid; grid-template-columns:repeat(2,minmax(0,1fr));}
+  .admin-tabs button{width:100%;}
+}
+@media (max-width: 520px){
+  .portal-header{padding:10px 12px; gap:12px;}
+  .portal-brand img{width:42px; height:42px;}
+  .portal-brand strong{font-size:14px;}
+  .portal-brand small{font-size:11px;}
+  .header-actions{grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px;}
+  .header-actions a,
+  .header-actions button{
+    font-size:12px;
+    border-radius:16px;
+    padding:9px 10px;
+  }
+  .tool-grid,.upload-grid,.kpi-grid,.form-grid{grid-template-columns:1fr;}
+  .span-2{grid-column:auto;}
+  .table-wrap{border-radius:12px;}
+}
+@media (max-width: 340px){
+  .header-actions{grid-template-columns:1fr;}
+  .portal-brand{justify-content:center;}
+}
