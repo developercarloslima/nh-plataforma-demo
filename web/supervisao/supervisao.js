@@ -65,12 +65,14 @@ function inspectionNeedsFiles(item) {
 }
 
 const ANALYSIS_QUEUE_INFO = {
-  review: { label: 'Para cadastro', description: 'Vistorias dos consultores vinculados a você que aguardam conferência e a marcação “Cadastro feito”.' },
-  pending: { label: 'Pendências de vistoria', description: 'Vistorias devolvidas pela supervisão ou com arquivos faltando/reenvio solicitado.' }
+  review: { label: 'Aguardando supervisão', description: 'Vistorias marcadas como Cadastro feito pelos analistas e que aguardam sua decisão.' },
+  approved: { label: 'Aprovadas', description: 'Vistorias já aprovadas pela Supervisão de Análise.' },
+  rejected: { label: 'Rejeitadas', description: 'Vistorias já rejeitadas pela Supervisão de Análise.' }
 };
 
 function inspectionQueueKey(item) {
-  if (item?.analysisStage === 'ANALYST_PENDING' || inspectionNeedsFiles(item)) return 'pending';
+  if (item?.status === 'APPROVED') return 'approved';
+  if (item?.status === 'REJECTED') return 'rejected';
   return 'review';
 }
 
@@ -188,7 +190,7 @@ function showView() {
   const rawName = currentUser?.consultantName || currentUser?.displayName || currentUser?.username || 'Analista';
   const name = collaboratorDisplayName(rawName);
   if ($('analysis-welcome-title')) $('analysis-welcome-title').textContent = `Olá, ${name}`;
-  if ($('analysis-welcome-text')) $('analysis-welcome-text').textContent = 'Bem-vindo, seu painel de Analista está pronto e atualizado.';
+  if ($('analysis-welcome-text')) $('analysis-welcome-text').textContent = 'Bem-vindo, seu painel de Supervisão de Análise está pronto e atualizado.';
 }
 
 function activeAnalysisDialog() {
@@ -348,8 +350,11 @@ async function boot() {
     currentUser = me;
     localStorage.setItem(ROLE_KEY, me.role);
     if (me.role === 'ADMIN') { location.replace('/admin/'); return; }
-    if (me.role === 'SUPERVISION_ANALYSIS') { location.replace('/supervisao/'); return; }
-    if (me.role !== 'ANALYST') { location.replace('/colaborador/'); return; }
+    if (me.role !== 'SUPERVISION_ANALYSIS') {
+      if (me.role === 'ANALYST') location.replace('/analise/');
+      else location.replace('/colaborador/');
+      return;
+    }
     showView();
     if (me.passwordChangeRequired) { openFirstPasswordDialog(); return; }
     await load();
@@ -362,10 +367,8 @@ async function load() {
   const button = $('refresh');
   button.disabled = true;
   try {
-    [inspections, analysts] = await Promise.all([
-      api('/api/analysis/inspections'),
-      api('/api/analysis/inspections/analysts')
-    ]);
+    inspections = await api('/api/supervision/inspections');
+    analysts = [];
     render();
   } finally {
     button.disabled = false;
@@ -396,7 +399,7 @@ function inspectionRows(items, emptyMessage) {
       ? `<button class="outline small-button" data-analyze="${item.id}" type="button">Ver documentos enviados</button>`
       : '';
     const pendingActions = needsFiles
-      ? `${actionLink(item.associateInspectionWhatsappUrl, partialResubmission ? 'Enviar ao associado' : 'Enviar link ao associado', 'secondary')}${actionLink(item.consultantInspectionWhatsappUrl, 'Enviar ao consultor', 'outline')}${actionLink(currentPublicUrl, partialResubmission ? 'Abrir pendências' : 'Abrir vistoria')}`
+      ? `${actionLink(item.associateInspectionWhatsappUrl, partialResubmission ? 'Enviar pendências' : 'Enviar link', 'secondary')}${actionLink(currentPublicUrl, partialResubmission ? 'Refazer pendências' : 'Fazer vistoria')}`
       : '';
 
     return `<tr>
@@ -421,7 +424,7 @@ function render() {
   const filter = $('filter').value.trim().toLowerCase();
   const filtered = inspections.filter(item => inspectionMatchesFilter(item, filter));
 
-  const counts = { review: 0, pending: 0 };
+  const counts = { review: 0, approved: 0, rejected: 0 };
   filtered.forEach(item => { counts[inspectionQueueKey(item)] += 1; });
   Object.entries(counts).forEach(([key, value]) => {
     const counter = $(`analysis-tab-${key}-count`);
@@ -471,66 +474,14 @@ function syncNewAnalystInput() {
 }
 
 function populateAnalystReviewer(item) {
-  const select = $('inspection-analyst');
-  const helper = $('inspection-analyst-helper');
-  const linkedId = currentUser?.role === 'ANALYST' ? currentUser?.consultantId : null;
-  const linkedName = currentUser?.role === 'ANALYST' ? currentUser?.consultantName : null;
-
-  if (linkedId) {
-    select.innerHTML = `<option value="${esc(linkedId)}">${esc(linkedName || 'Analista vinculado')}</option>`;
-    select.value = linkedId;
-    select.disabled = true;
-    helper.textContent = `Login identificado como ${linkedName || 'analista vinculado'}. Este nome ficará registrado na análise.`;
-    $('inspection-new-analyst-wrap').hidden = true;
-    $('inspection-new-analyst-name').required = false;
-    return;
-  }
-
-  select.disabled = false;
-  const options = ['<option value="">Selecione o analista responsável</option>'];
-  analysts.filter(item => item.active && item.role === 'ANALYST').forEach(analyst => {
-    options.push(`<option value="${analyst.id}">${esc(analyst.name)}</option>`);
-  });
-  options.push('<option value="__NEW__">+ Cadastrar novo analista</option>');
-  select.innerHTML = options.join('');
-
-  const previousId = item?.reviewedByRole === 'ANALYST' ? item.reviewedByCollaboratorId : null;
-  if (previousId && analysts.some(analyst => analyst.id === previousId && analyst.active)) {
-    select.value = previousId;
-  } else if (!analysts.some(analyst => analyst.active && analyst.role === 'ANALYST')) {
-    select.value = '__NEW__';
-  } else {
-    select.value = '';
-  }
-  helper.textContent = 'Selecione quem está realizando a análise. Se o nome não existir, cadastre-o aqui e ele será incluído automaticamente em Colaboradores como Analista.';
-  syncNewAnalystInput();
+  const wrap = $('inspection-analyst-wrap');
+  if (wrap) wrap.hidden = true;
 }
 
 function configureStatusOptions(item) {
   const select = $('inspection-status');
-  const filesAvailable = hasFiles(item);
-  const readyForAnalysis = filesAvailable
-    && Boolean(item.completedAt)
-    && Array.isArray(item.assets)
-    && item.assets.some(asset => asset.type === 'REPORT' && asset.available);
-  const allowedWhileWaiting = new Set(['WAITING_FILES', 'UPLOADING_FILES', 'CANCELLED', 'EXPIRED']);
-
-  Array.from(select.options).forEach(option => {
-    option.disabled = ['APPROVED', 'REJECTED'].includes(option.value)
-      || (!readyForAnalysis && !allowedWhileWaiting.has(option.value));
-  });
-
-  if (!filesAvailable) {
-    select.value = item.status === 'CANCELLED' || item.status === 'EXPIRED'
-      ? item.status
-      : 'WAITING_FILES';
-  } else if (!readyForAnalysis) {
-    select.value = item.status === 'CANCELLED' || item.status === 'EXPIRED'
-      ? item.status
-      : 'UPLOADING_FILES';
-  } else {
-    select.value = item.status;
-  }
+  if (item?.status === 'APPROVED' || item?.status === 'REJECTED') select.value = item.status;
+  else select.value = '';
 }
 
 function openInspection(id) {
@@ -572,7 +523,8 @@ function openInspection(id) {
     ['WhatsApp', formatPhone(item.whatsapp) || '—'],
     ['Consultor', item.consultantName],
     ['Analista responsável', item.assignedAnalystName || currentUser?.consultantName || '—'],
-    ['Etapa', item.analysisStage === 'ANALYST_PENDING' ? 'Pendência devolvida pela supervisão' : 'Cadastro em andamento'],
+    ['Cadastro feito por', item.registrationCompletedByName || item.assignedAnalystName || '—'],
+    ['Etapa', item.status === 'APPROVED' ? 'Aprovada' : item.status === 'REJECTED' ? 'Rejeitada' : 'Aguardando decisão da supervisão'],
     ['Placa', item.plate || '0 km — sem placa'],
     ['Tipo', item.requestType === 'NEW_INSPECTION' ? 'Nova vistoria' : 'Atualização de boleto']
   ];
@@ -621,8 +573,7 @@ function openInspection(id) {
   }
 
   $('inspection-links').innerHTML = links([
-    [needsFiles ? item.associateInspectionWhatsappUrl : null, filesAvailable ? 'Enviar pendências ao associado' : 'Enviar link ao associado', 'secondary'],
-    [needsFiles ? item.consultantInspectionWhatsappUrl : null, 'Enviar pendências ao consultor', 'outline'],
+    [needsFiles ? item.associateInspectionWhatsappUrl : null, filesAvailable ? 'Enviar link para refazer pendências' : 'Enviar link ao associado', 'secondary'],
     [currentPublicUrl, needsFiles && filesAvailable ? 'Abrir link das pendências' : 'Abrir link da vistoria'],
     [item.requestType === 'NEW_INSPECTION' ? item.quotationPdfUrl : null, 'Ver PDF da cotação'],
     [!filesAvailable ? item.teamWhatsappUrl : null, 'Comunicar equipe pelo WhatsApp']
@@ -677,7 +628,7 @@ function renderInspectionFiles(item) {
     const actions = canRegenerateReport
       ? `<div class="inspection-media-actions"><button class="secondary" data-analysis-download-report="${item.id}" type="button">Baixar relatório</button></div>`
       : asset.available
-        ? `<div class="inspection-media-actions">${video ? `<button class="outline" data-play-video="${asset.id}" type="button">Reproduzir</button>` : ''}<button class="secondary" data-download-asset="${asset.id}" data-file-name="${esc(downloadName)}" type="button">${legacyLargeVideo ? 'Baixar WebM' : 'Baixar'}</button>${canDelete ? `<button class="danger" data-delete-asset="${asset.id}" data-file-name="${esc(title)}" type="button">Excluir / solicitar novamente</button>` : ''}</div>`
+        ? `<div class="inspection-media-actions">${video ? `<button class="outline" data-play-video="${asset.id}" type="button">Reproduzir</button>` : ''}<button class="secondary" data-download-asset="${asset.id}" data-file-name="${esc(downloadName)}" type="button">${legacyLargeVideo ? 'Baixar WebM' : 'Baixar'}</button>${canDelete ? `<button class="danger" data-delete-asset="${asset.id}" data-file-name="${esc(title)}" type="button">Reprovar arquivo</button>` : ''}</div>`
         : `<div class="inspection-media-expired">${inspectionNeedsFiles(item) && asset.type !== 'REPORT' ? 'Arquivo excluído / aguardando reenvio.' : 'Arquivo removido após 40 dias.'}</div>`;
     return `<article class="inspection-media-card ${asset.available ? '' : 'expired'}">${preview}<div class="inspection-media-body"><strong>${esc(title)}</strong><small>${esc(asset.fileName)}</small><small>${formatBytes(asset.fileSize)} · ${esc(asset.contentType || 'arquivo')}</small>${compressionNote}${actions}</div></article>`;
   }).join('');
@@ -701,9 +652,9 @@ function renderInspectionFiles(item) {
 
 async function deleteInspectionAsset(inspectionId, assetId, label, button) {
   const confirmed = await confirmAnalysisAction(
-    'Excluir arquivo da vistoria?',
-    `O arquivo “${label}” será excluído. Os demais arquivos aceitos serão mantidos e o mesmo link da vistoria passará a pedir somente esta pendência (e qualquer outra que estiver faltando).`,
-    'Excluir e solicitar novamente'
+    'Reprovar este arquivo?',
+    `O arquivo “${label}” será reprovado e removido do envio atual. A vistoria voltará automaticamente para o mesmo analista na aba Pendências de vistoria.`,
+    'Reprovar arquivo'
   );
   if (!confirmed) return;
 
@@ -712,13 +663,13 @@ async function deleteInspectionAsset(inspectionId, assetId, label, button) {
   const original = button.textContent;
   button.textContent = 'Excluindo...';
   try {
-    await api(`/api/analysis/inspections/${encodeURIComponent(inspectionId)}/assets/${encodeURIComponent(assetId)}`, { method: 'DELETE' });
+    await api(`/api/supervision/inspections/${encodeURIComponent(inspectionId)}/assets/${encodeURIComponent(assetId)}`, { method: 'DELETE' });
     releaseMediaUrls();
     if (dialog.open) dialog.close();
     await load();
     const updated = inspections.find(item => item.id === inspectionId);
     if (updated) openInspection(inspectionId);
-    message('Arquivo excluído. A vistoria foi reaberta e o link agora pede somente os arquivos pendentes.', 'success');
+    message('Arquivo reprovado. A vistoria voltou para o analista responsável na aba Pendências de vistoria.', 'success');
   } catch (error) {
     message(error.message);
     button.disabled = false;
@@ -731,7 +682,7 @@ async function loadImagePreview(inspectionId, asset) {
   if (!image) return;
   const loading = image.parentElement.querySelector('.inspection-media-loading');
   try {
-    const blob = await apiBlob(`/api/analysis/inspections/${inspectionId}/assets/${asset.id}`);
+    const blob = await apiBlob(`/api/supervision/inspections/${inspectionId}/assets/${asset.id}`);
     const url = URL.createObjectURL(blob);
     mediaObjectUrls.add(url);
     image.src = url;
@@ -748,7 +699,7 @@ async function playVideo(inspectionId, assetId, button) {
   button.disabled = true;
   button.textContent = 'Carregando...';
   try {
-    const blob = await apiBlob(`/api/analysis/inspections/${inspectionId}/assets/${assetId}`);
+    const blob = await apiBlob(`/api/supervision/inspections/${inspectionId}/assets/${assetId}`);
     const url = URL.createObjectURL(blob);
     mediaObjectUrls.add(url);
     video.src = url;
@@ -776,7 +727,7 @@ async function downloadAsset(inspectionId, assetId, fileName, button) {
   button.disabled = true;
   button.textContent = 'Baixando...';
   try {
-    const blob = await apiBlob(`/api/analysis/inspections/${inspectionId}/assets/${assetId}?download=true`);
+    const blob = await apiBlob(`/api/supervision/inspections/${inspectionId}/assets/${assetId}?download=true`);
     triggerDownload(blob, fileName || 'arquivo-vistoria');
   } catch (error) {
     message(error.message);
@@ -791,7 +742,7 @@ async function downloadAnalysisReport(inspectionId, button) {
   button.disabled = true;
   button.textContent = 'Gerando relatório...';
   try {
-    const blob = await apiBlob(`/api/analysis/inspections/${inspectionId}/report`);
+    const blob = await apiBlob(`/api/supervision/inspections/${inspectionId}/report`);
     triggerDownload(blob, `relatorio-vistoria-${inspectionId}.pdf`);
   } catch (error) {
     message(error.message);
@@ -820,7 +771,7 @@ async function downloadAllFiles() {
   button.disabled = true;
   button.textContent = 'Preparando pacote...';
   try {
-    const blob = await apiBlob(`/api/analysis/inspections/${id}/assets.zip`);
+    const blob = await apiBlob(`/api/supervision/inspections/${id}/assets.zip`);
     triggerDownload(blob, `arquivos-vistoria-${id}.zip`);
   } catch (error) {
     message(error.message);
@@ -845,76 +796,27 @@ function showNotificationButton(item) {
   }
 }
 
-$('registration-complete').addEventListener('click', async () => {
-  const id = $('inspection-id').value;
-  const item = inspections.find(value => value.id === id);
-  if (!item) return;
-  if (inspectionNeedsFiles(item)) {
-    return message('Ainda existem arquivos pendentes. Conclua o envio antes de marcar Cadastro feito.');
-  }
-  const confirmed = await confirmAnalysisAction(
-    'Marcar Cadastro feito?',
-    'A vistoria sairá do seu painel e será enviada para a Supervisão de Análise. Se a supervisão reprovar alguma imagem ou vídeo, ela voltará para sua aba Pendências de vistoria.',
-    'Cadastro feito'
-  );
-  if (!confirmed) return;
-  const button = $('registration-complete');
-  button.disabled = true;
-  try {
-    await api(`/api/analysis/inspections/${encodeURIComponent(id)}/registration-complete`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ note: $('inspection-note').value.trim() })
-    });
-    $('inspection-dialog').close();
-    await load();
-    message('Cadastro concluído. A vistoria foi encaminhada para a Supervisão de Análise.', 'success');
-  } catch (error) {
-    message(error.message);
-  } finally {
-    button.disabled = false;
-  }
-});
-
 $('inspection-form').addEventListener('submit', async event => {
   event.preventDefault();
   const id = $('inspection-id').value;
+  const status = $('inspection-status').value;
+  const note = $('inspection-note').value.trim();
+  if (!['APPROVED', 'REJECTED'].includes(status)) return message('Selecione Aprovar ou Rejeitar vistoria.');
+  if (!note) return message('Informe na observação por que esta vistoria está sendo aprovada ou rejeitada.');
   try {
-    const analystChoice = $('inspection-analyst').value;
-    const payload = {
-      status: $('inspection-status').value,
-      adminNote: $('inspection-note').value.trim()
-    };
-    if (currentUser?.consultantId) {
-      payload.analystId = currentUser.consultantId;
-    } else if (analystChoice === '__NEW__') {
-      payload.analystName = $('inspection-new-analyst-name').value.trim();
-      if (!payload.analystName) return message('Informe o nome do analista responsável.');
-    } else if (analystChoice) {
-      payload.analystId = analystChoice;
-    } else {
-      return message('Selecione o analista responsável pela análise.');
-    }
-
-    const updated = await api(`/api/analysis/inspections/${id}/status`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+    const updated = await api(`/api/supervision/inspections/${id}/status`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, adminNote: note })
     });
     const index = inspections.findIndex(item => item.id === updated.id);
     if (index >= 0) inspections[index] = updated;
-    if (payload.analystName) {
-      analysts = await api('/api/analysis/inspections/analysts');
-    }
     render();
-    showNotificationButton(updated);
-    message('Análise salva com sucesso.', 'success');
+    message('Decisão da supervisão salva com sucesso.', 'success');
     if (updated.associateDecisionWhatsappUrl && updated.associateDecisionMessagePending) {
       $('inspection-dialog').close();
       openDecisionCommunication(updated);
     }
-  } catch (error) {
-    message(error.message);
-  }
+  } catch (error) { message(error.message); }
 });
 
 function openDecisionCommunication(item) {
@@ -941,7 +843,7 @@ async function sendDecisionCommunication() {
   button.disabled = true;
   button.textContent = 'Registrando...';
   try {
-    const updated = await api(`/api/analysis/inspections/${encodeURIComponent(item.id)}/decision-message-sent`, { method: 'POST' });
+    const updated = await api(`/api/supervision/inspections/${encodeURIComponent(item.id)}/decision-message-sent`, { method: 'POST' });
     const index = inspections.findIndex(value => value.id === updated.id);
     if (index >= 0) inspections[index] = updated;
     $('decision-whatsapp-dialog').close();
@@ -956,7 +858,7 @@ async function sendDecisionCommunication() {
   }
 }
 
-$('inspection-analyst').addEventListener('change', syncNewAnalystInput);
+$('inspection-analyst')?.addEventListener('change', syncNewAnalystInput);
 $('notify-associate').addEventListener('click', () => {
   const id = $('notify-associate').dataset.inspectionId;
   const item = inspections.find(value => value.id === id);
@@ -1019,11 +921,11 @@ $('login-form').addEventListener('submit', async event => {
     if (data.role === 'ADMIN') {
       location.href = '/admin/';
     } else if (data.role === 'SUPERVISION_ANALYSIS') {
-      location.href = '/supervisao/';
-    } else if (data.role === 'ANALYST') {
       showView();
       if (data.passwordChangeRequired) openFirstPasswordDialog();
       else await load();
+    } else if (data.role === 'ANALYST') {
+      location.href = '/analise/';
     } else {
       location.href = '/colaborador/';
     }

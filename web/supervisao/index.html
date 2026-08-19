@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#070c40">
-  <title>Equipe de Análise | Novo Horizonte</title>
+  <title>Supervisão de Análise | Novo Horizonte</title>
   <link rel="icon" type="image/png" href="/assets/simbolo-fundo-azul.png" />
   <link rel="shortcut icon" type="image/png" href="/assets/simbolo-fundo-azul.png" />
   <link rel="apple-touch-icon" href="/assets/simbolo-fundo-azul.png" />
@@ -17,15 +17,15 @@
 </head>
 <body>
 <header class="portal-header">
-  <a class="portal-brand" href="/"><img src="/assets/logo-nh-simbolo.png" alt="Novo Horizonte"><span><strong>Novo Horizonte</strong><small>Equipe de Análise</small></span></a>
+  <a class="portal-brand" href="/"><img src="/assets/logo-nh-simbolo.png" alt="Novo Horizonte"><span><strong>Novo Horizonte</strong><small>Supervisão de Análise</small></span></a>
   <div class="header-actions"><a href="/colaborador/">Área do Colaborador</a><a href="/analise/">Área da Análise</a><a href="/admin/">Administrador</a><a href="/supervisao/">Supervisão Análise</a><button id="logout" hidden>Sair</button></div>
 </header>
 
 <section id="analysis-login" class="login-wrap">
   <div class="card login-card">
     <span class="eyebrow" style="color:#070c40">ACESSO RESTRITO</span>
-    <h1>Equipe de Análise</h1>
-    <p>Entre com o usuário disponibilizado para analisar as vistorias.</p>
+    <h1>Supervisão de Análise</h1>
+    <p>Entre com seu usuário de supervisão para aprovar ou rejeitar as vistorias com Cadastro feito.</p>
     <form id="login-form" class="form-grid">
       <label class="span-2">Usuário<input id="username" autocomplete="username" required></label>
       <label class="span-2">Senha<input id="password" type="password" autocomplete="current-password" required></label>
@@ -37,22 +37,23 @@
 
 <main id="analysis-view" class="shell" hidden>
   <section class="hero-panel">
-    <span class="eyebrow">RETRATO NH</span>
-    <h1 id="analysis-welcome-title">Análise de vistorias</h1>
-    <p id="analysis-welcome-text">Seu painel de Analista está pronto e atualizado.</p>
+    <span class="eyebrow">SUPERVISÃO DE ANÁLISE</span>
+    <h1 id="analysis-welcome-title">Supervisão de vistorias</h1>
+    <p id="analysis-welcome-text">Seu painel de Supervisão de Análise está pronto e atualizado.</p>
   </section>
   <div id="message" aria-live="polite"></div>
   <section class="analysis-queues" style="margin-top:22px">
     <div class="section-head analysis-queues-head">
-      <div><h2>Vistorias recebidas</h2><p>Use as abas para separar o fluxo por situação dos arquivos e pela decisão da análise.</p></div>
+      <div><h2>Vistorias com Cadastro feito</h2><p>Aqui chegam somente as vistorias encaminhadas pelos analistas para decisão da supervisão.</p></div>
       <div class="actions analysis-filter-actions" style="margin-top:0"><input id="filter" placeholder="Buscar associado, placa, consultor ou analista"><button id="refresh" class="outline" type="button">Atualizar</button></div>
     </div>
 
-    <nav id="analysis-status-tabs" class="analysis-status-tabs" aria-label="Fila do analista">
-      <button type="button" class="analysis-status-tab active" data-analysis-queue="review">Para cadastro <span id="analysis-tab-review-count">0</span></button>
-      <button type="button" class="analysis-status-tab" data-analysis-queue="pending">Pendências de vistoria <span id="analysis-tab-pending-count">0</span></button>
+    <nav id="analysis-status-tabs" class="analysis-status-tabs" aria-label="Fila da supervisão">
+      <button type="button" class="analysis-status-tab active" data-analysis-queue="review">Aguardando supervisão <span id="analysis-tab-review-count">0</span></button>
+      <button type="button" class="analysis-status-tab" data-analysis-queue="approved">Aprovadas <span id="analysis-tab-approved-count">0</span></button>
+      <button type="button" class="analysis-status-tab" data-analysis-queue="rejected">Rejeitadas <span id="analysis-tab-rejected-count">0</span></button>
     </nav>
-    <p id="analysis-status-description" class="analysis-status-description">Vistorias dos seus consultores que aguardam conferência e a marcação “Cadastro feito”.</p>
+    <p id="analysis-status-description" class="analysis-status-description">Vistorias com Cadastro feito que aguardam aprovação ou rejeição da supervisão.</p>
 
     <article class="card analysis-queue-card">
       <div class="analysis-queue-title">
@@ -89,7 +90,7 @@
 <dialog id="inspection-dialog" class="admin-dialog wide-dialog">
   <form id="inspection-form" class="dialog-card">
     <div class="dialog-head">
-      <div><span class="eyebrow" style="color:#070c40">ANÁLISE DO RETRATO NH</span><h2 id="dialog-title">Vistoria</h2></div>
+      <div><span class="eyebrow" style="color:#070c40">SUPERVISÃO DO RETRATO NH</span><h2 id="dialog-title">Vistoria</h2></div>
       <button id="close-dialog" class="dialog-close" type="button" aria-label="Fechar">×</button>
     </div>
     <input id="inspection-id" type="hidden">
@@ -103,7 +104,7 @@
       <div id="inspection-files-grid" class="inspection-media-grid"></div>
     </section>
     <div class="form-grid" style="margin-top:18px">
-      <div id="inspection-analyst-wrap" class="span-2">
+      <div id="inspection-analyst-wrap" class="span-2" hidden>
         <label>Analista responsável<select id="inspection-analyst">
           <option value="">Selecione o analista</option>
         </select></label>
@@ -112,24 +113,19 @@
         </label>
         <p id="inspection-analyst-helper" class="helper">O responsável ficará registrado no histórico desta análise.</p>
       </div>
-      <label>Status<select id="inspection-status">
-        <option value="WAITING_FILES">Aguardando arquivos</option>
-        <option value="UPLOADING_FILES">Envio em andamento</option>
-        <option value="COMPLETED">Aguardando análise</option>
-        <option value="UNDER_REVIEW">Em análise</option>
-        <option value="APPROVED">Aprovada</option>
-        <option value="REJECTED">Rejeitada</option>
-        <option value="CANCELLED">Cancelada</option>
-        <option value="EXPIRED">Expirada</option>
+      <label>Decisão da supervisão<select id="inspection-status" required>
+        <option value="">Selecione</option>
+        <option value="APPROVED">Aprovar vistoria</option>
+        <option value="REJECTED">Rejeitar vistoria</option>
       </select></label>
-      <label class="span-2">Observação da análise<textarea id="inspection-note" maxlength="1200" rows="4" placeholder="Informe pendências, motivo da rejeição ou orientações."></textarea></label>
+      <label class="span-2">Observação da análise<textarea id="inspection-note" maxlength="1200" rows="4" placeholder="Obrigatório: informe por que a vistoria está sendo aprovada ou rejeitada."></textarea></label>
     </div>
     <div id="inspection-links" class="actions"></div>
     <div id="associate-notification" class="message success" hidden>
       Status atualizado. Use o botão abaixo para informar o associado pelo WhatsApp.
       <div class="actions"><button id="notify-associate" class="secondary" type="button">Enviar mensagem ao associado</button></div>
     </div>
-    <div class="actions dialog-actions"><button id="cancel-dialog" class="outline" type="button">Fechar</button><button id="registration-complete" class="secondary" type="button">✓ Cadastro feito · Enviar à supervisão</button><button class="primary" type="submit">Salvar observação</button></div>
+    <div class="actions dialog-actions"><button id="cancel-dialog" class="outline" type="button">Fechar</button><button class="primary" type="submit">Salvar decisão da supervisão</button></div>
   </form>
 </dialog>
 
@@ -177,7 +173,7 @@
 
 <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
-<script src="/analise/analise.js?v=20260819-analysis-team-v2"></script>
+<script src="/supervisao/supervisao.js?v=20260819-supervision-v2"></script>
 <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
 </body>
 </html>

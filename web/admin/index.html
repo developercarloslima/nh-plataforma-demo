@@ -16,7 +16,7 @@
   <meta name="twitter:image" content="https://nhprotecao.com.br/assets/simbolo-fundo-azul.png" />
 <link
       rel="stylesheet"
-      href="/shared/portal.css?v=20260817-video-legacy-v1"
+      href="/shared/portal.css?v=20260820-coverage-tablehead-v2"
     />
     <link
       rel="stylesheet"
@@ -38,6 +38,8 @@
       </a>
       <div class="header-actions">
         <a href="/colaborador/">Área do Colaborador</a>
+        <a href="/analise/">Área da Análise</a>
+        <a href="/supervisao/">Supervisão Análise</a>
         <button id="logout" hidden>Sair</button>
       </div>
     </header>
@@ -185,7 +187,7 @@
           <div>
             <h2>Colaboradores</h2>
             <p>
-              Cadastre consultores e analistas, defina o cargo e gerencie o status. O histórico permanece
+              Cadastre consultores, analistas e supervisores, defina equipes e gerencie o status. O histórico permanece
               salvo pelo nome registrado na atividade.
             </p>
           </div>
@@ -199,7 +201,9 @@
               <tr>
                 <th>Nome</th>
                 <th>Cargo</th>
+                <th>Cidade</th>
                 <th>WhatsApp</th>
+                <th>Analista / equipe</th>
                 <th>Cotações</th>
                 <th>Retratos NH</th>
                 <th>Status</th>
@@ -216,7 +220,7 @@
           <div>
             <h2>Usuários e senhas</h2>
             <p>
-              Crie contas para administrador, analista ou consultor e altere
+              Crie contas para administrador, supervisão de análise, analista ou consultor e altere
               senhas diretamente pelo painel.
             </p>
           </div>
@@ -460,8 +464,7 @@
           <div>
             <h2>Coberturas e serviços opcionais</h2>
             <p>
-              Crie, edite e exclua coberturas, definindo se são incluídas, não
-              incluídas ou opcionais.
+              Organize as coberturas por plano, aplique a mesma cobertura a vários planos e cadastre regras por categoria e faixa FIPE.
             </p>
           </div>
           <button id="new-coverage-button" class="primary" type="button">
@@ -652,11 +655,17 @@
             >Função<select id="consultant-role" required>
               <option value="CONSULTANT">Consultor</option>
               <option value="ANALYST">Analista</option>
+              <option value="SUPERVISION_ANALYSIS">Supervisão de Análise</option>
             </select></label
           >
           <label id="consultant-whatsapp-wrap"
             >WhatsApp do colaborador<input id="consultant-whatsapp" inputmode="tel" maxlength="18" placeholder="(82) 99999-9999"
           /></label>
+          <label>Cidade<input id="consultant-city" maxlength="120" placeholder="Ex.: Maceió" /></label>
+          <label id="consultant-analyst-wrap" class="span-2" hidden>Analista responsável
+            <select id="consultant-assigned-analyst"><option value="">Selecione um analista</option></select>
+            <small class="field-help">Cada consultor pode ter 1 analista responsável. Cada analista pode receber no máximo 15 consultores.</small>
+          </label>
         </div>
         <p id="consultant-whatsapp-help" class="helper">O Admin pode alterar este número a qualquer momento. Para consultores, ele também será usado para receber a escolha de plano e adicionais feita pelo associado no link de comparação.</p>
         <div id="consultant-active-wrap" class="form-check form-switch" hidden>
@@ -710,6 +719,7 @@
             >Tipo de colaborador<select id="user-role" required>
               <option value="CONSULTANT">Consultor</option>
               <option value="ANALYST">Analista</option>
+              <option value="SUPERVISION_ANALYSIS">Supervisão de Análise</option>
             </select></label
           >
           <label id="user-password-wrap"
@@ -750,7 +760,7 @@
           >
         </div>
         <p class="helper">
-          Contas específicas de consultor ou analista entram identificadas pelo colaborador vinculado.
+          Contas específicas de consultor, analista ou supervisão entram identificadas pelo colaborador vinculado.
           Os usuários padrão continuam disponíveis e mantêm o comportamento atual.
         </p>
         <div class="actions dialog-actions">
@@ -1117,9 +1127,9 @@
         </div>
         <input id="coverage-id" type="hidden" />
         <div class="form-grid">
-          <label class="span-2"
-            >Plano<select id="coverage-plan" required></select
-          ></label>
+          <label class="span-2">Planos em que esta cobertura se aplica
+            <div id="coverage-plan-options" class="coverage-plan-options" role="group" aria-label="Planos da cobertura"></div>
+          </label>
           <label
             >Nome<input id="coverage-name" maxlength="180" required
           /></label>
@@ -1154,9 +1164,20 @@
               placeholder="0,00"
           /></label>
         </div>
+
+        <section class="coverage-rules-editor">
+          <div class="coverage-rules-head">
+            <div>
+              <h3>Regras de limite da cobertura</h3>
+              <p class="helper">Opcional. Use para variar o limite da cobertura conforme categoria e faixa FIPE. Se houver desconto, o sistema usa o valor reduzido cadastrado na regra.</p>
+            </div>
+            <button id="add-coverage-rule" class="outline small-button" type="button">+ Adicionar regra</button>
+          </div>
+          <div id="coverage-rules-list" class="coverage-rules-list"></div>
+        </section>
+
         <p class="helper">
-          O administrador também pode trocar a cobertura de plano. O valor
-          mensal é obrigatório somente para “Serviço opcional”.
+          Marque todos os planos em que a cobertura se aplica. O valor mensal é obrigatório somente para “Serviço opcional”.
         </p>
         <div class="actions dialog-actions">
           <button
@@ -1360,7 +1381,7 @@
     <script src="/shared/config.js?v=20260804-current-origin"></script>
     <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
     <script src="/shared/money-input.js?v=20260805-brl-mask"></script>
-    <script src="/admin/admin.js?v=20260818-admin-collaborator-whatsapp-v2"></script>
+    <script src="/admin/admin.js?v=20260819-analysis-team-v2"></script>
     <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
   </body>
 </html>

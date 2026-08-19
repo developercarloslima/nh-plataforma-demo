@@ -50,6 +50,23 @@ public class InspectionRequest {
     @Column(name = "consultant_name", nullable = false, length = 140)
     private String consultantName;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_analyst_id")
+    private Consultant assignedAnalyst;
+
+    @Column(name = "assigned_analyst_name", length = 160)
+    private String assignedAnalystName;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "analysis_stage", nullable = false, length = 30)
+    private InspectionAnalysisStage analysisStage;
+
+    @Column(name = "registration_completed_at")
+    private OffsetDateTime registrationCompletedAt;
+
+    @Column(name = "registration_completed_by_name", length = 160)
+    private String registrationCompletedByName;
+
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "quotation_id")
     private Quotation quotation;
@@ -200,6 +217,10 @@ public class InspectionRequest {
         request.consultant = consultant;
         request.consultantName = consultantName;
         request.quotation = quotation;
+        request.analysisStage = InspectionAnalysisStage.ANALYST_QUEUE;
+        if (consultant != null && consultant.getAssignedAnalyst() != null) {
+            request.assignAnalyst(consultant.getAssignedAnalyst());
+        }
         request.status = InspectionRequestStatus.WAITING_FILES;
         request.createdAt = OffsetDateTime.now();
         request.expiresAt = request.createdAt.plusDays(7);
@@ -225,6 +246,49 @@ public class InspectionRequest {
         if (consultant == null) throw new IllegalArgumentException("Informe o consultor responsável.");
         this.consultant = consultant;
         this.consultantName = consultant.getName();
+        if (consultant.getAssignedAnalyst() != null
+                && this.analysisStage != InspectionAnalysisStage.FINISHED
+                && this.analysisStage != InspectionAnalysisStage.SUPERVISION_QUEUE) {
+            assignAnalyst(consultant.getAssignedAnalyst());
+        }
+    }
+
+    public void assignAnalyst(Consultant analyst) {
+        if (analyst == null) {
+            this.assignedAnalyst = null;
+            this.assignedAnalystName = null;
+            return;
+        }
+        if (!analyst.isActive() || analyst.getRole() != CollaboratorRole.ANALYST) {
+            throw new IllegalArgumentException("Selecione um analista ativo para esta vistoria.");
+        }
+        this.assignedAnalyst = analyst;
+        this.assignedAnalystName = analyst.getName();
+    }
+
+    public void markRegistrationCompleted(Consultant analyst, String note) {
+        if (analyst == null || analyst.getRole() != CollaboratorRole.ANALYST) {
+            throw new IllegalArgumentException("Apenas um analista vinculado pode concluir o cadastro.");
+        }
+        if (assignedAnalyst != null && !assignedAnalyst.getId().equals(analyst.getId())) {
+            throw new IllegalArgumentException("Esta vistoria está vinculada a outro analista.");
+        }
+        if (assignedAnalyst == null) assignAnalyst(analyst);
+        assertStoredCompletionRequirements(true);
+        this.adminNote = cleanNote(note);
+        this.registrationCompletedAt = OffsetDateTime.now();
+        this.registrationCompletedByName = analyst.getName();
+        this.status = InspectionRequestStatus.UNDER_REVIEW;
+        this.analysisStage = InspectionAnalysisStage.SUPERVISION_QUEUE;
+        this.decisionMessageSentAt = null;
+    }
+
+    public void routeBackToAnalystPending() {
+        if (this.analysisStage != InspectionAnalysisStage.FINISHED) {
+            this.analysisStage = InspectionAnalysisStage.ANALYST_PENDING;
+        }
+        this.registrationCompletedAt = null;
+        this.registrationCompletedByName = null;
     }
 
     /** Sincroniza os dados cadastrais vindos da cotação sem alterar o conteúdo da vistoria. */
@@ -279,6 +343,13 @@ public class InspectionRequest {
      */
     public void reopenForMissingFiles() {
         this.status = InspectionRequestStatus.WAITING_FILES;
+        if (this.assignedAnalyst != null) {
+            this.analysisStage = InspectionAnalysisStage.ANALYST_PENDING;
+        } else {
+            this.analysisStage = InspectionAnalysisStage.ANALYST_QUEUE;
+        }
+        this.registrationCompletedAt = null;
+        this.registrationCompletedByName = null;
         this.completedAt = null;
         this.completionMessageSentAt = null;
         this.decisionMessageSentAt = null;
@@ -311,6 +382,7 @@ public class InspectionRequest {
         this.driveFolderId = null;
         this.driveFolderUrl = null;
         this.status = InspectionRequestStatus.COMPLETED;
+        if (this.analysisStage == null) this.analysisStage = InspectionAnalysisStage.ANALYST_QUEUE;
         this.completedAt = OffsetDateTime.now();
         this.completionMessageSentAt = null;
     }
@@ -362,6 +434,12 @@ public class InspectionRequest {
         this.reviewedByCollaborator = reviewerCollaborator;
         this.reviewedByName = cleanReviewerName(reviewerName);
         this.reviewedByRole = reviewerRole == null || reviewerRole.isBlank() ? null : reviewerRole.trim();
+        if (newStatus == InspectionRequestStatus.APPROVED
+                || newStatus == InspectionRequestStatus.REJECTED
+                || newStatus == InspectionRequestStatus.CANCELLED
+                || newStatus == InspectionRequestStatus.EXPIRED) {
+            this.analysisStage = InspectionAnalysisStage.FINISHED;
+        }
         if (newStatus == InspectionRequestStatus.COMPLETED
                 || newStatus == InspectionRequestStatus.APPROVED
                 || newStatus == InspectionRequestStatus.REJECTED
@@ -447,6 +525,11 @@ public class InspectionRequest {
     public String getContractedPlan() { return contractedPlan; }
     public Consultant getConsultant() { return consultant; }
     public String getConsultantName() { return consultantName; }
+    public Consultant getAssignedAnalyst() { return assignedAnalyst; }
+    public String getAssignedAnalystName() { return assignedAnalystName; }
+    public InspectionAnalysisStage getAnalysisStage() { return analysisStage; }
+    public OffsetDateTime getRegistrationCompletedAt() { return registrationCompletedAt; }
+    public String getRegistrationCompletedByName() { return registrationCompletedByName; }
     public Quotation getQuotation() { return quotation; }
     public InspectionRequestStatus getStatus() { return status; }
     public OffsetDateTime getCreatedAt() { return createdAt; }

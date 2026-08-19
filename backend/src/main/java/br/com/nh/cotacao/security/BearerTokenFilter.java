@@ -33,6 +33,9 @@ public class BearerTokenFilter extends OncePerRequestFilter {
                 // Uma conta desativada ou que teve o perfil alterado perde acesso imediatamente,
                 // mesmo que ainda possua um token assinado dentro do prazo de validade.
                 if (!portalUserService.isActiveWithRole(principal.username(), principal.role())) return;
+                String uri = request.getRequestURI();
+                boolean passwordEndpoint = "/api/auth/me".equals(uri) || "/api/auth/change-password".equals(uri);
+                if (portalUserService.requiresPasswordChange(principal.username()) && !passwordEndpoint) return;
                 var authentication = new UsernamePasswordAuthenticationToken(
                         principal,
                         null,

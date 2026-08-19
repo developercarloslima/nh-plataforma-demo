@@ -24,7 +24,7 @@ public class AdminConsultantController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ConsultantResponse create(@Valid @RequestBody CreateConsultantRequest request, Authentication auth) {
-        return service.create(request.name(), request.role(), request.whatsapp(), "ADMIN", username(auth));
+        return service.create(request.name(), request.role(), request.whatsapp(), request.city(), request.assignedAnalystId(), "ADMIN", username(auth));
     }
 
     @PatchMapping("/{id}")
@@ -33,7 +33,7 @@ public class AdminConsultantController {
             @Valid @RequestBody UpdateConsultantRequest request,
             Authentication auth
     ) {
-        return service.update(id, request.name(), request.active(), request.role(), request.whatsapp(), username(auth));
+        return service.update(id, request.name(), request.active(), request.role(), request.whatsapp(), request.city(), request.assignedAnalystId(), username(auth));
     }
 
     @DeleteMapping("/{id}")

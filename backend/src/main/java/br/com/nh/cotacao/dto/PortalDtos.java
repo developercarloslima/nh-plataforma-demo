@@ -16,6 +16,10 @@ public final class PortalDtos {
             boolean active,
             CollaboratorRole role,
             String whatsapp,
+            String city,
+            UUID assignedAnalystId,
+            String assignedAnalystName,
+            long assignedConsultantCount,
             String source,
             OffsetDateTime createdAt,
             OffsetDateTime lastPortalLoginAt,
@@ -26,14 +30,18 @@ public final class PortalDtos {
     public record CreateConsultantRequest(
             @NotBlank @Size(min = 3, max = 140) String name,
             CollaboratorRole role,
-            @Size(max = 30) String whatsapp
+            @Size(max = 30) String whatsapp,
+            @Size(max = 120) String city,
+            UUID assignedAnalystId
     ) {}
 
     public record UpdateConsultantRequest(
             @Size(min = 3, max = 140) String name,
             Boolean active,
             CollaboratorRole role,
-            @Size(max = 30) String whatsapp
+            @Size(max = 30) String whatsapp,
+            @Size(max = 120) String city,
+            UUID assignedAnalystId
     ) {}
 
     public record UpdateConsultantWhatsappRequest(

@@ -96,16 +96,15 @@ public class AdminCatalogController {
     @GetMapping("/coverages")
     public List<CoverageAdminResponse> coverages() { return service.coverages(); }
 
-    @PostMapping("/plans/{planId}/coverages")
+    @PostMapping("/coverages")
     @ResponseStatus(HttpStatus.CREATED)
-    public CoverageAdminResponse createCoverage(
-            @PathVariable Long planId,
+    public List<CoverageAdminResponse> createCoverage(
             @Valid @RequestBody CreateCoverageRequest request,
             Authentication auth
-    ) { return service.createCoverage(planId, request, username(auth)); }
+    ) { return service.createCoverage(request, username(auth)); }
 
     @PatchMapping("/coverages/{id}")
-    public CoverageAdminResponse updateCoverage(
+    public List<CoverageAdminResponse> updateCoverage(
             @PathVariable Long id,
             @Valid @RequestBody UpdateCoverageRequest request,
             Authentication auth

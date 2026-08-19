@@ -42,7 +42,7 @@ public class PlanComparisonTokenService {
         try {
             Payload payload = new Payload(
                     source.consultantId(), source.consultantName(), source.consultantWhatsapp(), source.customerName(), source.model(), source.plate(),
-                    source.discountPercent(), source.options(), Instant.now().plusSeconds(validitySeconds).getEpochSecond()
+                    source.discountPercent(), source.auctionOrChassisRemarked(), source.indemnityFipePercent(), source.options(), Instant.now().plusSeconds(validitySeconds).getEpochSecond()
             );
             byte[] json = objectMapper.writeValueAsBytes(payload);
             String body = Base64.getUrlEncoder().withoutPadding().encodeToString(gzip(json));
@@ -104,6 +104,8 @@ public class PlanComparisonTokenService {
             String model,
             String plate,
             Integer discountPercent,
+            Boolean auctionOrChassisRemarked,
+            Integer indemnityFipePercent,
             OptionsResponse options,
             long expiresAtEpochSecond
     ) {}

@@ -2,5 +2,6 @@ package br.com.nh.cotacao.entity;
 
 public enum CollaboratorRole {
     CONSULTANT,
-    ANALYST
+    ANALYST,
+    SUPERVISION_ANALYSIS
 }

@@ -32,6 +32,13 @@ public class Consultant {
     @Column(length = 30)
     private String whatsapp;
 
+    @Column(length = 120)
+    private String city;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_analyst_id")
+    private Consultant assignedAnalyst;
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
@@ -76,6 +83,34 @@ public class Consultant {
     public void setRole(CollaboratorRole role) {
         if (role == null) throw new IllegalArgumentException("Informe a função do colaborador.");
         this.role = role;
+        if (role != CollaboratorRole.CONSULTANT) this.assignedAnalyst = null;
+        this.updatedAt = OffsetDateTime.now();
+    }
+
+    public void setCity(String city) {
+        if (city == null || city.isBlank()) {
+            this.city = null;
+        } else {
+            String clean = city.trim().replaceAll("\\s+", " ");
+            if (clean.length() > 120) throw new IllegalArgumentException("A cidade deve possuir no máximo 120 caracteres.");
+            this.city = clean;
+        }
+        this.updatedAt = OffsetDateTime.now();
+    }
+
+    public void assignAnalyst(Consultant analyst) {
+        if (this.role != CollaboratorRole.CONSULTANT && analyst != null) {
+            throw new IllegalArgumentException("Somente consultores podem ser vinculados a um analista.");
+        }
+        if (analyst != null) {
+            if (analyst == this || analyst.getId().equals(this.id)) {
+                throw new IllegalArgumentException("O colaborador não pode ser vinculado a si mesmo.");
+            }
+            if (!analyst.isActive() || analyst.getRole() != CollaboratorRole.ANALYST) {
+                throw new IllegalArgumentException("Selecione um analista ativo.");
+            }
+        }
+        this.assignedAnalyst = analyst;
         this.updatedAt = OffsetDateTime.now();
     }
 
@@ -122,6 +157,8 @@ public class Consultant {
     public String getSource() { return source; }
     public CollaboratorRole getRole() { return role; }
     public String getWhatsapp() { return whatsapp; }
+    public String getCity() { return city; }
+    public Consultant getAssignedAnalyst() { return assignedAnalyst; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
     public OffsetDateTime getLastPortalLoginAt() { return lastPortalLoginAt; }

@@ -40,6 +40,7 @@ public final class QuoteDtos {
             String name,
             CoverageStatus status,
             String detail,
+            String discountedDetail,
             BigDecimal monthlyPrice
     ) {
     }
@@ -69,13 +70,14 @@ public final class QuoteDtos {
     public record CreateQuoteRequest(
             @NotNull UUID consultantId,
             @NotBlank @Size(max = 120) String customerName,
-            @NotBlank @Pattern(regexp = "^[0-9.\\-]{11,14}$", message = "CPF inválido") String cpf,
+            @Pattern(regexp = "^(?:[0-9.\\-]{11,14})?$", message = "CPF inválido") String cpf,
             @Size(max = 30) String whatsapp,
             @Size(max = 10) String plate,
             @NotBlank @Size(max = 120) String model,
             @NotNull @Min(1950) @Max(2100) Integer manufactureYear,
             @NotNull Boolean zeroKm,
             @NotNull @DecimalMin("0.01") BigDecimal fipeValue,
+            Boolean auctionOrChassisRemarked,
             @NotBlank String categoryCode,
             Region region,
             MotorcycleOrigin motorcycleOrigin,
@@ -104,12 +106,13 @@ public final class QuoteDtos {
     public record CreatePublicQuoteRequest(
             @NotBlank @Size(max = 120) String customerName,
             @NotBlank @Size(max = 30) String whatsapp,
-            @NotBlank @Pattern(regexp = "^[0-9.\\-]{11,14}$", message = "CPF inválido") String cpf,
+            @Pattern(regexp = "^(?:[0-9.\\-]{11,14})?$", message = "CPF inválido") String cpf,
             @Size(max = 10) String plate,
             @NotBlank @Size(max = 120) String model,
             @NotNull @Min(1950) @Max(2100) Integer manufactureYear,
             @NotNull Boolean zeroKm,
             @NotNull @DecimalMin("0.01") BigDecimal fipeValue,
+            Boolean auctionOrChassisRemarked,
             @NotBlank String categoryCode,
             Region region,
             MotorcycleOrigin motorcycleOrigin,
@@ -164,6 +167,8 @@ public final class QuoteDtos {
             Integer manufactureYear,
             boolean zeroKm,
             BigDecimal fipeValue,
+            Boolean auctionOrChassisRemarked,
+            Integer indemnityFipePercent,
             String categoryCode,
             Region region,
             MotorcycleOrigin motorcycleOrigin,

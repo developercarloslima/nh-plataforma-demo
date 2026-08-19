@@ -1890,3 +1890,16 @@ footer {
     margin-top:16px;
   }
 }
+
+.vehicle-history-selector {
+  border:0;
+  padding:0;
+  margin:2px 0 0;
+  display:grid;
+  gap:10px;
+  font-size:.88rem;
+  font-weight:780;
+}
+.vehicle-history-selector legend { margin-bottom:0; color:#070c40; }
+.vehicle-history-selector legend small { font-weight:600; color:#6a7086; }
+.vehicle-history-selector .field-help { max-width:760px; line-height:1.45; }

@@ -60,6 +60,12 @@ public class Quotation {
     @Column(name = "fipe_value", nullable = false, precision = 14, scale = 2)
     private BigDecimal fipeValue;
 
+    @Column(name = "auction_or_chassis_remarked")
+    private Boolean auctionOrChassisRemarked;
+
+    @Column(name = "indemnity_fipe_percent", nullable = false)
+    private Integer indemnityFipePercent;
+
     @Column(name = "category_code", nullable = false, length = 50)
     private String categoryCode;
 
@@ -363,6 +369,8 @@ public class Quotation {
         q.manufactureYear = manufactureYear;
         q.zeroKm = zeroKm;
         q.fipeValue = fipeValue;
+        q.auctionOrChassisRemarked = null;
+        q.indemnityFipePercent = 100;
         q.categoryCode = categoryCode;
         q.region = Region.NATIONAL;
         q.motorcycleOrigin = motorcycleOrigin;
@@ -386,6 +394,12 @@ public class Quotation {
 
     private static final java.util.Set<Integer> ALLOWED_BILLING_DUE_DAYS = java.util.Set.of(5, 10, 15, 20, 25, 30);
     private static final ZoneId BUSINESS_ZONE = ZoneId.of("America/Maceio");
+
+
+    public void configureVehicleHistory(Boolean auctionOrChassisRemarked) {
+        this.auctionOrChassisRemarked = auctionOrChassisRemarked;
+        this.indemnityFipePercent = Boolean.TRUE.equals(auctionOrChassisRemarked) ? 70 : 100;
+    }
 
     public void configureBillingDueDate(LocalDate requestedDate) {
         if (requestedDate == null) {
@@ -667,6 +681,8 @@ public class Quotation {
     public Integer getManufactureYear() { return manufactureYear; }
     public boolean isZeroKm() { return zeroKm; }
     public BigDecimal getFipeValue() { return fipeValue; }
+    public Boolean getAuctionOrChassisRemarked() { return auctionOrChassisRemarked; }
+    public Integer getIndemnityFipePercent() { return indemnityFipePercent == null ? 100 : indemnityFipePercent; }
     public String getCategoryCode() { return categoryCode; }
     public Region getRegion() { return region; }
     public MotorcycleOrigin getMotorcycleOrigin() { return motorcycleOrigin; }

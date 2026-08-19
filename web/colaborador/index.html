@@ -36,7 +36,11 @@
         ></a
       >
       <div class="header-actions">
-        <a href="/">Site principal</a><button id="logout" hidden>Sair</button>
+        <a href="/">Site principal</a>
+        <a href="/analise/">Área da Análise</a>
+        <a href="/admin/">Administrador</a>
+        <a href="/supervisao/">Supervisão Análise</a>
+        <button id="logout" hidden>Sair</button>
       </div>
     </header>
     <section id="login-view" class="login-wrap">
@@ -66,8 +70,8 @@
     <main id="portal-view" class="shell" hidden>
       <section class="hero-panel">
         <span class="eyebrow">PAINEL INTERNO</span>
-        <h1>Bem-vindo à Área do Colaborador</h1>
-        <p>
+        <h1 id="collaborator-welcome-title">Bem-vindo à Área do Colaborador</h1>
+        <p id="collaborator-welcome-text">
           Selecione quem está realizando a atividade. Essa identificação será
           registrada nas cotações e vistorias para organização do painel
           administrativo.
@@ -477,7 +481,7 @@
       </div>
     </dialog>
     <script src="/shared/config.js?v=20260804-current-origin"></script>
-    <script src="/colaborador/portal.js?v=20260818-report-model-year-v1"></script>
+    <script src="/colaborador/portal.js?v=20260819-analysis-team-v2"></script>
     <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
   </body>
 </html>

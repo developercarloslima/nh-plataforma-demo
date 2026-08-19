@@ -7,6 +7,7 @@ import br.com.nh.cotacao.security.PortalPrincipal;
 import br.com.nh.cotacao.service.AdminActivityService;
 import br.com.nh.cotacao.service.ConsultantService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -25,18 +26,28 @@ public class AnalysisInspectionController {
     }
 
     @GetMapping
-    public List<AdminInspectionResponse> list() {
-        return service.inspectionsForAnalysis();
+    public List<AdminInspectionResponse> list(Authentication authentication) {
+        PortalPrincipal principal = (PortalPrincipal) authentication.getPrincipal();
+        return service.inspectionsForAnalysis(principal.username(), principal.role());
     }
 
     @GetMapping("/analysts")
-    public List<ConsultantResponse> analysts() {
-        return consultantService.activeAnalysts();
+    public List<ConsultantResponse> analysts() { return consultantService.activeAnalysts(); }
+
+    @PostMapping("/{id}/registration-complete")
+    public AdminInspectionResponse registrationComplete(
+            @PathVariable UUID id,
+            @Valid @RequestBody RegistrationCompleteRequest request,
+            Authentication authentication
+    ) {
+        PortalPrincipal principal = (PortalPrincipal) authentication.getPrincipal();
+        return service.markRegistrationCompleted(id, request.note(), principal.username(), principal.role());
     }
 
     @PostMapping("/{id}/decision-message-sent")
-    public AdminInspectionResponse markDecisionMessageSent(@PathVariable UUID id) {
-        return service.markDecisionMessageSentForAnalysis(id);
+    public AdminInspectionResponse markDecisionMessageSent(@PathVariable UUID id, Authentication authentication) {
+        PortalPrincipal principal = (PortalPrincipal) authentication.getPrincipal();
+        return service.markDecisionMessageSentForAnalysis(id, principal.username(), principal.role());
     }
 
     @PatchMapping("/{id}/status")
@@ -48,4 +59,6 @@ public class AnalysisInspectionController {
         PortalPrincipal principal = (PortalPrincipal) authentication.getPrincipal();
         return service.updateInspectionStatusForAnalysis(id, request, principal.username(), principal.role());
     }
+
+    public record RegistrationCompleteRequest(@Size(max = 1200) String note) {}
 }

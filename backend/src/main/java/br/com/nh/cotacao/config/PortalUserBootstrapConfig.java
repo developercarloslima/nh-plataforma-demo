@@ -43,5 +43,6 @@ public class PortalUserBootstrapConfig implements ApplicationRunner {
                 analystUsername, analystPassword,
                 consultantUsername, consultantPassword
         );
+        service.bootstrapAnalysisTeam();
     }
 }

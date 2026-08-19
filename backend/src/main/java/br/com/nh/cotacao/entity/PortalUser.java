@@ -50,6 +50,9 @@ public class PortalUser {
     @Column(name = "consultant_id")
     private UUID consultantId;
 
+    @Column(name = "must_change_password", nullable = false)
+    private boolean mustChangePassword;
+
     protected PortalUser() {}
 
     public static PortalUser create(
@@ -70,6 +73,7 @@ public class PortalUser {
         user.updatedAt = user.createdAt;
         user.passwordChangedAt = user.createdAt;
         user.createdBy = cleanOptional(createdBy, 160);
+        user.mustChangePassword = false;
         return user;
     }
 
@@ -88,7 +92,13 @@ public class PortalUser {
     public void changePassword(String passwordHash) {
         this.passwordHash = requireHash(passwordHash);
         this.passwordChangedAt = OffsetDateTime.now();
+        this.mustChangePassword = false;
         this.updatedAt = this.passwordChangedAt;
+    }
+
+    public void requirePasswordChange() {
+        this.mustChangePassword = true;
+        this.updatedAt = OffsetDateTime.now();
     }
 
     public void setActive(boolean active) {
@@ -147,4 +157,5 @@ public class PortalUser {
     public OffsetDateTime getLastLoginAt() { return lastLoginAt; }
     public String getCreatedBy() { return createdBy; }
     public UUID getConsultantId() { return consultantId; }
+    public boolean isMustChangePassword() { return mustChangePassword; }
 }

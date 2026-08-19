@@ -37,13 +37,14 @@ public class InspectionAssetController {
 
     @GetMapping({
             "/api/analysis/inspections/{inspectionId}/report",
+            "/api/supervision/inspections/{inspectionId}/report",
             "/api/admin/inspections/{inspectionId}/report",
             "/api/consultant-dashboard/inspections/{inspectionId}/report"
     })
     public ResponseEntity<byte[]> downloadReport(
             @PathVariable UUID inspectionId, Authentication auth, HttpServletRequest request
     ) {
-        assertConsultantInspectionAccessIfNeeded(request, auth, inspectionId);
+        assertInspectionAccessIfNeeded(request, auth, inspectionId);
         byte[] report = reportDownloadService.generate(inspectionId);
         ContentDisposition disposition = ContentDisposition.attachment()
                 .filename("relatorio-vistoria-" + inspectionId + ".pdf", StandardCharsets.UTF_8)
@@ -59,13 +60,14 @@ public class InspectionAssetController {
 
     @GetMapping({
             "/api/analysis/inspections/{inspectionId}/assets.zip",
+            "/api/supervision/inspections/{inspectionId}/assets.zip",
             "/api/admin/inspections/{inspectionId}/assets.zip",
             "/api/consultant-dashboard/inspections/{inspectionId}/assets.zip"
     })
     public ResponseEntity<StreamingResponseBody> downloadAll(
             @PathVariable UUID inspectionId, Authentication auth, HttpServletRequest request
     ) {
-        assertConsultantInspectionAccessIfNeeded(request, auth, inspectionId);
+        assertInspectionAccessIfNeeded(request, auth, inspectionId);
         StreamingResponseBody body = output -> storageService.writeInspectionZip(inspectionId, output);
         ContentDisposition disposition = ContentDisposition.attachment()
                 .filename("arquivos-vistoria-" + inspectionId + ".zip", StandardCharsets.UTF_8)
@@ -80,18 +82,23 @@ public class InspectionAssetController {
 
     @DeleteMapping({
             "/api/analysis/inspections/{inspectionId}/assets/{assetId}",
+            "/api/supervision/inspections/{inspectionId}/assets/{assetId}",
             "/api/admin/inspections/{inspectionId}/assets/{assetId}"
     })
     public ResponseEntity<Void> deleteInspectionAsset(
             @PathVariable UUID inspectionId,
-            @PathVariable UUID assetId
+            @PathVariable UUID assetId,
+            Authentication auth,
+            HttpServletRequest request
     ) {
+        assertInspectionAccessIfNeeded(request, auth, inspectionId);
         storageService.deleteAsset(inspectionId, assetId);
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping({
             "/api/analysis/inspections/{inspectionId}/assets/{assetId}",
+            "/api/supervision/inspections/{inspectionId}/assets/{assetId}",
             "/api/admin/inspections/{inspectionId}/assets/{assetId}",
             "/api/consultant-dashboard/inspections/{inspectionId}/assets/{assetId}"
     })
@@ -102,7 +109,7 @@ public class InspectionAssetController {
             Authentication auth,
             HttpServletRequest request
     ) {
-        assertConsultantInspectionAccessIfNeeded(request, auth, inspectionId);
+        assertInspectionAccessIfNeeded(request, auth, inspectionId);
         InspectionAsset asset = storageService.requireAvailable(inspectionId, assetId);
         boolean compressedVideoDownload = download && storageService.requiresVideoDownloadCompression(asset);
         MediaType mediaType;
@@ -148,11 +155,18 @@ public class InspectionAssetController {
         return response.body(body);
     }
 
-    private void assertConsultantInspectionAccessIfNeeded(
+    private void assertInspectionAccessIfNeeded(
             HttpServletRequest request, Authentication auth, UUID inspectionId
     ) {
-        if (request == null || !request.getRequestURI().startsWith("/api/consultant-dashboard/")) return;
+        if (request == null || auth == null) return;
+        String uri = request.getRequestURI();
         PortalPrincipal principal = (PortalPrincipal) auth.getPrincipal();
-        portalUserService.assertInspectionAccess(principal.username(), principal.role(), inspectionId);
+        if (uri.startsWith("/api/consultant-dashboard/")) {
+            portalUserService.assertInspectionAccess(principal.username(), principal.role(), inspectionId);
+        } else if (uri.startsWith("/api/analysis/")) {
+            portalUserService.assertAnalysisInspectionAccess(principal.username(), principal.role(), inspectionId);
+        } else if (uri.startsWith("/api/supervision/")) {
+            portalUserService.assertSupervisionInspectionAccess(principal.username(), principal.role(), inspectionId);
+        }
     }
 }

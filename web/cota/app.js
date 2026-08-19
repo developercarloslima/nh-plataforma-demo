@@ -210,6 +210,17 @@ function isZeroKm() {
   return document.querySelector('input[name="zeroKm"]:checked')?.value === 'true';
 }
 
+function auctionOrChassisRemarkedValue() {
+  const value = document.querySelector('input[name="auctionOrChassisRemarked"]:checked')?.value;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return null;
+}
+
+function indemnityFipePercent() {
+  return auctionOrChassisRemarkedValue() === true ? 70 : 100;
+}
+
 function isMotorcycle() {
   return String(state.vehicleType || '').startsWith('MOTORCYCLE');
 }
@@ -333,6 +344,16 @@ function syncZeroKmOptions() {
   }
 }
 
+function syncVehicleHistoryOptions() {
+  document.querySelectorAll('.vehicle-history-selector .binary-option').forEach(option => {
+    const input = option.querySelector('input[name="auctionOrChassisRemarked"]');
+    option.classList.toggle('selected', Boolean(input?.checked));
+  });
+  if ($('selected-indemnity-percent')) {
+    $('selected-indemnity-percent').textContent = `${indemnityFipePercent()}% da FIPE`;
+  }
+}
+
 function selectedPlan() {
   return state.plans.find(plan => plan.code === state.selectedPlanCode);
 }
@@ -446,6 +467,7 @@ function formSnapshot() {
     manufactureYear: $('manufactureYear').value,
     fipeValue: $('fipeValue').value,
     zeroKm: isZeroKm(),
+    auctionOrChassisRemarked: auctionOrChassisRemarkedValue(),
     motorcycle: isMotorcycle(),
     promoMotorcycleTier: state.promoMotorcycleTier || '',
     observation: $('observation')?.value || '',
@@ -513,11 +535,17 @@ async function restoreSession() {
     const savedZeroKm = saved.form?.zeroKm === true || saved.form?.zeroKm === 'true';
     const zeroKmInput = document.querySelector(`input[name="zeroKm"][value="${savedZeroKm}"]`);
     if (zeroKmInput) zeroKmInput.checked = true;
+    const savedVehicleHistory = saved.form?.auctionOrChassisRemarked;
+    if (savedVehicleHistory === true || savedVehicleHistory === false || savedVehicleHistory === 'true' || savedVehicleHistory === 'false') {
+      const historyInput = document.querySelector(`input[name="auctionOrChassisRemarked"][value="${String(savedVehicleHistory)}"]`);
+      if (historyInput) historyInput.checked = true;
+    }
     syncZeroKmOptions();
+    syncVehicleHistoryOptions();
     renderBillingDueOptions(saved.form?.firstBillingDueDate || '');
 
     Object.entries(saved.form || {}).forEach(([id, value]) => {
-      if (id !== 'consultantName' && id !== 'zeroKm' && id !== 'motorcycle' && id !== 'promoMotorcycleTier' && id !== 'firstBillingDueDate' && $(id) && value != null) $(id).value = value;
+      if (id !== 'consultantName' && id !== 'zeroKm' && id !== 'motorcycle' && id !== 'promoMotorcycleTier' && id !== 'firstBillingDueDate' && id !== 'auctionOrChassisRemarked' && $(id) && value != null) $(id).value = value;
     });
     window.NHMoney?.refresh($('fipeValue'));
     syncZeroKmOptions();
@@ -596,13 +624,9 @@ function renderPlans() {
 }
 
 function coverageDetailForCurrentDiscount(coverage) {
-  const detail = String(coverage?.detail || '');
-  const code = String(coverage?.code || '').toUpperCase();
-  if (isSelfService || Number(state.discountPercent || 0) <= 0 || !['THIRD_PARTY', 'THIRD_PARTY_BASE'].includes(code)) {
-    return detail;
-  }
-  const map = { '100': '50', '50': '35', '35': '20', '10': '7' };
-  return detail.replace(/R\$\s*(100|50|35|10)\s*mil/gi, (_, amount) => `R$ ${map[amount]} mil`);
+  const discount = Number(state.discountPercent || 0);
+  if (!isSelfService && discount > 0 && coverage?.discountedDetail) return String(coverage.discountedDetail);
+  return String(coverage?.detail || '');
 }
 
 function whatsappTarget(value) {
@@ -669,6 +693,7 @@ function planComparisonPayload() {
     region: effectiveRegion(),
     motorcycleOrigin: effectiveMotorcycleOrigin(),
     fipeValue: parseMoney($('fipeValue').value),
+    auctionOrChassisRemarked: auctionOrChassisRemarkedValue(),
     motorcycle: isMotorcycle(),
     motorcycleCc: motorcycleCcValue(),
     promoMotorcycleTier: isPromoMotorcycleCategory() ? state.promoMotorcycleTier : null,
@@ -809,6 +834,7 @@ function updateSelectionSummary() {
   $('selected-discount-label').textContent = discountPercent > 0 ? `Desconto ${discountPercent}%` : 'Desconto';
   $('selected-discount-value').textContent = discountPercent > 0 ? `− ${brl.format(discountValue)}` : '—';
   $('selected-plan-value').textContent = plan ? brl.format(total) : '—';
+  if ($('selected-indemnity-percent')) $('selected-indemnity-percent').textContent = `${indemnityFipePercent()}% da FIPE`;
   const conditionalDiscountPending = [15, 30].includes(discountPercent) && !state.discountConfirmed;
   $('confirm-plan').disabled = !plan || conditionalDiscountPending;
 }
@@ -823,6 +849,7 @@ function formPayload() {
     manufactureYear: Number($('manufactureYear').value),
     zeroKm: isZeroKm(),
     fipeValue: parseMoney($('fipeValue').value),
+    auctionOrChassisRemarked: auctionOrChassisRemarkedValue(),
     categoryCode: categoryCode(),
     region: effectiveRegion(),
     motorcycleOrigin: effectiveMotorcycleOrigin(),
@@ -868,6 +895,8 @@ function renderQuote(quote, scroll = true) {
     <div><span>Cliente</span><strong>${escapeHtml(quote.customerName)}</strong></div>
     <div><span>Veículo</span><strong>${escapeHtml(quote.model)} • ${escapeHtml(quote.plate || '0 km — sem placa')}</strong></div>
     <div><span>FIPE</span><strong>${brl.format(quote.fipeValue)}</strong></div>
+    <div><span>Valor em caso de ressarcimento integral</span><strong>${Number(quote.indemnityFipePercent || 100)}% da FIPE</strong></div>
+    ${quote.auctionOrChassisRemarked === true ? '<div><span>Leilão / remarcação de chassi</span><strong>Sim</strong></div>' : ''}
     <div><span>Abrangência</span><strong>Nacional</strong></div>
     ${quote.motorcycleOrigin ? `<div><span>Origem da moto</span><strong>${quote.motorcycleOrigin === 'CAPITAL' ? 'Capital' : 'Demais cidades do Nordeste'}</strong></div>` : ''}
     ${quote.observation ? `<div><span>Observação</span><strong>${escapeHtml(quote.observation)}</strong></div>` : ''}
@@ -937,6 +966,21 @@ function renderInspectionStage(quote) {
             <h3>Aguardando atribuição de consultor</h3>
             <p>Sua proposta já foi aceita e permanece registrada. A equipe Novo Horizonte irá definir o consultor responsável; assim que isso acontecer, a vistoria digital será liberada sem você precisar fazer uma nova cotação.</p>
           </div>
+        </div>`;
+      return;
+    }
+    if (!quote.maskedCpf && !currentInspectionUrl) {
+      const teamLink = quote.teamWhatsappUrl
+        ? `<a class="whatsapp-button" href="${escapeHtml(quote.teamWhatsappUrl)}" target="_blank" rel="noopener">Falar com a equipe NH</a>`
+        : '';
+      $('decision-result').innerHTML = `
+        <div class="inspection-box inspection-pending">
+          <div>
+            <span class="step-tag">PROPOSTA ACEITA</span>
+            <h3>CPF necessário somente para liberar a vistoria</h3>
+            <p>O CPF é opcional na cotação. Sua proposta foi aceita normalmente; antes de gerar a Vistoria Digital, o consultor completará este dado cadastral.</p>
+          </div>
+          <div class="inspection-actions">${teamLink}</div>
         </div>`;
       return;
     }
@@ -1323,7 +1367,16 @@ document.querySelectorAll('input[name="zeroKm"]').forEach(input => {
     persistSession();
   });
 });
+document.querySelectorAll('input[name="auctionOrChassisRemarked"]').forEach(input => {
+  input.addEventListener('change', () => {
+    syncVehicleHistoryOptions();
+    updateSelectionSummary();
+    clearError();
+    persistSession();
+  });
+});
 syncZeroKmOptions();
+syncVehicleHistoryOptions();
 syncMotorcycleOptions();
 renderBillingDueOptions();
 $('firstBillingDueDate')?.addEventListener('change', persistSession);
@@ -1518,7 +1571,7 @@ function configurePageMode() {
     if ($('discount-section')) $('discount-section').hidden = false;
     $('consultantName').value = selectedConsultant.name;
     $('customer-cpf-field').hidden = false;
-    $('customerCpf').required = true;
+    $('customerCpf').required = false;
     const comparisonShareActions = $('comparison-share-actions');
     if (comparisonShareActions) comparisonShareActions.hidden = false;
     const consultantWhatsappInput = $('consultantWhatsapp');
@@ -1531,7 +1584,7 @@ function configurePageMode() {
   $('consultant-field').hidden = true;
   $('consultantName').required = false;
   $('customer-cpf-field').hidden = false;
-  $('customerCpf').required = true;
+  $('customerCpf').required = false;
   $('whatsapp').required = true;
   $('whatsapp-required').textContent = '*';
   $('environment-pill').textContent = '🔒 Cotação segura pelo site';

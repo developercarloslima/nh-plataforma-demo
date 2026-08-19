@@ -914,3 +914,90 @@ button:focus-visible,
   .analysis-status-tabs { grid-template-columns: 1fr; }
   .analysis-status-tab { justify-content: space-between; text-align: left; }
 }
+
+/* Coberturas por plano + regras de limite */
+.coverage-plan-options {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:10px;
+  margin-top:8px;
+}
+.coverage-plan-choice {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-height:46px;
+  padding:10px 12px;
+  border:1px solid #d7d9e5;
+  border-radius:14px;
+  background:#fff;
+  cursor:pointer;
+}
+.coverage-plan-choice input { width:18px; height:18px; flex:0 0 auto; }
+.coverage-plan-choice strong { color:#070c40; }
+.coverage-rules-editor {
+  margin-top:18px;
+  padding:16px;
+  border:1px solid #dfe1eb;
+  border-radius:18px;
+  background:#f8f9fd;
+}
+.coverage-rules-head {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:start;
+  gap:16px;
+  margin-bottom:14px;
+}
+.coverage-rules-head h3 { margin:0 0 6px; color:#070c40; }
+.coverage-rules-head .helper { margin:0; max-width:64ch; }
+#add-coverage-rule {
+  min-height:46px;
+  padding:10px 18px;
+  border-radius:14px;
+  font-size:14px;
+  font-weight:900;
+  white-space:nowrap;
+  align-self:start;
+}
+.coverage-rules-list { display:grid; gap:14px; }
+.coverage-rule-row {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:12px;
+  align-items:end;
+  padding:14px;
+  border:1px solid #d9dce8;
+  border-radius:16px;
+  background:#fff;
+}
+.coverage-rule-row label { display:grid; gap:7px; font-size:.88rem; font-weight:800; color:#070c40; min-width:0; }
+.coverage-rule-row input,.coverage-rule-row select { width:100%; min-width:0; }
+.coverage-rule-row .coverage-rule-remove {
+  min-height:46px;
+  padding:10px 16px;
+  justify-self:start;
+}
+.coverage-plan-separator td {
+  background:#070c40;
+  color:#f4ee00 !important;
+  font-weight:900;
+  font-size:1rem;
+  letter-spacing:.02em;
+  text-align:center;
+  border-bottom:3px solid #f4ee00;
+
+  .coverage-plan-separator td:hover {
+    background-color: #f4ee00 !important;
+    color:#070c40 !important;
+  }
+}
+@media (max-width:1100px) {
+  .coverage-rule-row { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .coverage-rule-row .coverage-rule-remove { grid-column:1 / -1; }
+}
+@media (max-width:680px) {
+  .coverage-rules-head { grid-template-columns:1fr; }
+  .coverage-rules-head button, #add-coverage-rule { width:100%; justify-self:stretch; }
+  .coverage-rule-row { grid-template-columns:1fr; }
+}

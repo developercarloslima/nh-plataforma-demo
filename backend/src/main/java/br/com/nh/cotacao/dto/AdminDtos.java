@@ -2,11 +2,13 @@ package br.com.nh.cotacao.dto;
 
 import br.com.nh.cotacao.entity.CoverageStatus;
 import br.com.nh.cotacao.entity.InspectionRequestStatus;
+import br.com.nh.cotacao.entity.InspectionAnalysisStage;
 import br.com.nh.cotacao.entity.MotorcycleOrigin;
 import br.com.nh.cotacao.entity.QuoteOrigin;
 import br.com.nh.cotacao.entity.QuoteStatus;
 import br.com.nh.cotacao.entity.Region;
 import br.com.nh.cotacao.entity.RearWindowBranding;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 
 import java.math.BigDecimal;
@@ -107,8 +109,29 @@ public final class AdminDtos {
             @DecimalMin("0.00") BigDecimal trackerMonthlyFee
     ) {}
 
+    public record CoverageRuleAdminResponse(
+            Long id,
+            String categoryCode,
+            BigDecimal minFipe,
+            BigDecimal maxFipe,
+            BigDecimal normalAmount,
+            BigDecimal discountedAmount,
+            Integer sortOrder
+    ) {}
+
+    public record CoverageRuleRequest(
+            @Size(max = 50) String categoryCode,
+            @NotNull @DecimalMin("0.00") BigDecimal minFipe,
+            @DecimalMin("0.00") BigDecimal maxFipe,
+            @NotNull @DecimalMin("0.00") BigDecimal normalAmount,
+            @DecimalMin("0.00") BigDecimal discountedAmount,
+            @NotNull @Min(0) Integer sortOrder
+    ) {}
+
     public record CoverageAdminResponse(
             Long id,
+            Long coverageId,
+            String coverageCode,
             Long planId,
             String planName,
             String category,
@@ -118,25 +141,39 @@ public final class AdminDtos {
             CoverageStatus status,
             String detail,
             BigDecimal monthlyPrice,
-            Integer sortOrder
+            Integer sortOrder,
+            List<CoverageRuleAdminResponse> rules
     ) {}
 
     public record CreateCoverageRequest(
+            @NotEmpty List<@NotNull Long> planIds,
             @NotBlank @Size(max = 180) String coverageName,
             @NotNull CoverageStatus status,
             @Size(max = 240) String detail,
             @DecimalMin("0.00") BigDecimal monthlyPrice,
-            @NotNull @Min(0) Integer sortOrder
-    ) {}
+            @NotNull @Min(0) Integer sortOrder,
+            @Size(max = 50) List<@Valid CoverageRuleRequest> rules
+    ) {
+        public CreateCoverageRequest {
+            planIds = planIds == null ? List.of() : List.copyOf(planIds);
+            rules = rules == null ? List.of() : List.copyOf(rules);
+        }
+    }
 
     public record UpdateCoverageRequest(
-            @NotNull Long planId,
+            @NotEmpty List<@NotNull Long> planIds,
             @NotBlank @Size(max = 180) String coverageName,
             @NotNull CoverageStatus status,
             @Size(max = 240) String detail,
             @DecimalMin("0.00") BigDecimal monthlyPrice,
-            @NotNull @Min(0) Integer sortOrder
-    ) {}
+            @NotNull @Min(0) Integer sortOrder,
+            @Size(max = 50) List<@Valid CoverageRuleRequest> rules
+    ) {
+        public UpdateCoverageRequest {
+            planIds = planIds == null ? List.of() : List.copyOf(planIds);
+            rules = rules == null ? List.of() : List.copyOf(rules);
+        }
+    }
 
     public record CreatePriceRangeRequest(
             @NotNull Long planId,
@@ -198,6 +235,8 @@ public final class AdminDtos {
             Integer manufactureYear,
             boolean zeroKm,
             BigDecimal fipeValue,
+            Boolean auctionOrChassisRemarked,
+            Integer indemnityFipePercent,
             String categoryCode,
             Region region,
             MotorcycleOrigin motorcycleOrigin,
@@ -241,6 +280,11 @@ public final class AdminDtos {
             String signatureUrl,
             UUID consultantId,
             String consultantName,
+            UUID assignedAnalystId,
+            String assignedAnalystName,
+            InspectionAnalysisStage analysisStage,
+            OffsetDateTime registrationCompletedAt,
+            String registrationCompletedByName,
             InspectionRequestStatus status,
             OffsetDateTime createdAt,
             OffsetDateTime expiresAt,
@@ -257,6 +301,7 @@ public final class AdminDtos {
             String teamWhatsappUrl,
             String teamEmailUrl,
             String associateInspectionWhatsappUrl,
+            String consultantInspectionWhatsappUrl,
             String associateDecisionWhatsappUrl,
             OffsetDateTime decisionMessageSentAt,
             boolean associateDecisionMessagePending,

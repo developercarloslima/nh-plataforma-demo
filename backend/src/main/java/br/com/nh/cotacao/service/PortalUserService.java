@@ -56,15 +56,17 @@ public class PortalUserService {
                 var consultant = consultantService.registerPortalLogin(user.getConsultantId());
                 consultantName = consultant.name();
             } else if (user.getRole() == PortalRole.ANALYST) {
-                // O mesmo vínculo operacional é usado para identificar contas específicas de analista.
                 var analyst = consultantService.findActiveAnalyst(user.getConsultantId());
                 consultantName = analyst.getName();
+            } else if (user.getRole() == PortalRole.SUPERVISION_ANALYSIS) {
+                var supervisor = consultantService.findActiveSupervisor(user.getConsultantId());
+                consultantName = supervisor.getName();
             }
         }
 
         user.registerLogin();
         repository.flush();
-        return new AuthenticatedPortalUser(user.getUsername(), user.getRole(), user.getConsultantId(), consultantName);
+        return new AuthenticatedPortalUser(user.getUsername(), user.getRole(), user.getConsultantId(), consultantName, user.isMustChangePassword());
     }
 
     @Transactional(readOnly = true)
@@ -81,7 +83,8 @@ public class PortalUserService {
                 .filter(PortalUser::isActive)
                 .orElseThrow(() -> new IllegalArgumentException("Conta de acesso não encontrada ou inativa."));
         return new PortalUserSession(
-                user.getUsername(), user.getDisplayName(), user.getRole(), user.getConsultantId(), consultantName(user.getConsultantId())
+                user.getUsername(), user.getDisplayName(), user.getRole(), user.getConsultantId(), consultantName(user.getConsultantId()),
+                user.isMustChangePassword()
         );
     }
 
@@ -106,6 +109,55 @@ public class PortalUserService {
                 .filter(PortalUser::isActive)
                 .filter(user -> user.getRole() == PortalRole.ANALYST)
                 .map(PortalUser::getConsultantId);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<UUID> linkedSupervisorId(String username) {
+        return repository.findByNormalizedUsername(PortalUser.normalizeUsername(username))
+                .filter(PortalUser::isActive)
+                .filter(user -> user.getRole() == PortalRole.SUPERVISION_ANALYSIS)
+                .map(PortalUser::getConsultantId);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean requiresPasswordChange(String username) {
+        return repository.findByNormalizedUsername(PortalUser.normalizeUsername(username))
+                .filter(PortalUser::isActive)
+                .map(PortalUser::isMustChangePassword)
+                .orElse(false);
+    }
+
+    @Transactional(readOnly = true)
+    public void assertAnalysisInspectionAccess(String username, PortalRole role, UUID inspectionId) {
+        if (role == PortalRole.ADMIN) return;
+        if (role != PortalRole.ANALYST) throw new IllegalArgumentException("Este usuário não possui acesso ao painel de análise.");
+        Optional<UUID> linked = linkedAnalystId(username);
+        var inspection = inspectionRepository.findById(inspectionId)
+                .orElseThrow(() -> new IllegalArgumentException("Vistoria não encontrada."));
+        UUID assignedId = inspection.getAssignedAnalyst() == null ? null : inspection.getAssignedAnalyst().getId();
+        if (linked.isEmpty()) {
+            if (assignedId != null) {
+                throw new IllegalArgumentException("Esta conta genérica só pode acessar vistorias ainda sem analista vinculado.");
+            }
+            return;
+        }
+        if (!linked.get().equals(assignedId)) {
+            throw new IllegalArgumentException("Esta vistoria está vinculada a outro analista.");
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public void assertSupervisionInspectionAccess(String username, PortalRole role, UUID inspectionId) {
+        if (role == PortalRole.ADMIN) return;
+        if (role != PortalRole.SUPERVISION_ANALYSIS) {
+            throw new IllegalArgumentException("Este usuário não possui acesso à Supervisão de Análise.");
+        }
+        var inspection = inspectionRepository.findById(inspectionId)
+                .orElseThrow(() -> new IllegalArgumentException("Vistoria não encontrada."));
+        boolean visible = inspection.getAnalysisStage() == br.com.nh.cotacao.entity.InspectionAnalysisStage.SUPERVISION_QUEUE
+                || (inspection.getAnalysisStage() == br.com.nh.cotacao.entity.InspectionAnalysisStage.FINISHED
+                    && "SUPERVISION_ANALYSIS".equals(inspection.getReviewedByRole()));
+        if (!visible) throw new IllegalArgumentException("Esta vistoria ainda não foi encaminhada para a Supervisão de Análise.");
     }
 
     @Transactional(readOnly = true)
@@ -211,6 +263,63 @@ public class PortalUserService {
     }
 
     @Transactional
+    public void changeOwnPassword(String username, String currentPassword, String newPassword) {
+        PortalUser user = repository.findByNormalizedUsername(PortalUser.normalizeUsername(username))
+                .filter(PortalUser::isActive)
+                .orElseThrow(() -> new IllegalArgumentException("Conta de acesso não encontrada ou inativa."));
+        if (!encoder.matches(currentPassword == null ? "" : currentPassword, user.getPasswordHash())) {
+            throw new IllegalArgumentException("A senha atual está incorreta.");
+        }
+        validatePassword(newPassword);
+        if (encoder.matches(newPassword, user.getPasswordHash())) {
+            throw new IllegalArgumentException("A nova senha deve ser diferente da senha atual.");
+        }
+        user.changePassword(encoder.encode(newPassword));
+        repository.saveAndFlush(user);
+    }
+
+    @Transactional
+    public void bootstrapAnalysisTeam() {
+        seedTeamUser("Gleyce", "Teotônio Vilela", CollaboratorRole.ANALYST, "analiseGleyce", PortalRole.ANALYST);
+        seedTeamUser("Larissa", "Maceió", CollaboratorRole.ANALYST, "analiseLarissa", PortalRole.ANALYST);
+        seedTeamUser("Gabriele", "Coruripe", CollaboratorRole.ANALYST, "analiseGabriele", PortalRole.ANALYST);
+        seedTeamUser("Flavia", null, CollaboratorRole.ANALYST, "analiseFlavia", PortalRole.ANALYST);
+        seedTeamUser("Luana", null, CollaboratorRole.ANALYST, "analiseLuana", PortalRole.ANALYST);
+        seedTeamUser("Livia", null, CollaboratorRole.ANALYST, "analiseLivia", PortalRole.ANALYST);
+        seedTeamUser("Gabrielly", null, CollaboratorRole.ANALYST, "analiseGabrielly", PortalRole.ANALYST);
+        seedTeamUser("Eurides", null, CollaboratorRole.SUPERVISION_ANALYSIS, "SupervisaoEurides", PortalRole.SUPERVISION_ANALYSIS);
+    }
+
+    private void seedTeamUser(String name, String city, CollaboratorRole collaboratorRole, String username, PortalRole portalRole) {
+        Consultant collaborator = consultantRepository.findByNormalizedName(Consultant.normalize(name)).orElse(null);
+        if (collaborator != null && collaborator.getRole() != collaboratorRole) {
+            // Não interrompe o deploy caso já exista, por exemplo, um consultor chamado "Flavia".
+            // Nesse caso cria um cadastro operacional distinto para a equipe de análise.
+            String operationalName = name + (collaboratorRole == CollaboratorRole.SUPERVISION_ANALYSIS
+                    ? " - Supervisão" : " - Análise");
+            collaborator = consultantRepository.findByNormalizedName(Consultant.normalize(operationalName))
+                    .orElseGet(() -> Consultant.create(operationalName, "ANALYSIS_TEAM_BOOTSTRAP", collaboratorRole));
+        }
+        if (collaborator == null) {
+            collaborator = Consultant.create(name, "ANALYSIS_TEAM_BOOTSTRAP", collaboratorRole);
+        }
+        if (!collaborator.isActive()) collaborator.setActive(true);
+        if (city != null) collaborator.setCity(city);
+        collaborator = consultantRepository.save(collaborator);
+
+        String normalized = PortalUser.normalizeUsername(username);
+        if (repository.findByNormalizedUsername(normalized).isPresent()) return;
+        if (repository.findByConsultantId(collaborator.getId()).isPresent()) return;
+
+        PortalUser user = PortalUser.create(
+                username, collaborator.getName(), encoder.encode("nh2027"), portalRole, "ANALYSIS_TEAM_BOOTSTRAP"
+        );
+        user.linkConsultant(collaborator.getId());
+        user.requirePasswordChange();
+        repository.save(user);
+    }
+
+    @Transactional
     public void bootstrapDefaults(
             String adminUsername, String adminPassword,
             String analystUsername, String analystPassword,
@@ -242,7 +351,7 @@ public class PortalUserService {
             String newCollaboratorName,
             String adminUsername
     ) {
-        if (role != PortalRole.CONSULTANT && role != PortalRole.ANALYST) return null;
+        if (role != PortalRole.CONSULTANT && role != PortalRole.ANALYST && role != PortalRole.SUPERVISION_ANALYSIS) return null;
         UUID resolved = resolveCollaborator(role, collaboratorId, newCollaboratorName, adminUsername);
         if (resolved == null) {
             throw new IllegalArgumentException("Selecione um colaborador existente ou informe o nome do novo colaborador.");
@@ -258,7 +367,7 @@ public class PortalUserService {
             String newCollaboratorName,
             String adminUsername
     ) {
-        if (nextRole != PortalRole.CONSULTANT && nextRole != PortalRole.ANALYST) return null;
+        if (nextRole != PortalRole.CONSULTANT && nextRole != PortalRole.ANALYST && nextRole != PortalRole.SUPERVISION_ANALYSIS) return null;
 
         UUID resolved = resolveCollaborator(nextRole, collaboratorId, newCollaboratorName, adminUsername);
         if (resolved == null) {
@@ -283,9 +392,11 @@ public class PortalUserService {
             String newCollaboratorName,
             String adminUsername
     ) {
-        CollaboratorRole collaboratorRole = role == PortalRole.ANALYST
-                ? CollaboratorRole.ANALYST
-                : CollaboratorRole.CONSULTANT;
+        CollaboratorRole collaboratorRole = switch (role) {
+            case ANALYST -> CollaboratorRole.ANALYST;
+            case SUPERVISION_ANALYSIS -> CollaboratorRole.SUPERVISION_ANALYSIS;
+            default -> CollaboratorRole.CONSULTANT;
+        };
         if (newCollaboratorName != null && !newCollaboratorName.isBlank()) {
             return consultantService.create(
                     newCollaboratorName, collaboratorRole, "CREATED_WITH_PORTAL_USER", adminUsername
@@ -341,7 +452,7 @@ public class PortalUserService {
         return new PortalUserResponse(
                 user.getId(), user.getUsername(), user.getDisplayName(), user.getRole(), user.isActive(),
                 user.getCreatedAt(), user.getUpdatedAt(), user.getPasswordChangedAt(), user.getLastLoginAt(), user.getCreatedBy(),
-                user.getConsultantId(), consultantName(user.getConsultantId())
+                user.getConsultantId(), consultantName(user.getConsultantId()), user.isMustChangePassword()
         );
     }
 
@@ -356,7 +467,8 @@ public class PortalUserService {
             String username,
             PortalRole role,
             UUID consultantId,
-            String consultantName
+            String consultantName,
+            boolean passwordChangeRequired
     ) {}
 
     public record PortalUserSession(
@@ -364,6 +476,7 @@ public class PortalUserService {
             String displayName,
             PortalRole role,
             UUID consultantId,
-            String consultantName
+            String consultantName,
+            boolean passwordChangeRequired
     ) {}
 }

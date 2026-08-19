@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <meta name="theme-color" content="#070c40">
-<link rel="stylesheet" href="./styles.css?v=20260818-comparison-share-layout-v2">
+<link rel="stylesheet" href="./styles.css?v=20260819-fipe-history-v2">
   <title>NH Cotação Digital</title>
   <link rel="icon" type="image/png" href="/assets/simbolo-fundo-azul.png" />
   <link rel="shortcut icon" type="image/png" href="/assets/simbolo-fundo-azul.png" />
@@ -51,7 +51,7 @@
         <div class="customer-identity-row span-2">
           <input id="customerName" required maxlength="140" placeholder="Informe seu nome completo" aria-label="Nome completo do cliente">
           <div id="customer-cpf-field" class="customer-identity-field">
-            <input id="customerCpf" inputmode="numeric" maxlength="14" placeholder="Informe seu CPF" aria-label="CPF do cliente" required>
+            <input id="customerCpf" inputmode="numeric" maxlength="14" placeholder="CPF (opcional)" aria-label="CPF do cliente (opcional)">
           </div>
         </div>
         <label class="span-2">WhatsApp do cliente <span id="whatsapp-required"></span><input id="whatsapp" placeholder="(82) 99999-9999"></label>
@@ -77,6 +77,21 @@
         <label id="model-field">Modelo do veículo *<input id="model" required placeholder="Ex.: Hyundai HB20 Comfort"></label>
         <label>Ano de modelo *<input id="manufactureYear" required type="number" min="1950" placeholder="Ex.: 2026"></label>
         <label id="fipe-field">Valor FIPE *<input id="fipeValue" data-money required inputmode="decimal" maxlength="18" placeholder="Ex.: 65.000,00"></label>
+
+        <fieldset class="vehicle-history-selector span-2">
+          <legend>O veículo possui passagem por leilão ou remarcação de chassi? <small>(opcional)</small></legend>
+          <div class="binary-options" role="radiogroup" aria-label="Passagem por leilão ou remarcação de chassi">
+            <label class="binary-option">
+              <input type="radio" name="auctionOrChassisRemarked" value="true">
+              <span>Sim</span>
+            </label>
+            <label class="binary-option">
+              <input type="radio" name="auctionOrChassisRemarked" value="false">
+              <span>Não</span>
+            </label>
+          </div>
+          <small class="field-help">Se marcar “Sim”, o ressarcimento integral será limitado automaticamente a 70% da FIPE. Se não responder, o cálculo permanece normal em 100% da FIPE.</small>
+        </fieldset>
 
 
         <fieldset class="vehicle-selector span-2">
@@ -144,10 +159,10 @@
           <input id="consultantWhatsapp" type="tel" inputmode="tel" maxlength="18" autocomplete="tel" placeholder="(82) 99999-9999">
           <small>Este número receberá a escolha de plano e adicionais do associado. Ao enviar a comparação, ele ficará salvo no seu cadastro.</small>
         </label>
-        <label id="customer-whatsapp-share-field" class="customer-whatsapp-share-field">
-          <span>Clique aqui para enviar comp. ao assoc. </span><br>
-          <button id="share-plan-comparison" class="secondary-button" type="button">Enviar comparação de plano</button>
-
+            <div class="consultant-whatsapp-share-field">
+          <span>Clique aqui para enviar comp. ao assoc.</span>
+          <button id="share-plan-comparison" class="secondary-button" type="button" aria-label="Enviar comparação de plano para o associado">Enviar comparação de plano</button>
+        </div>
         
       </div>
 
@@ -185,6 +200,7 @@
         <div id="selected-pre-discount-row" hidden><span>Subtotal mensal</span><strong id="selected-pre-discount-value">—</strong></div>
         <div id="selected-discount-row" hidden><span id="selected-discount-label">Desconto</span><strong id="selected-discount-value">—</strong></div>
         <div id="selected-one-time-row" hidden><span>Taxa única</span><strong id="selected-one-time-value">—</strong></div>
+        <div><span>Valor em caso de ressarcimento integral</span><strong id="selected-indemnity-percent">100% da FIPE</strong></div>
         <div class="selection-total"><span>Total mensal</span><strong id="selected-plan-value">—</strong></div>
         <button id="confirm-plan" class="primary-button" type="button">Confirmar plano e gerar cotação →</button>
       </div>
@@ -265,7 +281,7 @@
   <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
   <script src="/shared/money-input.js?v=20260818-empty-placeholder-v1"></script>
-  <script src="./app.js?v=20260818-consultant-whatsapp-input-v1" defer></script>
+  <script src="./app.js?v=20260819-fipe-history-v2" defer></script>
 <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
 </body>
 </html>

@@ -20,27 +20,30 @@ public interface InspectionRequestRepository extends JpaRepository<InspectionReq
     long countByCreatedAtBefore(OffsetDateTime cutoff);
     long countByStatus(InspectionRequestStatus status);
 
-    @EntityGraph(attributePaths = {"assets", "consultant", "quotation"})
+    @EntityGraph(attributePaths = {"assets", "consultant", "quotation", "assignedAnalyst"})
     Optional<InspectionRequest> findByPublicToken(String publicToken);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select request from InspectionRequest request where request.publicToken = :publicToken")
     Optional<InspectionRequest> findByPublicTokenForUpdate(@Param("publicToken") String publicToken);
 
-    @EntityGraph(attributePaths = {"assets", "consultant", "quotation"})
+    @EntityGraph(attributePaths = {"assets", "consultant", "quotation", "assignedAnalyst"})
     Optional<InspectionRequest> findByQuotation_Id(UUID quotationId);
 
-    @EntityGraph(attributePaths = {"assets", "consultant", "quotation"})
+    @EntityGraph(attributePaths = {"assets", "consultant", "quotation", "assignedAnalyst"})
     List<InspectionRequest> findTop300ByOrderByCreatedAtDesc();
 
-    @EntityGraph(attributePaths = {"assets", "consultant", "quotation"})
+    @EntityGraph(attributePaths = {"assets", "consultant", "quotation", "assignedAnalyst"})
     List<InspectionRequest> findAllByOrderByCreatedAtDesc();
 
-    @EntityGraph(attributePaths = {"assets", "consultant", "quotation"})
+    @EntityGraph(attributePaths = {"assets", "consultant", "quotation", "assignedAnalyst"})
     List<InspectionRequest> findAllByConsultant_IdOrderByCreatedAtDesc(UUID consultantId);
 
-    @EntityGraph(attributePaths = {"assets", "consultant", "quotation"})
+    @EntityGraph(attributePaths = {"assets", "consultant", "quotation", "assignedAnalyst"})
     List<InspectionRequest> findAllByConsultantNameIgnoreCaseOrderByCreatedAtDesc(String consultantName);
+
+    @EntityGraph(attributePaths = {"assets", "consultant", "quotation", "assignedAnalyst"})
+    List<InspectionRequest> findAllByAssignedAnalyst_IdOrderByCreatedAtDesc(UUID analystId);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("delete from InspectionRequest i where i.createdAt < :cutoff")
@@ -55,6 +58,6 @@ public interface InspectionRequestRepository extends JpaRepository<InspectionReq
     int deleteAllInspections();
 
     @Override
-    @EntityGraph(attributePaths = {"assets", "consultant", "quotation"})
+    @EntityGraph(attributePaths = {"assets", "consultant", "quotation", "assignedAnalyst"})
     Optional<InspectionRequest> findById(UUID id);
 }

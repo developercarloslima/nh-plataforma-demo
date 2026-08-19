@@ -152,10 +152,60 @@ public class AdminActivityService {
     }
 
     @Transactional(readOnly = true)
-    public List<AdminInspectionResponse> inspectionsForAnalysis() {
+    public List<AdminInspectionResponse> inspectionsForAnalysis(String username, PortalRole role) {
+        if (role == PortalRole.ADMIN) {
+            return inspectionRepository.findAllByOrderByCreatedAtDesc().stream()
+                    .filter(item -> item.getAnalysisStage() == InspectionAnalysisStage.ANALYST_QUEUE
+                            || item.getAnalysisStage() == InspectionAnalysisStage.ANALYST_PENDING)
+                    .map(item -> toInspection(item, true))
+                    .toList();
+        }
+        UUID analystId = portalUserService.linkedAnalystId(username).orElse(null);
         return inspectionRepository.findAllByOrderByCreatedAtDesc().stream()
+                .filter(item -> item.getAnalysisStage() == InspectionAnalysisStage.ANALYST_QUEUE
+                        || item.getAnalysisStage() == InspectionAnalysisStage.ANALYST_PENDING)
+                .filter(item -> analystId == null
+                        ? item.getAssignedAnalyst() == null
+                        : (item.getAssignedAnalyst() != null && analystId.equals(item.getAssignedAnalyst().getId())))
                 .map(item -> toInspection(item, true))
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<AdminInspectionResponse> inspectionsForSupervision() {
+        return inspectionRepository.findAllByOrderByCreatedAtDesc().stream()
+                .filter(item -> item.getAnalysisStage() == InspectionAnalysisStage.SUPERVISION_QUEUE
+                        || (item.getAnalysisStage() == InspectionAnalysisStage.FINISHED
+                            && "SUPERVISION_ANALYSIS".equals(item.getReviewedByRole())))
+                .map(item -> toInspection(item, true))
+                .toList();
+    }
+
+    @Transactional
+    public AdminInspectionResponse markRegistrationCompleted(UUID id, String note, String username, PortalRole actorRole) {
+        if (actorRole != PortalRole.ANALYST && actorRole != PortalRole.ADMIN) {
+            throw new IllegalArgumentException("Este usuário não possui permissão para concluir o cadastro da vistoria.");
+        }
+        InspectionRequest inspection = inspectionRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
+        Consultant analyst;
+        if (actorRole == PortalRole.ADMIN) {
+            analyst = inspection.getAssignedAnalyst();
+            if (analyst == null) throw new IllegalArgumentException("Vincule um analista responsável antes de marcar Cadastro feito.");
+        } else {
+            UUID analystId = portalUserService.linkedAnalystId(username)
+                    .orElseThrow(() -> new IllegalArgumentException("Este usuário de análise não está vinculado a um analista específico."));
+            analyst = consultantService.findActiveAnalyst(analystId);
+        }
+        String old = inspectionAnalysisSummary(inspection);
+        inspection.markRegistrationCompleted(analyst, note);
+        inspectionRepository.flush();
+        auditRepository.save(CatalogChangeAudit.createText(
+                "INSPECTION_REGISTRATION", null, id.toString(),
+                "Cadastro concluído por " + analyst.getName() + " e enviado à Supervisão de Análise",
+                old, inspectionAnalysisSummary(inspection) + "; etapa=SUPERVISION_QUEUE", username
+        ));
+        return toInspection(inspection, true);
     }
 
     @Transactional
@@ -164,7 +214,14 @@ public class AdminActivityService {
     }
 
     @Transactional
-    public AdminInspectionResponse markDecisionMessageSentForAnalysis(UUID id) {
+    public AdminInspectionResponse markDecisionMessageSentForAnalysis(UUID id, String username, PortalRole role) {
+        portalUserService.assertAnalysisInspectionAccess(username, role, id);
+        return markDecisionMessageSent(id, true);
+    }
+
+    @Transactional
+    public AdminInspectionResponse markDecisionMessageSentForSupervision(UUID id, String username, PortalRole role) {
+        portalUserService.assertSupervisionInspectionAccess(username, role, id);
         return markDecisionMessageSent(id, true);
     }
 
@@ -188,7 +245,50 @@ public class AdminActivityService {
             String username,
             PortalRole actorRole
     ) {
+        portalUserService.assertAnalysisInspectionAccess(username, actorRole, id);
         return updateInspectionStatus(id, request, username, actorRole, true);
+    }
+
+    @Transactional
+    public AdminInspectionResponse updateInspectionStatusForSupervision(
+            UUID id, UpdateInspectionStatusRequest request, String username, PortalRole actorRole
+    ) {
+        if (actorRole != PortalRole.SUPERVISION_ANALYSIS && actorRole != PortalRole.ADMIN) {
+            throw new IllegalArgumentException("Este usuário não possui permissão para supervisionar vistorias.");
+        }
+        if (request.status() != InspectionRequestStatus.APPROVED && request.status() != InspectionRequestStatus.REJECTED) {
+            throw new IllegalArgumentException("A Supervisão de Análise pode aprovar ou rejeitar a vistoria.");
+        }
+        if (request.adminNote() == null || request.adminNote().isBlank()) {
+            throw new IllegalArgumentException("Informe uma observação explicando o motivo da aprovação ou rejeição.");
+        }
+        InspectionRequest inspection = inspectionRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
+        if (actorRole != PortalRole.ADMIN && inspection.getAnalysisStage() != InspectionAnalysisStage.SUPERVISION_QUEUE) {
+            throw new IllegalArgumentException("Esta vistoria ainda não foi marcada como Cadastro feito pelo analista.");
+        }
+        Consultant supervisorCollaborator = null;
+        String reviewerName = "Análise feita pelo administrador";
+        String reviewerRole = "ADMIN";
+        if (actorRole == PortalRole.SUPERVISION_ANALYSIS) {
+            UUID supervisorId = portalUserService.linkedSupervisorId(username)
+                    .orElseThrow(() -> new IllegalArgumentException("Este usuário de supervisão não está vinculado a um colaborador."));
+            supervisorCollaborator = consultantService.findActiveSupervisor(supervisorId);
+            reviewerName = supervisorCollaborator.getName();
+            reviewerRole = "SUPERVISION_ANALYSIS";
+        }
+        String old = inspectionAnalysisSummary(inspection);
+        inspection.adminReview(
+                request.status(), request.adminNote(), supervisorCollaborator, reviewerName, reviewerRole,
+                actorRole == PortalRole.ADMIN
+        );
+        inspectionRepository.flush();
+        auditRepository.save(CatalogChangeAudit.createText(
+                "INSPECTION_SUPERVISION", null, id.toString(),
+                "Supervisão da vistoria de " + inspection.getAssociateName() + " por " + reviewerName,
+                old, inspectionAnalysisSummary(inspection), username
+        ));
+        return toInspection(inspection, true);
     }
 
     private AdminInspectionResponse updateInspectionStatus(
@@ -205,6 +305,10 @@ public class AdminActivityService {
         Consultant reviewerCollaborator = null;
         String reviewerName;
         String reviewerRole;
+        if (actorRole == PortalRole.ANALYST
+                && (request.status() == InspectionRequestStatus.APPROVED || request.status() == InspectionRequestStatus.REJECTED)) {
+            throw new IllegalArgumentException("A decisão final da vistoria pertence à Supervisão de Análise. Marque Cadastro feito para enviar a vistoria à supervisão.");
+        }
         if (actorRole == PortalRole.ADMIN
                 && (request.status() == InspectionRequestStatus.APPROVED || request.status() == InspectionRequestStatus.REJECTED)
                 && (request.adminNote() == null || request.adminNote().isBlank())) {
@@ -300,6 +404,7 @@ public class AdminActivityService {
                 item.getConsultant() == null ? null : item.getConsultant().getId(),
                 item.getConsultantName(), item.getCustomerName(), maskCpf(item.getCustomerCpf()), item.getWhatsapp(),
                 item.getPlate(), item.getModel(), item.getManufactureYear(), item.isZeroKm(), item.getFipeValue(),
+                item.getAuctionOrChassisRemarked(), item.getIndemnityFipePercent(),
                 item.getCategoryCode(), item.getRegion(), item.getMotorcycleOrigin(), item.getMotorcycleCc(), item.getObservation(), item.getSelectedPlanName(),
                 item.getPreDiscountMonthlyValue(), item.getDiscountPercent(), item.getRearWindowBranding(), item.getMonthlyValue(), item.getOneTimeFee(),
                 item.getStatus(), item.getCreatedAt(), item.getValidUntil(), expired, item.getDecidedAt(), item.getAdminNote(),
@@ -362,6 +467,7 @@ public class AdminActivityService {
             displayStatus = item.getStatus();
         }
         String associateInspectionUrl = associateInspectionWhatsappUrl(item, publicUrl);
+        String consultantInspectionUrl = consultantInspectionWhatsappUrl(item, publicUrl);
         String associateDecisionUrl = associateDecisionWhatsappUrl(item);
         boolean decisionMessagePending = associateDecisionUrl != null && item.getDecisionMessageSentAt() == null;
         return new AdminInspectionResponse(
@@ -372,12 +478,14 @@ public class AdminActivityService {
                 item.getQuotation() == null ? null : item.getQuotation().getFirstBillingDueDate(),
                 item.getQuotation() == null ? 0 : item.getQuotation().getDiscountPercent(),
                 item.getQuotation() == null ? RearWindowBranding.NOT_APPLICABLE : item.getQuotation().getRearWindowBranding(), null,
-                item.getConsultant() == null ? null : item.getConsultant().getId(), item.getConsultantName(), displayStatus,
+                item.getConsultant() == null ? null : item.getConsultant().getId(), item.getConsultantName(),
+                item.getAssignedAnalyst() == null ? null : item.getAssignedAnalyst().getId(), item.getAssignedAnalystName(),
+                item.getAnalysisStage(), item.getRegistrationCompletedAt(), item.getRegistrationCompletedByName(), displayStatus,
                 item.getCreatedAt(), item.getExpiresAt(), item.getCompletedAt(), item.getAdminNote(), item.getReviewedAt(),
                 item.getReviewedByCollaborator() == null ? null : item.getReviewedByCollaborator().getId(),
                 item.getReviewedByName(), item.getReviewedByRole(),
                 publicUrl, null, null, quotationPdfUrl, whatsappUrl(whatsapp, message), emailUrl(email, subject, message), associateInspectionUrl,
-                associateDecisionUrl, item.getDecisionMessageSentAt(), decisionMessagePending,
+                consultantInspectionUrl, associateDecisionUrl, item.getDecisionMessageSentAt(), decisionMessagePending,
                 availableCount, expiredCount, filesExpireAt, assets
         );
     }
@@ -402,6 +510,21 @@ public class AdminActivityService {
             message = "Olá, " + firstName + "! Acesse o link abaixo para " + action
                     + " do seu veículo pela Novo Horizonte Proteção Veicular:\n" + publicUrl;
         }
+        return whatsappUrl(phone, message);
+    }
+
+    private String consultantInspectionWhatsappUrl(InspectionRequest item, String publicUrl) {
+        if (item.getConsultant() == null || publicUrl == null || publicUrl.isBlank()) return null;
+        String phone = normalizeAssociatePhone(item.getConsultant().getWhatsapp());
+        if (phone == null) return null;
+        String consultantFirstName = item.getConsultantName() == null || item.getConsultantName().isBlank()
+                ? "consultor" : item.getConsultantName().trim().split("\\s+")[0];
+        boolean pending = item.getAnalysisStage() == InspectionAnalysisStage.ANALYST_PENDING
+                || item.getStatus() == InspectionRequestStatus.WAITING_FILES;
+        String message = pending
+                ? "Olá, " + consultantFirstName + "! A vistoria de " + item.getAssociateName()
+                    + " possui arquivo(s) reprovado(s) ou pendente(s). Envie este link ao associado para refazer somente o que falta:\n" + publicUrl
+                : "Olá, " + consultantFirstName + "! Segue o link da vistoria de " + item.getAssociateName() + ":\n" + publicUrl;
         return whatsappUrl(phone, message);
     }
 

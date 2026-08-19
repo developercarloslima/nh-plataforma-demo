@@ -165,6 +165,10 @@ public class QuotePdfService {
         addLabelValue(table, "Ano", quotation.getManufactureYear().toString());
         addLabelValue(table, "Veículo 0 km", quotation.isZeroKm() ? "Sim" : "Não");
         addLabelValue(table, "Valor FIPE", formatCurrency(quotation.getFipeValue()));
+        addLabelValue(table, "Valor em caso de ressarcimento integral", quotation.getIndemnityFipePercent() + "% da FIPE");
+        if (Boolean.TRUE.equals(quotation.getAuctionOrChassisRemarked())) {
+            addLabelValue(table, "Leilão / remarcação de chassi", "Sim — limite de ressarcimento reduzido para 70% da FIPE");
+        }
         addLabelValue(table, "Emitida em", quotation.getCreatedAt().format(DATE_TIME));
         addLabelValue(table, "Válida até", quotation.getValidUntil().format(DATE_TIME));
         addLabelValue(table, "Validade", "5 dias a partir da emissão");

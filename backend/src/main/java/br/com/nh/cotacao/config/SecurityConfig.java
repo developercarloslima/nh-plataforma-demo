@@ -25,6 +25,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/quotes/*/pdf").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/analysis/**").hasAnyRole("ANALYST", "ADMIN")
+                        .requestMatchers("/api/supervision/**").hasAnyRole("SUPERVISION_ANALYSIS", "ADMIN")
                         .requestMatchers("/api/consultant-dashboard/**").hasAnyRole("CONSULTANT", "ADMIN")
                         .anyRequest().authenticated()
                 )

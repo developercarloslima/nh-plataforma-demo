@@ -253,6 +253,25 @@ function logout() {
   showLogin();
 }
 
+function collaboratorDisplayName(value) {
+  const text = String(value || '').trim();
+  if (!text || text !== text.toUpperCase()) return text;
+  return text.toLocaleLowerCase('pt-BR').replace(/(^|\s)([a-záàâãéêíóôõúç])/g, (_, space, letter) => space + letter.toLocaleUpperCase('pt-BR'));
+}
+
+function updateConsultantWelcome(me) {
+  const title = $('collaborator-welcome-title');
+  const text = $('collaborator-welcome-text');
+  if (!title || !text) return;
+  if (me?.consultantId && me?.consultantName) {
+    title.textContent = `Olá, ${collaboratorDisplayName(me.consultantName)}`;
+    text.textContent = 'Bem-vindo, seu painel de Consultor está pronto e atualizado.';
+  } else {
+    title.textContent = 'Bem-vindo à Área do Colaborador';
+    text.textContent = 'Selecione quem está realizando a atividade. Essa identificação será registrada nas cotações e vistorias para organização do painel administrativo.';
+  }
+}
+
 async function boot() {
   if (!token()) {
     showLogin();
@@ -268,12 +287,17 @@ async function boot() {
   try {
     const me = await api('/api/auth/me');
     localStorage.setItem(ROLE_KEY, me.role);
+    updateConsultantWelcome(me);
     if (me.role === 'ADMIN') {
       location.replace('/admin/');
       return;
     }
     if (me.role === 'ANALYST') {
       location.replace('/analise/');
+      return;
+    }
+    if (me.role === 'SUPERVISION_ANALYSIS') {
+      location.replace('/supervisao/');
       return;
     }
     $('admin-card-wrap').hidden = true;
@@ -932,6 +956,7 @@ $('login-form').addEventListener('submit', async event => {
     markSessionActivity(true);
     if (data.role === 'ADMIN') location.href = '/admin/';
     else if (data.role === 'ANALYST') location.href = '/analise/';
+    else if (data.role === 'SUPERVISION_ANALYSIS') location.href = '/supervisao/';
     else location.reload();
   } catch (error) {
     box.className = 'message error';

@@ -470,13 +470,17 @@ label {
 }
 
 .table-wrap td {
-  color: var(--nh-blue) !important;
+  color: var(--nh-blue);
   border-bottom-color: rgba(7, 12, 64, .09) !important;
 }
 
-.table-wrap tbody tr:hover td {
-  background: rgba(240, 240, 0, .075);
+.table-wrap tbody tr:hover td{
+  background: #f4ee00;
+  color: var(--nh-blue) !important;
+
 }
+
+
 
 /* =========================================================
    STATUS

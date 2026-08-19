@@ -23,7 +23,8 @@ public final class AdminUserDtos {
             OffsetDateTime lastLoginAt,
             String createdBy,
             UUID consultantId,
-            String consultantName
+            String consultantName,
+            boolean mustChangePassword
     ) {}
 
     public record CreatePortalUserRequest(

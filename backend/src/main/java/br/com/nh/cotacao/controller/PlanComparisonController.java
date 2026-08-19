@@ -65,7 +65,7 @@ public class PlanComparisonController {
 
         var payload = new PlanComparisonTokenService.Payload(
                 consultant.getId(), consultant.getName(), consultant.getWhatsapp(), clean(request.customerName()), clean(request.model()),
-                clean(request.plate()), discount, options, 0
+                clean(request.plate()), discount, request.auctionOrChassisRemarked(), Boolean.TRUE.equals(request.auctionOrChassisRemarked()) ? 70 : 100, options, 0
         );
         String token = tokenService.issue(payload);
         return new CreateComparisonResponse("/comparacao/?token=" + token);
@@ -79,6 +79,7 @@ public class PlanComparisonController {
         return new PublicComparisonResponse(
                 payload.customerName(), payload.consultantName(), payload.model(), payload.plate(), options.fipeValue(),
                 payload.discountPercent() == null ? 0 : payload.discountPercent(),
+                payload.auctionOrChassisRemarked(), payload.indemnityFipePercent() == null ? 100 : payload.indemnityFipePercent(),
                 Instant.ofEpochSecond(payload.expiresAtEpochSecond()),
                 payload.consultantWhatsapp() == null || payload.consultantWhatsapp().isBlank()
                         ? communicationSettings.teamWhatsapp()
@@ -96,6 +97,7 @@ public class PlanComparisonController {
             Region region,
             MotorcycleOrigin motorcycleOrigin,
             @NotNull @DecimalMin("0.01") BigDecimal fipeValue,
+            Boolean auctionOrChassisRemarked,
             Boolean motorcycle,
             @Min(1) @Max(2500) Integer motorcycleCc,
             @Size(max = 40) String promoMotorcycleTier,
@@ -115,6 +117,8 @@ public class PlanComparisonController {
             String plate,
             BigDecimal fipeValue,
             Integer discountPercent,
+            Boolean auctionOrChassisRemarked,
+            Integer indemnityFipePercent,
             Instant expiresAt,
             String returnWhatsapp,
             OptionsResponse options

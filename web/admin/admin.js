@@ -484,14 +484,19 @@ function renderActivities() {
 
 function renderConsultants() {
   $('consultants-body').innerHTML = consultants.map(item => `<tr>
-    <td><strong>${esc(item.name)}</strong></td><td>${statusBadge(collaboratorRoleLabel(item.role), item.role === 'ANALYST' ? 'warn' : '')}</td><td>${esc(formatPhone(item.whatsapp) || 'Não cadastrado')}</td><td>${item.quoteCount}</td>
+    <td><strong>${esc(item.name)}</strong></td>
+    <td>${statusBadge(collaboratorRoleLabel(item.role), item.role === 'ANALYST' ? 'warn' : item.role === 'SUPERVISION_ANALYSIS' ? 'ok' : '')}</td>
+    <td>${esc(item.city || '—')}</td>
+    <td>${esc(formatPhone(item.whatsapp) || 'Não cadastrado')}</td>
+    <td>${item.role === 'CONSULTANT' ? esc(item.assignedAnalystName || 'Não vinculado') : item.role === 'ANALYST' ? `${Number(item.assignedConsultantCount || 0)}/15 consultores` : 'Supervisão'}</td>
+    <td>${item.quoteCount}</td>
     <td>${item.inspectionCount}</td><td>${statusBadge(item.active ? 'Ativo' : 'Inativo', item.active ? 'ok' : 'off')}</td>
     <td><div class="row-actions">
       <button class="secondary small-button" data-consultant-edit="${item.id}" type="button">Editar</button>
       <button class="outline small-button" data-consultant-toggle="${item.id}" type="button">${item.active ? 'Desativar' : 'Ativar'}</button>
       <button class="danger small-button" data-consultant-delete="${item.id}" type="button">Excluir</button>
     </div></td>
-  </tr>`).join('') || emptyRow(7, 'Nenhum colaborador cadastrado.');
+  </tr>`).join('') || emptyRow(9, 'Nenhum colaborador cadastrado.');
 
   document.querySelectorAll('[data-consultant-edit]').forEach(button => button.addEventListener('click', () => openConsultantModal(button.dataset.consultantEdit)));
   document.querySelectorAll('[data-consultant-toggle]').forEach(button => button.addEventListener('click', () => toggleConsultant(button.dataset.consultantToggle)));
@@ -541,6 +546,8 @@ function openConsultantModal(id = '') {
   $('consultant-name').value = item?.name || '';
   $('consultant-role').value = item?.role || 'CONSULTANT';
   $('consultant-whatsapp').value = formatPhone(item?.whatsapp) || '';
+  $('consultant-city').value = item?.city || '';
+  populateConsultantAnalysts(item);
   syncConsultantWhatsappField();
   $('consultant-active-wrap').hidden = !item;
   $('consultant-active').checked = item?.active ?? true;
@@ -550,11 +557,27 @@ function openConsultantModal(id = '') {
 }
 
 function roleLabel(role) {
-  return ({ ADMIN: 'Administrador', ANALYST: 'Analista', CONSULTANT: 'Consultor' })[role] || role || '—';
+  return ({ ADMIN: 'Administrador', SUPERVISION_ANALYSIS: 'Supervisão de Análise', ANALYST: 'Analista', CONSULTANT: 'Consultor' })[role] || role || '—';
 }
 
 function collaboratorRoleLabel(role) {
-  return role === 'ANALYST' ? 'Analista' : 'Consultor';
+  return role === 'ANALYST' ? 'Analista' : role === 'SUPERVISION_ANALYSIS' ? 'Supervisão de Análise' : 'Consultor';
+}
+
+function populateConsultantAnalysts(item = null) {
+  const select = $('consultant-assigned-analyst');
+  if (!select) return;
+  const options = ['<option value="">Selecione um analista</option>'];
+  consultants
+    .filter(value => value.active && value.role === 'ANALYST')
+    .forEach(value => {
+      const count = Number(value.assignedConsultantCount || 0);
+      const current = String(item?.assignedAnalystId || '') === String(value.id);
+      const full = count >= 15 && !current;
+      options.push(`<option value="${value.id}" ${full ? 'disabled' : ''}>${esc(value.name)} · ${count}/15${full ? ' · equipe completa' : ''}</option>`);
+    });
+  select.innerHTML = options.join('');
+  select.value = item?.assignedAnalystId || '';
 }
 
 function syncConsultantWhatsappField() {
@@ -564,16 +587,18 @@ function syncConsultantWhatsappField() {
   $('consultant-whatsapp-help').textContent = isConsultant
     ? 'O Admin pode alterar este número a qualquer momento. Ele também será usado para receber a escolha de plano e adicionais enviada pelo associado.'
     : 'O Admin pode cadastrar ou alterar o WhatsApp deste colaborador a qualquer momento.';
+  if ($('consultant-analyst-wrap')) $('consultant-analyst-wrap').hidden = !isConsultant;
+  if (isConsultant) populateConsultantAnalysts(consultants.find(value => value.id === $('consultant-id').value) || null);
 }
 
 function renderUsers() {
   $('users-body').innerHTML = users.map(item => `<tr>
     <td><strong>${esc(item.username)}</strong></td>
     <td>${esc(item.displayName || '—')}</td>
-    <td>${['CONSULTANT', 'ANALYST'].includes(item.role)
+    <td>${['CONSULTANT', 'ANALYST', 'SUPERVISION_ANALYSIS'].includes(item.role)
       ? esc(item.consultantName || (item.createdBy === 'BOOTSTRAP' ? 'Usuário padrão — identificação manual' : '—'))
       : '—'}</td>
-    <td>${statusBadge(roleLabel(item.role), item.role === 'ADMIN' ? 'ok' : item.role === 'ANALYST' ? 'warn' : '')}</td>
+    <td>${statusBadge(roleLabel(item.role), item.role === 'ADMIN' || item.role === 'SUPERVISION_ANALYSIS' ? 'ok' : item.role === 'ANALYST' ? 'warn' : '')}</td>
     <td>${statusBadge(item.active ? 'Ativo' : 'Inativo', item.active ? 'ok' : 'off')}</td>
     <td>${date(item.lastLoginAt)}</td>
     <td>${date(item.passwordChangedAt)}</td>
@@ -592,11 +617,11 @@ function renderUsers() {
 function populateUserConsultants(item = null) {
   const select = $('user-consultant');
   const role = $('user-role').value;
-  const collaboratorRole = role === 'ANALYST' ? 'ANALYST' : 'CONSULTANT';
-  const roleLabelText = collaboratorRole === 'ANALYST' ? 'analista' : 'consultor';
-  $('user-collaborator-label').textContent = collaboratorRole === 'ANALYST' ? 'Analista vinculado' : 'Consultor vinculado';
-  $('user-new-collaborator-label').textContent = collaboratorRole === 'ANALYST' ? 'Nome do novo analista' : 'Nome do novo consultor';
-  $('user-new-consultant-name').placeholder = collaboratorRole === 'ANALYST' ? 'Nome completo do analista' : 'Nome completo do consultor';
+  const collaboratorRole = role === 'ANALYST' ? 'ANALYST' : role === 'SUPERVISION_ANALYSIS' ? 'SUPERVISION_ANALYSIS' : 'CONSULTANT';
+  const roleLabelText = collaboratorRole === 'ANALYST' ? 'analista' : collaboratorRole === 'SUPERVISION_ANALYSIS' ? 'supervisor de análise' : 'consultor';
+  $('user-collaborator-label').textContent = collaboratorRole === 'ANALYST' ? 'Analista vinculado' : collaboratorRole === 'SUPERVISION_ANALYSIS' ? 'Supervisor vinculado' : 'Consultor vinculado';
+  $('user-new-collaborator-label').textContent = collaboratorRole === 'ANALYST' ? 'Nome do novo analista' : collaboratorRole === 'SUPERVISION_ANALYSIS' ? 'Nome do novo supervisor' : 'Nome do novo consultor';
+  $('user-new-consultant-name').placeholder = collaboratorRole === 'ANALYST' ? 'Nome completo do analista' : collaboratorRole === 'SUPERVISION_ANALYSIS' ? 'Nome completo do supervisor' : 'Nome completo do consultor';
 
   const options = [`<option value="">Selecione um ${roleLabelText} ativo</option>`];
   if (item?.role === role && !item.consultantId && item.createdBy === 'BOOTSTRAP') {
@@ -615,7 +640,7 @@ function populateUserConsultants(item = null) {
 
 function syncUserRoleFields() {
   const role = $('user-role').value;
-  const collaboratorMode = role === 'CONSULTANT' || role === 'ANALYST';
+  const collaboratorMode = ['CONSULTANT', 'ANALYST', 'SUPERVISION_ANALYSIS'].includes(role);
   $('user-consultant-wrap').hidden = !collaboratorMode;
   if (!collaboratorMode) {
     $('user-new-consultant-wrap').hidden = true;
@@ -641,7 +666,7 @@ function openUserModal(id = '') {
   $('user-display-name').value = item?.displayName || '';
 
   const roleSelect = $('user-role');
-  roleSelect.innerHTML = '<option value="CONSULTANT">Consultor</option><option value="ANALYST">Analista</option>';
+  roleSelect.innerHTML = '<option value="CONSULTANT">Consultor</option><option value="ANALYST">Analista</option><option value="SUPERVISION_ANALYSIS">Supervisão de Análise</option>';
   if (item?.role === 'ADMIN') roleSelect.insertAdjacentHTML('beforeend', '<option value="ADMIN">Administrador</option>');
   roleSelect.value = item?.role || 'CONSULTANT';
 
@@ -842,7 +867,7 @@ function openQuoteAnalysis(id) {
   const quoteDetails = [
     ['Cliente', item.customerName], ['Origem', quoteOriginLabel(item.origin)], ['Responsável', quoteConsultantLabel(item)], ['CPF', item.maskedCpf || '—'], ['WhatsApp', formatPhone(item.whatsapp) || '—'],
     ['Placa', item.plate], ['Modelo', item.model], ['Ano', item.manufactureYear], ['Veículo 0 km', item.zeroKm ? 'Sim' : 'Não'],
-    ['Valor FIPE', brl.format(item.fipeValue)], ['Abrangência', regionLabel(item.region)],
+    ['Valor FIPE', brl.format(item.fipeValue)], ['Valor em caso de ressarcimento integral', `${Number(item.indemnityFipePercent || 100)}% da FIPE`], ['Leilão / remarcação de chassi', item.auctionOrChassisRemarked === true ? 'Sim' : (item.auctionOrChassisRemarked === false ? 'Não' : 'Não informado')], ['Abrangência', regionLabel(item.region)],
     ['Origem da moto', item.motorcycleOrigin ? motorcycleOriginLabel(item.motorcycleOrigin) : 'Não se aplica'],
     ['Observação da cotação', item.observation || '—'],
     ['Plano', item.selectedPlanName]
@@ -1402,27 +1427,95 @@ function renderCoverages() {
     if (planId && String(item.planId) !== planId) return false;
     if (status && item.status !== status) return false;
     return `${item.coverageName} ${item.detail || ''} ${item.planName}`.toLowerCase().includes(text);
+  }).sort((a,b) => String(a.planName).localeCompare(String(b.planName), 'pt-BR') || Number(a.sortOrder)-Number(b.sortOrder));
+
+  let lastPlan = null;
+  const rows = [];
+  filtered.forEach(item => {
+    if (item.planName !== lastPlan) {
+      rows.push(`<tr class="coverage-plan-separator"><td colspan="7">${esc(item.planName)}</td></tr>`);
+      lastPlan = item.planName;
+    }
+    const ruleCount = Array.isArray(item.rules) ? item.rules.length : 0;
+    rows.push(`<tr>
+      <td><strong class="catalog-name">${esc(item.planName)}</strong><small class="table-code">${esc(regionLabel(item.region))} · ${esc(motorcycleOriginLabel(item.motorcycleOrigin))}</small></td>
+      <td><strong class="catalog-name">${esc(item.coverageName)}</strong>${ruleCount ? `<small class="table-code">${ruleCount} regra${ruleCount === 1 ? '' : 's'} de limite</small>` : ''}</td>
+      <td>${coverageBadge(item.status)}</td><td>${esc(item.detail || '—')}</td>
+      <td>${item.status === 'OPTIONAL' ? brl.format(item.monthlyPrice || 0) : '—'}</td><td>${item.sortOrder}</td>
+      <td><div class="row-actions"><button class="secondary small-button" data-coverage-edit="${item.id}" type="button">Editar</button><button class="danger small-button" data-coverage-delete="${item.id}" type="button">Excluir</button></div></td>
+    </tr>`);
   });
-  $('coverages-body').innerHTML = filtered.map(item => `<tr>
-    <td><strong class="catalog-name">${esc(item.planName)}</strong><small class="table-code">${esc(regionLabel(item.region))} · ${esc(motorcycleOriginLabel(item.motorcycleOrigin))}</small></td>
-    <td><strong class="catalog-name">${esc(item.coverageName)}</strong></td><td>${coverageBadge(item.status)}</td><td>${esc(item.detail || '—')}</td>
-    <td>${item.status === 'OPTIONAL' ? brl.format(item.monthlyPrice || 0) : '—'}</td><td>${item.sortOrder}</td>
-    <td><div class="row-actions"><button class="secondary small-button" data-coverage-edit="${item.id}" type="button">Editar</button><button class="danger small-button" data-coverage-delete="${item.id}" type="button">Excluir</button></div></td>
-  </tr>`).join('') || emptyRow(7, 'Nenhuma cobertura encontrada.');
+  $('coverages-body').innerHTML = rows.join('') || emptyRow(7, 'Nenhuma cobertura encontrada.');
   document.querySelectorAll('[data-coverage-edit]').forEach(button => button.addEventListener('click', () => openCoverageModal(Number(button.dataset.coverageEdit))));
   document.querySelectorAll('[data-coverage-delete]').forEach(button => button.addEventListener('click', () => deleteCoverage(Number(button.dataset.coverageDelete))));
 }
 
+function coverageAssignments(item) {
+  if (!item) return [];
+  const coverageId = item.coverageId ?? item.id;
+  return coverages.filter(value => (value.coverageId ?? value.id) === coverageId);
+}
+
+function renderCoveragePlanChoices(selectedIds = []) {
+  const selected = new Set((selectedIds || []).map(Number));
+  $('coverage-plan-options').innerHTML = plans.map(plan => `<label class="coverage-plan-choice">
+    <input type="checkbox" data-coverage-plan-id="${plan.id}" ${selected.has(Number(plan.id)) ? 'checked' : ''}>
+    <span><strong>${esc(plan.name)}</strong><small class="table-code">${esc(plan.category || '')}${plan.motorcycleOrigin ? ` · ${esc(motorcycleOriginLabel(plan.motorcycleOrigin))}` : ''}</small></span>
+  </label>`).join('');
+}
+
+function coverageRuleRow(rule = {}, index = 0) {
+  const categoryOptions = `<option value="">Todas as categorias</option>${categories.map(category => `<option value="${esc(category.code)}" ${String(rule.categoryCode || '') === String(category.code) ? 'selected' : ''}>${esc(category.name)}</option>`).join('')}`;
+  return `<div class="coverage-rule-row" data-coverage-rule-row>
+    <label>Categoria<select data-rule-category>${categoryOptions}</select></label>
+    <label>FIPE mínimo<input data-rule-min data-money inputmode="decimal" value="${rule.minFipe == null ? '0,00' : moneyInput(rule.minFipe)}" placeholder="0,00"></label>
+    <label>FIPE máximo<input data-rule-max data-money inputmode="decimal" value="${rule.maxFipe == null ? '' : moneyInput(rule.maxFipe)}" placeholder="Sem limite"></label>
+    <label>Limite normal<input data-rule-normal data-money inputmode="decimal" value="${rule.normalAmount == null ? '' : moneyInput(rule.normalAmount)}" placeholder="Ex.: 100.000,00"></label>
+    <label>Com desconto<input data-rule-discount data-money inputmode="decimal" value="${rule.discountedAmount == null ? '' : moneyInput(rule.discountedAmount)}" placeholder="Ex.: 50.000,00"></label>
+    <button class="danger small-button coverage-rule-remove" type="button" data-remove-coverage-rule>Remover</button>
+  </div>`;
+}
+
+function bindCoverageRuleRemoveButtons() {
+  document.querySelectorAll('[data-remove-coverage-rule]').forEach(button => {
+    button.onclick = () => button.closest('[data-coverage-rule-row]')?.remove();
+  });
+}
+
+function renderCoverageRules(rules = []) {
+  $('coverage-rules-list').innerHTML = (rules || []).map(coverageRuleRow).join('');
+  bindCoverageRuleRemoveButtons();
+  window.NHMoney?.attachAll($('coverage-rules-list'));
+}
+
+function collectCoverageRules() {
+  return [...document.querySelectorAll('[data-coverage-rule-row]')].map((row, index) => {
+    const maxRaw = row.querySelector('[data-rule-max]').value.trim();
+    const discountRaw = row.querySelector('[data-rule-discount]').value.trim();
+    const normalRaw = row.querySelector('[data-rule-normal]').value.trim();
+    if (!normalRaw) throw new Error(`Informe o limite normal da regra ${index + 1}.`);
+    return {
+      categoryCode: row.querySelector('[data-rule-category]').value || null,
+      minFipe: parseMoney(row.querySelector('[data-rule-min]').value || '0'),
+      maxFipe: maxRaw ? parseMoney(maxRaw) : null,
+      normalAmount: parseMoney(normalRaw),
+      discountedAmount: discountRaw ? parseMoney(discountRaw) : null,
+      sortOrder: (index + 1) * 10
+    };
+  });
+}
+
 function openCoverageModal(id = null) {
   const item = coverages.find(value => value.id === id);
+  const assignments = coverageAssignments(item);
   $('coverage-id').value = item?.id || '';
-  $('coverage-plan').value = item?.planId || plans[0]?.id || '';
-  $('coverage-plan').disabled = false;
+  renderCoveragePlanChoices(item ? assignments.map(value => value.planId) : (plans[0] ? [plans[0].id] : []));
   $('coverage-name').value = item?.coverageName || '';
   $('coverage-status').value = item?.status || 'INCLUDED';
   $('coverage-order').value = item?.sortOrder ?? 100;
   $('coverage-detail').value = item?.detail || '';
   $('coverage-price').value = item?.monthlyPrice == null ? '' : moneyInput(item.monthlyPrice);
+  renderCoverageRules(item?.rules || []);
   $('coverage-dialog-title').textContent = item ? 'Editar cobertura ou opcional' : 'Nova cobertura ou opcional';
   syncCoveragePrice();
   openDialog('coverage-dialog');
@@ -1438,14 +1531,14 @@ async function deleteCoverage(id) {
   const item = coverages.find(value => value.id === id);
   if (!item) return;
   const confirmed = await confirmAction(
-    'Excluir cobertura ou opcional?',
+    'Excluir cobertura deste plano?',
     `${item.coverageName} será removido do plano ${item.planName}. Cotações antigas continuarão com os dados registrados na emissão.`,
     'Excluir cobertura'
   );
   if (!confirmed) return;
   try {
     await api(`/api/admin/catalog/coverages/${id}`, { method: 'DELETE' });
-    message('Cobertura ou opcional excluído.', 'success');
+    message('Cobertura removida do plano.', 'success');
     await load();
   } catch (error) { message(error.message); }
 }
@@ -1615,7 +1708,6 @@ function populatePlanSelects() {
   $('price-plan-filter').innerHTML = allOptions;
   $('coverage-plan-filter').innerHTML = allOptions;
   $('price-plan').innerHTML = options;
-  $('coverage-plan').innerHTML = options;
   if ([...$('price-plan-filter').options].some(option => option.value === currentPriceFilter)) $('price-plan-filter').value = currentPriceFilter;
   if ([...$('coverage-plan-filter').options].some(option => option.value === currentCoverageFilter)) $('coverage-plan-filter').value = currentCoverageFilter;
 }
@@ -1685,13 +1777,13 @@ $('consultant-form').addEventListener('submit', async event => {
       }
       await api(`/api/admin/consultants/${id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: $('consultant-name').value.trim(), active: nextActive, role: $('consultant-role').value, whatsapp: $('consultant-whatsapp').value.trim() })
+        body: JSON.stringify({ name: $('consultant-name').value.trim(), active: nextActive, role: $('consultant-role').value, whatsapp: $('consultant-whatsapp').value.trim(), city: $('consultant-city').value.trim(), assignedAnalystId: $('consultant-role').value === 'CONSULTANT' ? ($('consultant-assigned-analyst').value || null) : null })
       });
       message('Colaborador atualizado.', 'success');
     } else {
       await api('/api/admin/consultants', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: $('consultant-name').value.trim(), role: $('consultant-role').value, whatsapp: $('consultant-whatsapp').value.trim() })
+        body: JSON.stringify({ name: $('consultant-name').value.trim(), role: $('consultant-role').value, whatsapp: $('consultant-whatsapp').value.trim(), city: $('consultant-city').value.trim(), assignedAnalystId: $('consultant-role').value === 'CONSULTANT' ? ($('consultant-assigned-analyst').value || null) : null })
       });
       message('Colaborador cadastrado.', 'success');
     }
@@ -1716,16 +1808,16 @@ $('user-form').addEventListener('submit', async event => {
     role
   };
 
-  if (role === 'CONSULTANT' || role === 'ANALYST') {
+  if (['CONSULTANT', 'ANALYST', 'SUPERVISION_ANALYSIS'].includes(role)) {
     if (consultantChoice === '__NEW__') {
       payload.newConsultantName = $('user-new-consultant-name').value.trim();
-      if (!payload.newConsultantName) return message(`Informe o nome do novo ${role === 'ANALYST' ? 'analista' : 'consultor'}.`);
+      if (!payload.newConsultantName) return message(`Informe o nome do novo ${role === 'ANALYST' ? 'analista' : role === 'SUPERVISION_ANALYSIS' ? 'supervisor' : 'consultor'}.`);
     } else if (consultantChoice === '__LEGACY__') {
       payload.consultantId = null;
     } else if (consultantChoice) {
       payload.consultantId = consultantChoice;
     } else {
-      return message(`Selecione um ${role === 'ANALYST' ? 'analista' : 'consultor'} existente ou cadastre um novo.`);
+      return message(`Selecione um ${role === 'ANALYST' ? 'analista' : role === 'SUPERVISION_ANALYSIS' ? 'supervisor' : 'consultor'} existente ou cadastre um novo.`);
     }
   }
 
@@ -1869,18 +1961,22 @@ $('coverage-form').addEventListener('submit', async event => {
   event.preventDefault();
   const id = $('coverage-id').value;
   const status = $('coverage-status').value;
-  const base = {
-    coverageName: $('coverage-name').value.trim(), status,
-    detail: $('coverage-detail').value.trim(),
-    monthlyPrice: status === 'OPTIONAL' ? parseMoney($('coverage-price').value) : null,
-    sortOrder: Number($('coverage-order').value)
-  };
-  const payload = id ? { ...base, planId: Number($('coverage-plan').value) } : base;
-  const path = id ? `/api/admin/catalog/coverages/${id}` : `/api/admin/catalog/plans/${$('coverage-plan').value}/coverages`;
+  const planIds = [...document.querySelectorAll('[data-coverage-plan-id]:checked')].map(input => Number(input.dataset.coveragePlanId));
+  if (!planIds.length) return message('Selecione pelo menos um plano para esta cobertura.');
   try {
+    const payload = {
+      planIds,
+      coverageName: $('coverage-name').value.trim(),
+      status,
+      detail: $('coverage-detail').value.trim(),
+      monthlyPrice: status === 'OPTIONAL' ? parseMoney($('coverage-price').value) : null,
+      sortOrder: Number($('coverage-order').value),
+      rules: collectCoverageRules()
+    };
+    const path = id ? `/api/admin/catalog/coverages/${id}` : '/api/admin/catalog/coverages';
     await api(path, { method: id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     closeDialog('coverage-dialog');
-    message(id ? 'Cobertura atualizada.' : 'Cobertura criada.', 'success');
+    message(id ? 'Cobertura e planos atualizados.' : 'Cobertura criada nos planos selecionados.', 'success');
     await load();
   } catch (error) { message(error.message); }
 });
@@ -2043,6 +2139,7 @@ $('delete-all-inspections').addEventListener('click', deleteAllAllowedInspection
 $('new-plan-button').addEventListener('click', () => openPlanModal());
 $('new-price-button').addEventListener('click', () => openPriceModal());
 $('new-coverage-button').addEventListener('click', () => openCoverageModal());
+$('add-coverage-rule')?.addEventListener('click', () => { $('coverage-rules-list').insertAdjacentHTML('beforeend', coverageRuleRow({}, document.querySelectorAll('[data-coverage-rule-row]').length)); bindCoverageRuleRemoveButtons(); window.NHMoney?.attachAll($('coverage-rules-list')); });
 $('coverage-status').addEventListener('change', syncCoveragePrice);
 $('activity-filter').addEventListener('input', renderActivities);
 $('quote-filter').addEventListener('input', renderQuotes);

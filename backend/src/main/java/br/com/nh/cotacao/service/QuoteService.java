@@ -3,6 +3,7 @@ package br.com.nh.cotacao.service;
 import br.com.nh.cotacao.dto.InspectionDtos.InspectionResponse;
 import br.com.nh.cotacao.dto.QuoteDtos.*;
 import br.com.nh.cotacao.entity.*;
+import br.com.nh.cotacao.repository.CoverageRuleRepository;
 import br.com.nh.cotacao.repository.PlanRepository;
 import br.com.nh.cotacao.repository.QuotationRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,6 +28,7 @@ public class QuoteService {
 
     private final PlanRepository planRepository;
     private final QuotationRepository quotationRepository;
+    private final CoverageRuleRepository coverageRuleRepository;
     private final PricingService pricingService;
     private final ConsultantService consultantService;
     private final RetratoService retratoService;
@@ -37,6 +39,7 @@ public class QuoteService {
     public QuoteService(
             PlanRepository planRepository,
             QuotationRepository quotationRepository,
+            CoverageRuleRepository coverageRuleRepository,
             PricingService pricingService,
             ConsultantService consultantService,
             RetratoService retratoService,
@@ -46,6 +49,7 @@ public class QuoteService {
     ) {
         this.planRepository = planRepository;
         this.quotationRepository = quotationRepository;
+        this.coverageRuleRepository = coverageRuleRepository;
         this.pricingService = pricingService;
         this.consultantService = consultantService;
         this.retratoService = retratoService;
@@ -89,7 +93,7 @@ public class QuoteService {
     @Transactional
     public QuoteResponse create(CreateQuoteRequest request) {
         validateYear(request.manufactureYear());
-        String cpf = normalizeAndValidateCpf(request.cpf());
+        String cpf = normalizeOptionalCpf(request.cpf());
         String plate = validateAndNormalizePlate(request.plate(), request.zeroKm());
         MotorcycleOrigin motorcycleOrigin = validateMotorcycleOrigin(
                 request.categoryCode(), request.effectiveMotorcycleOrigin()
@@ -127,6 +131,7 @@ public class QuoteService {
                 selection.pricing().oneTimeFee(),
                 selection.pricing().mandatoryFeeDescription()
         );
+        quotation.configureVehicleHistory(request.auctionOrChassisRemarked());
         quotation.configureBillingDueDate(request.firstBillingDueDate());
         applyCatalogSnapshot(quotation, selection.plan(), selection.optionals(), request.discountPercent());
         quotation.applyDiscount(request.discountPercent(), request.rearWindowBranding());
@@ -136,7 +141,7 @@ public class QuoteService {
     @Transactional
     public QuoteResponse createPublic(CreatePublicQuoteRequest request) {
         validateYear(request.manufactureYear());
-        String cpf = normalizeAndValidateCpf(request.cpf());
+        String cpf = normalizeOptionalCpf(request.cpf());
 
         String whatsapp = normalizePhone(request.whatsapp());
         if (whatsapp == null || whatsapp.length() < 10 || whatsapp.length() > 13) {
@@ -183,6 +188,7 @@ public class QuoteService {
                 selection.pricing().oneTimeFee(),
                 selection.pricing().mandatoryFeeDescription()
         );
+        quotation.configureVehicleHistory(request.auctionOrChassisRemarked());
         quotation.configureBillingDueDate(request.firstBillingDueDate());
         applyCatalogSnapshot(quotation, selection.plan(), selection.optionals(), 0);
         return toResponse(quotationRepository.save(quotation));
@@ -206,7 +212,7 @@ public class QuoteService {
 
         String cpf = hasValidCpf(source.getCustomerCpf())
                 ? normalizeCpf(source.getCustomerCpf())
-                : normalizeAndValidateCpf(requestedCpf);
+                : normalizeOptionalCpf(requestedCpf);
 
         List<String> optionalCodes = source.getSelectedOptionals().stream()
                 .map(QuotationOptionalCoverage::getCoverageCode)
@@ -243,6 +249,7 @@ public class QuoteService {
                 selection.pricing().oneTimeFee(),
                 selection.pricing().mandatoryFeeDescription()
         );
+        recreated.configureVehicleHistory(source.getAuctionOrChassisRemarked());
         recreated.configureBillingDueDate(resolveBillingDueDateForRecreatedQuote(recreated, source.getBillingDueDay()));
         applyCatalogSnapshot(recreated, selection.plan(), selection.optionals(), source.getDiscountPercent());
         recreated.applyDiscount(source.getDiscountPercent(), source.getRearWindowBranding());
@@ -379,7 +386,7 @@ public class QuoteService {
         selectedOptionals.forEach(item -> quotation.addOptional(
                 item.getCoverage().getCode(),
                 item.getCoverage().getName(),
-                coverageDetailForDiscount(item.getCoverage().getCode(), item.getDetail(), discountPercent),
+                coverageDetailForContext(item.getCoverage(), item.getDetail(), quotation.getCategoryCode(), quotation.getFipeValue(), discountPercent),
                 item.getMonthlyPrice()
         ));
 
@@ -389,13 +396,53 @@ public class QuoteService {
                         item.getCoverage().getCode(),
                         item.getCoverage().getName(),
                         item.getStatus(),
-                        coverageDetailForDiscount(item.getCoverage().getCode(), item.getDetail(), discountPercent),
+                        coverageDetailForContext(item.getCoverage(), item.getDetail(), quotation.getCategoryCode(), quotation.getFipeValue(), discountPercent),
                         item.getMonthlyPrice(),
                         item.getSortOrder()
                 ));
     }
 
-    private String coverageDetailForDiscount(String coverageCode, String detail, Integer discountPercent) {
+    private String coverageDetailForContext(
+            Coverage coverage,
+            String detail,
+            String categoryCode,
+            BigDecimal fipeValue,
+            Integer discountPercent
+    ) {
+        var matchedRule = coverageRuleRepository.findByCoverage_IdOrderBySortOrderAscIdAsc(coverage.getId()).stream()
+                .filter(rule -> rule.matches(categoryCode, fipeValue))
+                .sorted(Comparator.comparing((CoverageRule rule) -> rule.getCategoryCode() == null ? 1 : 0)
+                        .thenComparing(CoverageRule::getSortOrder))
+                .findFirst();
+        if (matchedRule.isPresent()) {
+            CoverageRule rule = matchedRule.get();
+            BigDecimal amount = discountPercent != null && discountPercent > 0 && rule.getDiscountedAmount() != null
+                    ? rule.getDiscountedAmount()
+                    : rule.getNormalAmount();
+            String amountText = coverageAmountLabel(amount);
+            if (detail == null || detail.isBlank()) return amountText;
+            java.util.regex.Matcher moneyMatcher = java.util.regex.Pattern
+                    .compile("R\\$\\s*[0-9.]+(?:,[0-9]{2})?(?:\\s*mil)?", java.util.regex.Pattern.CASE_INSENSITIVE)
+                    .matcher(detail);
+            if (moneyMatcher.find()) {
+                return moneyMatcher.replaceFirst(java.util.regex.Matcher.quoteReplacement(amountText));
+            }
+            return detail + " • Limite: " + amountText;
+        }
+        return coverageDetailForDiscountLegacy(coverage.getCode(), detail, discountPercent);
+    }
+
+    private String coverageAmountLabel(BigDecimal amount) {
+        if (amount == null) return "—";
+        BigDecimal thousand = BigDecimal.valueOf(1000);
+        BigDecimal[] division = amount.divideAndRemainder(thousand);
+        if (division[1].compareTo(BigDecimal.ZERO) == 0) {
+            return "R$ " + division[0].stripTrailingZeros().toPlainString() + " mil";
+        }
+        return java.text.NumberFormat.getCurrencyInstance(new java.util.Locale("pt", "BR")).format(amount);
+    }
+
+    private String coverageDetailForDiscountLegacy(String coverageCode, String detail, Integer discountPercent) {
         if (detail == null || detail.isBlank() || discountPercent == null || discountPercent <= 0) return detail;
         String code = coverageCode == null ? "" : coverageCode.trim().toUpperCase(java.util.Locale.ROOT);
         if (!"THIRD_PARTY".equals(code) && !"THIRD_PARTY_BASE".equals(code)) return detail;
@@ -449,7 +496,9 @@ public class QuoteService {
 
         String inspectionUrl = null;
         String whatsappUrl = null;
-        if (request.decision() == QuoteStatus.ACCEPTED && quotation.getConsultant() != null) {
+        if (request.decision() == QuoteStatus.ACCEPTED
+                && quotation.getConsultant() != null
+                && hasValidCpf(quotation.getCustomerCpf())) {
             InspectionResponse inspection = retratoService.ensureForSelfServiceQuote(quotation);
             inspectionUrl = inspection.publicUrl();
             whatsappUrl = buildSelfServiceWhatsappUrl(quotation, inspectionUrl);
@@ -537,6 +586,8 @@ public class QuoteService {
                 quotation.getManufactureYear(),
                 quotation.isZeroKm(),
                 quotation.getFipeValue(),
+                quotation.getAuctionOrChassisRemarked(),
+                quotation.getIndemnityFipePercent(),
                 quotation.getCategoryCode(),
                 quotation.getRegion(),
                 quotation.getMotorcycleOrigin(),
@@ -626,14 +677,15 @@ public class QuoteService {
                                 item.getCoverage().getCode(),
                                 item.getCoverage().getName(),
                                 item.getStatus(),
-                                item.getDetail(),
+                                coverageDetailForContext(item.getCoverage(), item.getDetail(), plan.getCategory().getCode(), fipeValue, 0),
+                                coverageDetailForContext(item.getCoverage(), item.getDetail(), plan.getCategory().getCode(), fipeValue, 5),
                                 item.getMonthlyPrice()
                         ))
                         .toList()
         ));
     }
 
-    private PlanOption toPlanOption(Plan plan, PricingService.PricingResult pricing) {
+    private PlanOption toPlanOption(Plan plan, PricingService.PricingResult pricing, BigDecimal fipeValue) {
         return new PlanOption(
                 plan.getCode(),
                 plan.getName(),
@@ -648,7 +700,8 @@ public class QuoteService {
                                 item.getCoverage().getCode(),
                                 item.getCoverage().getName(),
                                 item.getStatus(),
-                                item.getDetail(),
+                                coverageDetailForContext(item.getCoverage(), item.getDetail(), plan.getCategory().getCode(), fipeValue, 0),
+                                coverageDetailForContext(item.getCoverage(), item.getDetail(), plan.getCategory().getCode(), fipeValue, 5),
                                 item.getMonthlyPrice()
                         ))
                         .toList()
@@ -661,7 +714,7 @@ public class QuoteService {
         if (motorcycleCc == null) return java.util.Optional.empty();
         return planRepository.findAvailableByCode("MOTO_PROMO_2026")
                 .flatMap(plan -> pricingService.calculatePromotionalMotorcycle(plan, fipeValue, motorcycleCc, promoMotorcycleTier)
-                        .map(pricing -> toPlanOption(plan, pricing)));
+                        .map(pricing -> toPlanOption(plan, pricing, fipeValue)));
     }
 
     private String validatePromotionalMotorcycleTier(String categoryCode, String tierCode) {
@@ -789,6 +842,11 @@ public class QuoteService {
 
     private static String normalizeCpf(String cpf) {
         return cpf == null ? "" : cpf.replaceAll("\\D", "");
+    }
+
+    private static String normalizeOptionalCpf(String cpf) {
+        if (cpf == null || cpf.isBlank()) return null;
+        return normalizeAndValidateCpf(cpf);
     }
 
     private static String normalizeAndValidateCpf(String cpf) {

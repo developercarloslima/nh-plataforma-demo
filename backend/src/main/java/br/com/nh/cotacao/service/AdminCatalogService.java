@@ -17,6 +17,7 @@ public class AdminCatalogService {
     private final PlanCoverageRepository planCoverageRepository;
     private final PlanRepository planRepository;
     private final CoverageRepository coverageRepository;
+    private final CoverageRuleRepository coverageRuleRepository;
     private final VehicleCategoryRepository categoryRepository;
     private final CatalogChangeAuditRepository auditRepository;
     private final PromotionalMotorcyclePriceRepository promotionalMotorcyclePriceRepository;
@@ -26,6 +27,7 @@ public class AdminCatalogService {
             PlanCoverageRepository planCoverageRepository,
             PlanRepository planRepository,
             CoverageRepository coverageRepository,
+            CoverageRuleRepository coverageRuleRepository,
             VehicleCategoryRepository categoryRepository,
             CatalogChangeAuditRepository auditRepository,
             PromotionalMotorcyclePriceRepository promotionalMotorcyclePriceRepository
@@ -34,6 +36,7 @@ public class AdminCatalogService {
         this.planCoverageRepository = planCoverageRepository;
         this.planRepository = planRepository;
         this.coverageRepository = coverageRepository;
+        this.coverageRuleRepository = coverageRuleRepository;
         this.categoryRepository = categoryRepository;
         this.auditRepository = auditRepository;
         this.promotionalMotorcyclePriceRepository = promotionalMotorcyclePriceRepository;
@@ -239,53 +242,75 @@ public class AdminCatalogService {
     }
 
     @Transactional
-    public CoverageAdminResponse createCoverage(Long planId, CreateCoverageRequest request, String username) {
-        Plan plan = findPlan(planId);
-        String code = uniqueCoverageCode(plan.getCode(), request.coverageName());
+    public List<CoverageAdminResponse> createCoverage(CreateCoverageRequest request, String username) {
+        List<Plan> targetPlans = request.planIds().stream().distinct().map(this::findPlan).toList();
+        if (targetPlans.isEmpty()) throw new IllegalArgumentException("Selecione pelo menos um plano.");
+
+        String code = uniqueCoverageCode("MULTI", request.coverageName());
         Coverage coverage = coverageRepository.save(Coverage.create(code, request.coverageName()));
-        PlanCoverage item = planCoverageRepository.save(PlanCoverage.create(
+        saveCoverageRules(coverage, request.rules());
+
+        List<PlanCoverage> created = targetPlans.stream().map(plan -> planCoverageRepository.save(PlanCoverage.create(
                 plan, coverage, request.status(), request.detail(), request.monthlyPrice(), request.sortOrder()
-        ));
+        ))).toList();
+
         auditRepository.save(CatalogChangeAudit.createText(
-                "PLAN_COVERAGE", item.getId(), plan.getName() + " — cobertura criada",
-                null, coverageSummary(item), username
+                "PLAN_COVERAGE", coverage.getId(), "Cobertura criada — " + coverage.getName(),
+                null, coverageGroupSummary(coverage, created), username
         ));
-        return toCoverageResponse(item);
+        return created.stream().map(this::toCoverageResponse).toList();
     }
 
     @Transactional
-    public CoverageAdminResponse updateCoverage(Long id, UpdateCoverageRequest request, String username) {
-        PlanCoverage item = planCoverageRepository.findById(id)
+    public List<CoverageAdminResponse> updateCoverage(Long id, UpdateCoverageRequest request, String username) {
+        PlanCoverage source = planCoverageRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Cobertura do plano não encontrada."));
-        Plan targetPlan = findPlan(request.planId());
-        String old = coverageSummary(item);
-        Coverage current = item.getCoverage();
+        Coverage coverage = source.getCoverage();
+        List<PlanCoverage> currentAssignments = planCoverageRepository.findAllForAdmin().stream()
+                .filter(item -> item.getCoverage().getId().equals(coverage.getId()))
+                .toList();
+        String old = coverageGroupSummary(coverage, currentAssignments);
+
         String requestedName = request.coverageName().trim();
-        boolean nameChanged = !current.getName().equals(requestedName);
-        Coverage selectedCoverage = current;
-
-        if (nameChanged && planCoverageRepository.countByCoverage_Id(current.getId()) > 1) {
-            String clonedCode = uniqueCoverageCode(targetPlan.getCode(), requestedName);
-            selectedCoverage = coverageRepository.save(Coverage.create(clonedCode, requestedName));
-        } else if (nameChanged) {
-            current.updateAdmin(current.getCode(), requestedName);
-            selectedCoverage = coverageRepository.save(current);
+        if (!coverage.getName().equals(requestedName)) {
+            coverage.updateAdmin(coverage.getCode(), requestedName);
+            coverageRepository.save(coverage);
         }
 
-        if ((!item.getPlan().getId().equals(targetPlan.getId()) || !item.getCoverage().getId().equals(selectedCoverage.getId()))
-                && planCoverageRepository.existsByPlan_IdAndCoverage_Id(targetPlan.getId(), selectedCoverage.getId())) {
-            throw new IllegalArgumentException("Este plano já possui essa cobertura.");
+        List<Long> selectedIds = request.planIds().stream().distinct().toList();
+        if (selectedIds.isEmpty()) throw new IllegalArgumentException("Selecione pelo menos um plano.");
+        List<Plan> targetPlans = selectedIds.stream().map(this::findPlan).toList();
+
+        for (PlanCoverage assignment : currentAssignments) {
+            if (!selectedIds.contains(assignment.getPlan().getId())) {
+                planCoverageRepository.delete(assignment);
+            }
+        }
+        planCoverageRepository.flush();
+
+        for (Plan plan : targetPlans) {
+            PlanCoverage assignment = currentAssignments.stream()
+                    .filter(item -> item.getPlan().getId().equals(plan.getId()))
+                    .findFirst()
+                    .filter(item -> selectedIds.contains(item.getPlan().getId()))
+                    .orElse(null);
+            if (assignment == null) {
+                assignment = PlanCoverage.create(plan, coverage, request.status(), request.detail(), request.monthlyPrice(), request.sortOrder());
+            } else {
+                assignment.update(request.status(), request.detail(), request.monthlyPrice(), request.sortOrder());
+            }
+            planCoverageRepository.save(assignment);
         }
 
-        item.replacePlan(targetPlan);
-        item.replaceCoverage(selectedCoverage);
-        item.update(request.status(), request.detail(), request.monthlyPrice(), request.sortOrder());
-        planCoverageRepository.save(item);
+        saveCoverageRules(coverage, request.rules());
+        List<PlanCoverage> updated = planCoverageRepository.findAllForAdmin().stream()
+                .filter(item -> item.getCoverage().getId().equals(coverage.getId()))
+                .toList();
         auditRepository.save(CatalogChangeAudit.createText(
-                "PLAN_COVERAGE", item.getId(), item.getPlan().getName() + " — cobertura alterada",
-                old, coverageSummary(item), username
+                "PLAN_COVERAGE", coverage.getId(), "Cobertura alterada — " + coverage.getName(),
+                old, coverageGroupSummary(coverage, updated), username
         ));
-        return toCoverageResponse(item);
+        return updated.stream().map(this::toCoverageResponse).toList();
     }
 
     @Transactional
@@ -298,11 +323,52 @@ public class AdminCatalogService {
         planCoverageRepository.delete(item);
         planCoverageRepository.flush();
         if (planCoverageRepository.countByCoverage_Id(coverage.getId()) == 0) {
+            coverageRuleRepository.deleteByCoverage_Id(coverage.getId());
             coverageRepository.delete(coverage);
         }
         auditRepository.save(CatalogChangeAudit.createText(
                 "PLAN_COVERAGE", id, description + " excluída", old, null, username
         ));
+    }
+
+    private void saveCoverageRules(Coverage coverage, List<CoverageRuleRequest> requests) {
+        coverageRuleRepository.deleteByCoverage_Id(coverage.getId());
+        if (requests == null || requests.isEmpty()) return;
+
+        for (int i = 0; i < requests.size(); i++) {
+            CoverageRuleRequest current = requests.get(i);
+            if (current.maxFipe() != null && current.maxFipe().compareTo(current.minFipe()) < 0) {
+                throw new IllegalArgumentException("Em uma regra de cobertura, o FIPE máximo deve ser maior ou igual ao mínimo.");
+            }
+            String currentCategory = current.categoryCode() == null || current.categoryCode().isBlank() ? "*" : current.categoryCode().trim().toUpperCase(Locale.ROOT);
+            BigDecimal currentMax = current.maxFipe() == null ? new BigDecimal("999999999999.99") : current.maxFipe();
+            for (int j = i + 1; j < requests.size(); j++) {
+                CoverageRuleRequest other = requests.get(j);
+                String otherCategory = other.categoryCode() == null || other.categoryCode().isBlank() ? "*" : other.categoryCode().trim().toUpperCase(Locale.ROOT);
+                if (!currentCategory.equals(otherCategory)) continue;
+                BigDecimal otherMax = other.maxFipe() == null ? new BigDecimal("999999999999.99") : other.maxFipe();
+                boolean overlaps = current.minFipe().compareTo(otherMax) <= 0 && other.minFipe().compareTo(currentMax) <= 0;
+                if (overlaps) {
+                    throw new IllegalArgumentException("Há regras de cobertura com faixas FIPE sobrepostas para a mesma categoria.");
+                }
+            }
+        }
+
+        int fallbackOrder = 100;
+        for (CoverageRuleRequest request : requests) {
+            CoverageRule rule = CoverageRule.create(
+                    coverage, request.categoryCode(), request.minFipe(), request.maxFipe(),
+                    request.normalAmount(), request.discountedAmount(),
+                    request.sortOrder() == null ? fallbackOrder : request.sortOrder()
+            );
+            coverageRuleRepository.save(rule);
+            fallbackOrder += 10;
+        }
+    }
+
+    private String coverageGroupSummary(Coverage coverage, List<PlanCoverage> assignments) {
+        String plans = assignments.stream().map(item -> item.getPlan().getName()).distinct().sorted().collect(java.util.stream.Collectors.joining(", "));
+        return "cobertura=" + coverage.getName() + "; planos=" + plans + "; regras=" + coverageRuleRepository.findByCoverage_IdOrderBySortOrderAscIdAsc(coverage.getId()).size();
     }
 
     @Transactional(readOnly = true)
@@ -351,11 +417,20 @@ public class AdminCatalogService {
     }
 
     private CoverageAdminResponse toCoverageResponse(PlanCoverage item) {
+        List<CoverageRuleAdminResponse> rules = coverageRuleRepository
+                .findByCoverage_IdOrderBySortOrderAscIdAsc(item.getCoverage().getId())
+                .stream()
+                .map(rule -> new CoverageRuleAdminResponse(
+                        rule.getId(), rule.getCategoryCode(), rule.getMinFipe(), rule.getMaxFipe(),
+                        rule.getNormalAmount(), rule.getDiscountedAmount(), rule.getSortOrder()
+                ))
+                .toList();
         return new CoverageAdminResponse(
-                item.getId(), item.getPlan().getId(), item.getPlan().getName(),
+                item.getId(), item.getCoverage().getId(), item.getCoverage().getCode(),
+                item.getPlan().getId(), item.getPlan().getName(),
                 item.getPlan().getCategory().getName(), item.getPlan().getRegion().name(), item.getPlan().getMotorcycleOrigin(),
                 item.getCoverage().getName(), item.getStatus(),
-                item.getDetail(), item.getMonthlyPrice(), item.getSortOrder()
+                item.getDetail(), item.getMonthlyPrice(), item.getSortOrder(), rules
         );
     }
 
