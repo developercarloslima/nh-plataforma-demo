@@ -27,6 +27,7 @@ public class AdminActivityService {
     private final ConsultantService consultantService;
     private final PortalUserService portalUserService;
     private final RetratoService retratoService;
+    private final RetratoPdfService retratoPdfService;
     private final String publicApiUrl;
     private final String publicWebUrl;
 
@@ -39,6 +40,7 @@ public class AdminActivityService {
             ConsultantService consultantService,
             PortalUserService portalUserService,
             RetratoService retratoService,
+            RetratoPdfService retratoPdfService,
             @Value("${app.public-api-url:http://localhost:8080}") String publicApiUrl,
             @Value("${app.public-web-url:https://aforma-demo.vercel.app}") String publicWebUrl
     ) {
@@ -50,6 +52,7 @@ public class AdminActivityService {
         this.consultantService = consultantService;
         this.portalUserService = portalUserService;
         this.retratoService = retratoService;
+        this.retratoPdfService = retratoPdfService;
         this.publicApiUrl = stripTrailingSlash(publicApiUrl);
         this.publicWebUrl = normalizePublicWebUrl(publicWebUrl);
     }
@@ -209,6 +212,33 @@ public class AdminActivityService {
     }
 
     @Transactional
+    public AdminInspectionResponse markRegistrationNotCompleted(UUID id, String note, String username, PortalRole actorRole) {
+        if (actorRole != PortalRole.ANALYST && actorRole != PortalRole.ADMIN) {
+            throw new IllegalArgumentException("Este usuário não possui permissão para marcar Cadastro não feito.");
+        }
+        InspectionRequest inspection = inspectionRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
+        Consultant analyst;
+        if (actorRole == PortalRole.ADMIN) {
+            analyst = inspection.getAssignedAnalyst();
+            if (analyst == null) throw new IllegalArgumentException("Vincule um analista responsável antes de marcar Cadastro não feito.");
+        } else {
+            UUID analystId = portalUserService.linkedAnalystId(username)
+                    .orElseThrow(() -> new IllegalArgumentException("Este usuário de análise não está vinculado a um analista específico."));
+            analyst = consultantService.findActiveAnalyst(analystId);
+        }
+        String old = inspectionAnalysisSummary(inspection);
+        inspection.markRegistrationNotCompleted(analyst, note);
+        inspectionRepository.flush();
+        auditRepository.save(CatalogChangeAudit.createText(
+                "INSPECTION_REGISTRATION", null, id.toString(),
+                "Cadastro marcado como não feito por " + analyst.getName(),
+                old, inspectionAnalysisSummary(inspection) + "; etapa=ANALYST_QUEUE; situação=CADASTRO_NAO_FEITO", username
+        ));
+        return toInspection(inspection, true);
+    }
+
+    @Transactional
     public AdminInspectionResponse markDecisionMessageSent(UUID id) {
         return markDecisionMessageSent(id, false);
     }
@@ -283,6 +313,7 @@ public class AdminActivityService {
                 actorRole == PortalRole.ADMIN
         );
         inspectionRepository.flush();
+        persistFinalInspectionDossier(inspection);
         auditRepository.save(CatalogChangeAudit.createText(
                 "INSPECTION_SUPERVISION", null, id.toString(),
                 "Supervisão da vistoria de " + inspection.getAssociateName() + " por " + reviewerName,
@@ -306,8 +337,10 @@ public class AdminActivityService {
         String reviewerName;
         String reviewerRole;
         if (actorRole == PortalRole.ANALYST
-                && (request.status() == InspectionRequestStatus.APPROVED || request.status() == InspectionRequestStatus.REJECTED)) {
-            throw new IllegalArgumentException("A decisão final da vistoria pertence à Supervisão de Análise. Marque Cadastro feito para enviar a vistoria à supervisão.");
+                && request.status() != InspectionRequestStatus.UNDER_REVIEW
+                && request.status() != InspectionRequestStatus.WAITING_FILES
+                && request.status() != InspectionRequestStatus.UPLOADING_FILES) {
+            throw new IllegalArgumentException("A Equipe de Análise trabalha somente com Cadastro feito, Cadastro não feito e Aguardando documentos. A decisão final pertence à Supervisão de Análise.");
         }
         if (actorRole == PortalRole.ADMIN
                 && (request.status() == InspectionRequestStatus.APPROVED || request.status() == InspectionRequestStatus.REJECTED)
@@ -330,12 +363,35 @@ public class AdminActivityService {
                 actorRole == PortalRole.ADMIN
         );
         inspectionRepository.flush();
+        if (request.status() == InspectionRequestStatus.APPROVED || request.status() == InspectionRequestStatus.REJECTED) {
+            persistFinalInspectionDossier(inspection);
+        }
         auditRepository.save(CatalogChangeAudit.createText(
                 "INSPECTION_STATUS", null, id.toString(),
                 "Retrato NH de " + inspection.getAssociateName() + " analisado por " + reviewerName,
                 old, inspectionAnalysisSummary(inspection), username
         ));
         return toInspection(inspection, revealCpf);
+    }
+
+    private void persistFinalInspectionDossier(InspectionRequest inspection) {
+        byte[] finalReport = retratoPdfService.generate(inspection);
+        int reportOrder = inspection.getAssets().stream()
+                .filter(asset -> asset.getAssetType() == InspectionAssetType.REPORT)
+                .mapToInt(InspectionAsset::getSortOrder)
+                .findFirst()
+                .orElseGet(() -> inspection.getRequestType() == InspectionRequestType.NEW_INSPECTION
+                        ? inspection.getVehicleType().requiredPhotoCount() + 6
+                        : 2);
+
+        storageService.replaceGeneratedReport(
+                inspection,
+                "Dossiê final da vistoria",
+                "dossie-final-vistoria-" + inspection.getId() + ".pdf",
+                reportOrder,
+                finalReport
+        );
+        inspectionRepository.flush();
     }
 
     private Consultant resolveAnalystReviewer(UpdateInspectionStatusRequest request, String username) {

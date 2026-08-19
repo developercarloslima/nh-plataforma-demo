@@ -74,8 +74,18 @@ function inspectionQueueKey(item) {
   return 'review';
 }
 
-function badge(status) {
-  const [label, kind] = STATUS[status] || [status, ''];
+function analystRegistrationState(item) {
+  if (inspectionNeedsFiles(item) || item?.analysisStage === 'ANALYST_PENDING') {
+    return ['AWAITING_DOCUMENTS', 'Aguardando documentos', 'warn'];
+  }
+  if (item?.registrationCompletedAt || item?.analysisStage === 'SUPERVISION_QUEUE') {
+    return ['COMPLETED', 'Cadastro feito', 'ok'];
+  }
+  return ['NOT_COMPLETED', 'Cadastro não feito', 'warn'];
+}
+
+function analystBadge(item) {
+  const [, label, kind] = analystRegistrationState(item);
   return `<span class="badge ${kind}">${esc(label)}</span>`;
 }
 
@@ -405,7 +415,7 @@ function inspectionRows(items, emptyMessage) {
       <td>${esc(item.consultantName)}</td>
       <td>${esc(item.assignedAnalystName || currentUser?.consultantName || '—')}</td>
       <td>${date(item.completedAt || item.createdAt)}</td>
-      <td><div class="status-with-action">${badge(item.status)}${statusActions}</div></td>
+      <td><div class="status-with-action">${analystBadge(item)}${statusActions}</div></td>
       <td><div class="row-actions">${pendingActions}<button class="secondary small-button" data-analyze="${item.id}" type="button">Analisar</button></div></td>
     </tr>`;
   }).join('');
@@ -508,29 +518,9 @@ function populateAnalystReviewer(item) {
 
 function configureStatusOptions(item) {
   const select = $('inspection-status');
-  const filesAvailable = hasFiles(item);
-  const readyForAnalysis = filesAvailable
-    && Boolean(item.completedAt)
-    && Array.isArray(item.assets)
-    && item.assets.some(asset => asset.type === 'REPORT' && asset.available);
-  const allowedWhileWaiting = new Set(['WAITING_FILES', 'UPLOADING_FILES', 'CANCELLED', 'EXPIRED']);
-
-  Array.from(select.options).forEach(option => {
-    option.disabled = ['APPROVED', 'REJECTED'].includes(option.value)
-      || (!readyForAnalysis && !allowedWhileWaiting.has(option.value));
-  });
-
-  if (!filesAvailable) {
-    select.value = item.status === 'CANCELLED' || item.status === 'EXPIRED'
-      ? item.status
-      : 'WAITING_FILES';
-  } else if (!readyForAnalysis) {
-    select.value = item.status === 'CANCELLED' || item.status === 'EXPIRED'
-      ? item.status
-      : 'UPLOADING_FILES';
-  } else {
-    select.value = item.status;
-  }
+  const [value] = analystRegistrationState(item);
+  select.value = value;
+  select.disabled = true;
 }
 
 function openInspection(id) {
@@ -572,7 +562,7 @@ function openInspection(id) {
     ['WhatsApp', formatPhone(item.whatsapp) || '—'],
     ['Consultor', item.consultantName],
     ['Analista responsável', item.assignedAnalystName || currentUser?.consultantName || '—'],
-    ['Etapa', item.analysisStage === 'ANALYST_PENDING' ? 'Pendência devolvida pela supervisão' : 'Cadastro em andamento'],
+    ['Situação do cadastro', analystRegistrationState(item)[1]],
     ['Placa', item.plate || '0 km — sem placa'],
     ['Tipo', item.requestType === 'NEW_INSPECTION' ? 'Nova vistoria' : 'Atualização de boleto']
   ];
@@ -845,6 +835,38 @@ function showNotificationButton(item) {
   }
 }
 
+$('registration-not-complete').addEventListener('click', async () => {
+  const id = $('inspection-id').value;
+  const item = inspections.find(value => value.id === id);
+  if (!item) return;
+  if (inspectionNeedsFiles(item)) {
+    return message('Esta vistoria está em Aguardando documentos. Só é possível marcar Cadastro não feito depois que todos os documentos estiverem disponíveis.');
+  }
+  const confirmed = await confirmAnalysisAction(
+    'Marcar Cadastro não feito?',
+    'A vistoria permanecerá na sua fila de cadastro. A aprovação ou rejeição final não é feita pela Equipe de Análise.',
+    'Cadastro não feito'
+  );
+  if (!confirmed) return;
+  const button = $('registration-not-complete');
+  button.disabled = true;
+  try {
+    const updated = await api(`/api/analysis/inspections/${encodeURIComponent(id)}/registration-not-complete`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: $('inspection-note').value.trim() })
+    });
+    const index = inspections.findIndex(value => value.id === updated.id);
+    if (index >= 0) inspections[index] = updated;
+    render();
+    configureStatusOptions(updated);
+    message('Situação atualizada para Cadastro não feito.', 'success');
+  } catch (error) {
+    message(error.message);
+  } finally {
+    button.disabled = false;
+  }
+});
+
 $('registration-complete').addEventListener('click', async () => {
   const id = $('inspection-id').value;
   const item = inspections.find(value => value.id === id);
@@ -880,8 +902,13 @@ $('inspection-form').addEventListener('submit', async event => {
   const id = $('inspection-id').value;
   try {
     const analystChoice = $('inspection-analyst').value;
+    const currentItem = inspections.find(value => value.id === id);
     const payload = {
-      status: $('inspection-status').value,
+      // A Equipe de Análise não aprova/rejeita. Este endpoint serve somente
+      // para salvar observação mantendo a situação operacional atual.
+      status: inspectionNeedsFiles(currentItem)
+        ? (currentItem?.status === 'UPLOADING_FILES' ? 'UPLOADING_FILES' : 'WAITING_FILES')
+        : 'UNDER_REVIEW',
       adminNote: $('inspection-note').value.trim()
     };
     if (currentUser?.consultantId) {
@@ -907,7 +934,7 @@ $('inspection-form').addEventListener('submit', async event => {
     }
     render();
     showNotificationButton(updated);
-    message('Análise salva com sucesso.', 'success');
+    message('Observação salva com sucesso.', 'success');
     if (updated.associateDecisionWhatsappUrl && updated.associateDecisionMessagePending) {
       $('inspection-dialog').close();
       openDecisionCommunication(updated);

@@ -76,7 +76,10 @@ function inspectionQueueKey(item) {
   return 'review';
 }
 
-function badge(status) {
+function badge(status, item = null) {
+  if (item?.analysisStage === 'SUPERVISION_QUEUE') {
+    return `<span class="badge ok">Cadastro feito</span>`;
+  }
   const [label, kind] = STATUS[status] || [status, ''];
   return `<span class="badge ${kind}">${esc(label)}</span>`;
 }
@@ -408,7 +411,7 @@ function inspectionRows(items, emptyMessage) {
       <td>${esc(item.consultantName)}</td>
       <td>${esc(item.assignedAnalystName || currentUser?.consultantName || '—')}</td>
       <td>${date(item.completedAt || item.createdAt)}</td>
-      <td><div class="status-with-action">${badge(item.status)}${statusActions}</div></td>
+      <td><div class="status-with-action">${badge(item.status, item)}${statusActions}</div></td>
       <td><div class="row-actions">${pendingActions}<button class="secondary small-button" data-analyze="${item.id}" type="button">Analisar</button></div></td>
     </tr>`;
   }).join('');

@@ -283,6 +283,29 @@ public class InspectionRequest {
         this.decisionMessageSentAt = null;
     }
 
+    public void markRegistrationNotCompleted(Consultant analyst, String note) {
+        if (analyst == null || analyst.getRole() != CollaboratorRole.ANALYST) {
+            throw new IllegalArgumentException("Apenas um analista vinculado pode marcar Cadastro não feito.");
+        }
+        if (assignedAnalyst != null && !assignedAnalyst.getId().equals(analyst.getId())) {
+            throw new IllegalArgumentException("Esta vistoria está vinculada a outro analista.");
+        }
+        if (assignedAnalyst == null) assignAnalyst(analyst);
+        // Cadastro não feito só é uma situação de análise quando todos os documentos já chegaram.
+        // Se houver qualquer pendência, a situação correta é Aguardando documentos.
+        assertStoredCompletionRequirements(true);
+        this.adminNote = cleanNote(note);
+        this.registrationCompletedAt = null;
+        this.registrationCompletedByName = null;
+        this.status = InspectionRequestStatus.UNDER_REVIEW;
+        this.analysisStage = InspectionAnalysisStage.ANALYST_QUEUE;
+        this.reviewedAt = OffsetDateTime.now();
+        this.reviewedByCollaborator = analyst;
+        this.reviewedByName = analyst.getName();
+        this.reviewedByRole = "ANALYST";
+        this.decisionMessageSentAt = null;
+    }
+
     public void routeBackToAnalystPending() {
         if (this.analysisStage != InspectionAnalysisStage.FINISHED) {
             this.analysisStage = InspectionAnalysisStage.ANALYST_PENDING;

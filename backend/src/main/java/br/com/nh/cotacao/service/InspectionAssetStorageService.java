@@ -138,6 +138,45 @@ public class InspectionAssetStorageService {
     }
 
     /**
+     * Substitui exclusivamente o PDF consolidado gerado pelo sistema sem reabrir a vistoria.
+     * É usado quando a Supervisão registra a decisão final, pois o relatório criado no
+     * envio do associado precisa ser trocado pelo dossiê definitivo com regulamento e
+     * registro digital da aprovação/rejeição.
+     */
+    @Transactional
+    public InspectionAsset replaceGeneratedReport(
+            InspectionRequest request,
+            String label,
+            String fileName,
+            int sortOrder,
+            byte[] bytes
+    ) {
+        if (request == null) throw new IllegalArgumentException("Informe a vistoria do relatório.");
+        if (bytes == null || bytes.length == 0) throw new IllegalArgumentException("O relatório final está vazio.");
+
+        List<InspectionAsset> previousReports = new ArrayList<>(request.getAssets().stream()
+                .filter(asset -> asset.getAssetType() == InspectionAssetType.REPORT)
+                .toList());
+
+        for (InspectionAsset report : previousReports) {
+            deleteBlobSlot(request.getId(), InspectionAssetType.REPORT, report.getSortOrder());
+            jdbcTemplate.update("delete from inspection_asset_contents where asset_id = ?", report.getId());
+            request.removeAsset(report);
+        }
+        entityManager.flush();
+
+        return storeBytes(
+                request,
+                InspectionAssetType.REPORT,
+                label,
+                fileName,
+                "application/pdf",
+                sortOrder,
+                bytes
+        );
+    }
+
+    /**
      * Retorna as partes já confirmadas no PostgreSQL. Nenhuma parte é lida do disco.
      */
     @Transactional(readOnly = true)
@@ -722,6 +761,9 @@ public class InspectionAssetStorageService {
             int sortOrder
     ) {
         OffsetDateTime storedAt = OffsetDateTime.now();
+        OffsetDateTime expiresAt = type == InspectionAssetType.REPORT
+                ? null
+                : storedAt.plusDays(retentionDays);
         InspectionAsset asset = InspectionAsset.createDatabase(
                 request,
                 type,
@@ -731,7 +773,7 @@ public class InspectionAssetStorageService {
                 fileSize,
                 sortOrder,
                 storedAt,
-                storedAt.plusDays(retentionDays)
+                expiresAt
         );
         request.addAsset(asset);
         entityManager.persist(asset);

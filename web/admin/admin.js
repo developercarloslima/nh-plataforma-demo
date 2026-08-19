@@ -301,6 +301,22 @@ function inspectionBadge(status) {
   return statusBadge(label, kind);
 }
 
+function inspectionWorkflowBadge(item) {
+  if (!item) return inspectionBadge('UNDER_REVIEW');
+  if (!['APPROVED', 'REJECTED', 'CANCELLED', 'EXPIRED'].includes(item.status)) {
+    if (adminInspectionNeedsFiles(item) || item.analysisStage === 'ANALYST_PENDING') {
+      return statusBadge('Aguardando documentos', 'warn');
+    }
+    if (item.analysisStage === 'SUPERVISION_QUEUE' || item.registrationCompletedAt) {
+      return statusBadge('Cadastro feito', 'ok');
+    }
+    if (item.analysisStage === 'ANALYST_QUEUE') {
+      return statusBadge('Cadastro não feito', 'warn');
+    }
+  }
+  return inspectionBadge(item.status);
+}
+
 function hasInspectionFiles(item) {
   return Number(item?.assetCount || 0) > 0;
 }
@@ -447,10 +463,16 @@ function renderOverview() {
     return `<div><span>${statusBadge(label, kind)}</span><strong>${count}</strong></div>`;
   }).join('');
 
-  $('inspection-status-summary').innerHTML = Object.entries(INSPECTION_STATUS_LABELS).map(([status, [label, kind]]) => {
-    const count = inspections.filter(item => item.status === status).length;
-    return `<div><span>${statusBadge(label, kind)}</span><strong>${count}</strong></div>`;
-  }).join('');
+  const inspectionSummary = [
+    ['Aguardando documentos', 'warn', inspections.filter(item => !['APPROVED','REJECTED','CANCELLED','EXPIRED'].includes(item.status) && (adminInspectionNeedsFiles(item) || item.analysisStage === 'ANALYST_PENDING')).length],
+    ['Cadastro não feito', 'warn', inspections.filter(item => !['APPROVED','REJECTED','CANCELLED','EXPIRED'].includes(item.status) && !adminInspectionNeedsFiles(item) && item.analysisStage === 'ANALYST_QUEUE').length],
+    ['Cadastro feito', 'ok', inspections.filter(item => !['APPROVED','REJECTED','CANCELLED','EXPIRED'].includes(item.status) && (item.analysisStage === 'SUPERVISION_QUEUE' || item.registrationCompletedAt)).length],
+    ['Aprovada', 'ok', inspections.filter(item => item.status === 'APPROVED').length],
+    ['Rejeitada', 'off', inspections.filter(item => item.status === 'REJECTED').length]
+  ];
+  $('inspection-status-summary').innerHTML = inspectionSummary.map(([label, kind, count]) =>
+    `<div><span>${statusBadge(label, kind)}</span><strong>${count}</strong></div>`
+  ).join('');
 
   $('overview-team-email').textContent = settings.teamEmail || 'Não configurado';
   $('overview-team-whatsapp').textContent = formatPhone(settings.teamWhatsapp) || 'Não configurado';
@@ -465,7 +487,7 @@ function activities() {
   const inspectionItems = inspections.map(item => ({
     id: item.id, source: 'inspection', date: item.createdAt, consultant: item.consultantName,
     type: item.requestType === 'NEW_INSPECTION' ? 'Nova vistoria' : 'Atualização de boleto',
-    person: item.associateName, plate: item.plate, statusHtml: inspectionBadge(item.status)
+    person: item.associateName, plate: item.plate, statusHtml: inspectionWorkflowBadge(item)
   }));
   return [...quoteItems, ...inspectionItems].sort((a, b) => new Date(b.date) - new Date(a.date));
 }
@@ -837,7 +859,7 @@ function renderInspections() {
       return `<tr>
         <td><strong>${esc(item.associateName)}</strong></td><td>${esc(item.consultantName)}</td><td>${esc(item.reviewedByName || '—')}</td><td>${esc(item.plate || '0 km — sem placa')}</td>
         <td>${item.requestType === 'NEW_INSPECTION' ? 'Nova vistoria' : 'Atualização de boleto'}</td><td>${item.assetCount}</td>
-        <td><div class="status-with-action">${inspectionBadge(item.status)}${statusAction}</div></td><td>${date(item.createdAt)}</td>
+        <td><div class="status-with-action">${inspectionWorkflowBadge(item)}${statusAction}</div></td><td>${date(item.createdAt)}</td>
         <td><div class="row-actions">${pendingActions}<button class="secondary small-button" data-inspection-analyze="${item.id}" type="button">Analisar</button><button class="danger small-button" data-inspection-delete="${item.id}" type="button">Excluir</button></div></td>
       </tr>`;
     }).join('') || emptyRow(9, 'Nenhuma atividade do Retrato NH encontrada.');

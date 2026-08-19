@@ -58,6 +58,8 @@ app:
     access-token: ${WHATSAPP_CLOUD_ACCESS_TOKEN:}
     completion-template-name: ${WHATSAPP_COMPLETION_TEMPLATE_NAME:}
     language-code: ${WHATSAPP_TEMPLATE_LANGUAGE:pt_BR}
+  inspection-report:
+    supervision-responsible-name: ${INSPECTION_SUPERVISION_RESPONSIBLE_NAME:Eurides Macedo}
   inspection-storage:
     retention-days: ${INSPECTION_RETENTION_DAYS:40}
     cleanup-cron: ${INSPECTION_CLEANUP_CRON:0 15 * * * *}

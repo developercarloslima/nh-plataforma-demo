@@ -11,7 +11,7 @@
   <meta property="og:image" content="https://nhprotecao.com.br/assets/simbolo-fundo-azul.png" />
   <meta property="og:image:type" content="image/png" />
   <meta name="twitter:image" content="https://nhprotecao.com.br/assets/simbolo-fundo-azul.png" />
-<link rel="stylesheet" href="/shared/portal.css?v=20260820-responsive-portal-v3">
+<link rel="stylesheet" href="/shared/portal.css?v=20260819-analyst-status-v4">
   <link rel="stylesheet" href="/shared/responsive.css?v=20260807-responsive-audit-v4">
   <link rel="stylesheet" href="/shared/brand-system.css?v=20260807-modals-v5">
 </head>
@@ -44,7 +44,7 @@
   <div id="message" aria-live="polite"></div>
   <section class="analysis-queues" style="margin-top:22px">
     <div class="section-head analysis-queues-head">
-      <div><h2>Vistorias recebidas</h2><p>Use as abas para separar o fluxo por situação dos arquivos e pela decisão da análise.</p></div>
+      <div><h2>Vistorias recebidas</h2><p>Use as abas para separar o fluxo entre cadastro e documentos pendentes. A aprovação ou rejeição final é feita pela Supervisão de Análise.</p></div>
       <div class="actions analysis-filter-actions" style="margin-top:0"><input id="filter" placeholder="Buscar associado, placa, consultor ou analista"><button id="refresh" class="outline" type="button">Atualizar</button></div>
     </div>
 
@@ -97,7 +97,7 @@
     <div id="discount-validation-note" class="message" hidden style="margin-top:16px"></div>
     <section id="inspection-files-section" class="inspection-media-section" hidden>
       <div class="inspection-media-head">
-        <div><h3>Arquivos enviados</h3><p id="inspection-files-retention">Disponíveis por 40 dias.</p></div>
+        <div><h3>Arquivos enviados</h3><p id="inspection-files-retention">Os arquivos originais seguem a retenção operacional; o relatório PDF consolidado não possui validade.</p></div>
         <button id="download-all-files" class="secondary" type="button">Baixar todos (.zip)</button>
       </div>
       <div id="inspection-files-grid" class="inspection-media-grid"></div>
@@ -112,15 +112,10 @@
         </label>
         <p id="inspection-analyst-helper" class="helper">O responsável ficará registrado no histórico desta análise.</p>
       </div>
-      <label>Status<select id="inspection-status">
-        <option value="WAITING_FILES">Aguardando arquivos</option>
-        <option value="UPLOADING_FILES">Envio em andamento</option>
-        <option value="COMPLETED">Aguardando análise</option>
-        <option value="UNDER_REVIEW">Em análise</option>
-        <option value="APPROVED">Aprovada</option>
-        <option value="REJECTED">Rejeitada</option>
-        <option value="CANCELLED">Cancelada</option>
-        <option value="EXPIRED">Expirada</option>
+      <label>Situação do cadastro<select id="inspection-status" disabled>
+        <option value="AWAITING_DOCUMENTS">Aguardando documentos</option>
+        <option value="NOT_COMPLETED">Cadastro não feito</option>
+        <option value="COMPLETED">Cadastro feito</option>
       </select></label>
       <label class="span-2">Observação da análise<textarea id="inspection-note" maxlength="1200" rows="4" placeholder="Informe pendências, motivo da rejeição ou orientações."></textarea></label>
     </div>
@@ -129,7 +124,7 @@
       Status atualizado. Use o botão abaixo para informar o associado pelo WhatsApp.
       <div class="actions"><button id="notify-associate" class="secondary" type="button">Enviar mensagem ao associado</button></div>
     </div>
-    <div class="actions dialog-actions"><button id="cancel-dialog" class="outline" type="button">Fechar</button><button id="registration-complete" class="secondary" type="button">✓ Cadastro feito · Enviar à supervisão</button><button class="primary" type="submit">Salvar observação</button></div>
+    <div class="actions dialog-actions"><button id="cancel-dialog" class="outline" type="button">Fechar</button><button id="registration-not-complete" class="outline" type="button">Cadastro não feito</button><button id="registration-complete" class="secondary" type="button">✓ Cadastro feito · Enviar à supervisão</button><button class="primary" type="submit">Salvar observação</button></div>
   </form>
 </dialog>
 
@@ -177,7 +172,7 @@
 
 <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
-<script src="/analise/analise.js?v=20260819-analysis-team-v2"></script>
+<script src="/analise/analise.js?v=20260819-analyst-status-v4"></script>
 <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
 </body>
 </html>

@@ -113,10 +113,10 @@ public class InspectionAsset {
     }
 
     public boolean isAvailable() {
-        return storageKind == InspectionAssetStorageKind.DATABASE
-                && purgedAt == null
-                && expiresAt != null
-                && expiresAt.isAfter(OffsetDateTime.now());
+        if (storageKind != InspectionAssetStorageKind.DATABASE || purgedAt != null) return false;
+        // O relatório consolidado é permanente: ele guarda o dossiê da vistoria e não possui validade.
+        if (assetType == InspectionAssetType.REPORT && expiresAt == null) return true;
+        return expiresAt != null && expiresAt.isAfter(OffsetDateTime.now());
     }
 
     public void markPurged(OffsetDateTime at) {

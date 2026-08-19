@@ -44,6 +44,16 @@ public class AnalysisInspectionController {
         return service.markRegistrationCompleted(id, request.note(), principal.username(), principal.role());
     }
 
+    @PostMapping("/{id}/registration-not-complete")
+    public AdminInspectionResponse registrationNotComplete(
+            @PathVariable UUID id,
+            @Valid @RequestBody RegistrationCompleteRequest request,
+            Authentication authentication
+    ) {
+        PortalPrincipal principal = (PortalPrincipal) authentication.getPrincipal();
+        return service.markRegistrationNotCompleted(id, request.note(), principal.username(), principal.role());
+    }
+
     @PostMapping("/{id}/decision-message-sent")
     public AdminInspectionResponse markDecisionMessageSent(@PathVariable UUID id, Authentication authentication) {
         PortalPrincipal principal = (PortalPrincipal) authentication.getPrincipal();
