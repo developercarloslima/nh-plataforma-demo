@@ -11,9 +11,41 @@
   <meta property="og:image" content="https://nhprotecao.com.br/assets/simbolo-fundo-azul.png" />
   <meta property="og:image:type" content="image/png" />
   <meta name="twitter:image" content="https://nhprotecao.com.br/assets/simbolo-fundo-azul.png" />
-<link rel="stylesheet" href="/shared/portal.css?v=20260820-responsive-portal-v3">
-  <link rel="stylesheet" href="/shared/responsive.css?v=20260807-responsive-audit-v4">
+<link rel="stylesheet" href="/shared/portal.css?v=20260820-responsive-portal-v461">
+  <link rel="stylesheet" href="/shared/responsive.css?v=20260820-responsive-v461">
   <link rel="stylesheet" href="/shared/brand-system.css?v=20260807-modals-v5">
+
+  <style id="nh-dev-credit-style">
+    .nh-dev-credit {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 12px 10px;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 400;
+      line-height: 1.35;
+      letter-spacing: .01em;
+      opacity: .56;
+      color: inherit;
+    }
+    .nh-dev-credit a {
+      color: inherit;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .nh-dev-credit a:hover,
+    .nh-dev-credit a:focus-visible {
+      text-decoration: underline;
+      opacity: .95;
+    }
+    @media (max-width: 640px) {
+      .nh-dev-credit {
+        padding: 7px 10px 9px;
+        font-size: 10px;
+        opacity: .52;
+      }
+    }
+  </style>
 </head>
 <body>
 <header class="portal-header">
@@ -25,7 +57,7 @@
   <div class="card login-card">
     <span class="eyebrow" style="color:#070c40">ACESSO RESTRITO</span>
     <h1>Supervisão de Análise</h1>
-    <p>Entre com seu usuário de supervisão para aprovar ou rejeitar as vistorias com Cadastro feito.</p>
+    <p>Entre com seu usuário de supervisão para acompanhar todas as vistorias enviadas à análise, cobrar pendências e decidir as que estiverem com Cadastro feito.</p>
     <form id="login-form" class="form-grid">
       <label class="span-2">Usuário<input id="username" autocomplete="username" required></label>
       <label class="span-2">Senha<input id="password" type="password" autocomplete="current-password" required></label>
@@ -44,11 +76,12 @@
   <div id="message" aria-live="polite"></div>
   <section class="analysis-queues" style="margin-top:22px">
     <div class="section-head analysis-queues-head">
-      <div><h2>Vistorias com Cadastro feito</h2><p>Aqui chegam somente as vistorias encaminhadas pelos analistas para decisão da supervisão.</p></div>
+      <div><h2>Acompanhamento das vistorias da análise</h2><p>A supervisão acompanha desde as pendências dos analistas até a decisão final, inclusive vistorias sem documentos ou ainda não analisadas.</p></div>
       <div class="actions analysis-filter-actions" style="margin-top:0"><input id="filter" placeholder="Buscar associado, placa, consultor ou analista"><button id="refresh" class="outline" type="button">Atualizar</button></div>
     </div>
 
     <nav id="analysis-status-tabs" class="analysis-status-tabs" aria-label="Fila da supervisão">
+      <button type="button" class="analysis-status-tab" data-analysis-queue="analyst_pending">Vistorias pendentes dos analistas <span id="analysis-tab-analyst_pending-count">0</span></button>
       <button type="button" class="analysis-status-tab active" data-analysis-queue="review">Aguardando supervisão <span id="analysis-tab-review-count">0</span></button>
       <button type="button" class="analysis-status-tab" data-analysis-queue="approved">Aprovadas <span id="analysis-tab-approved-count">0</span></button>
       <button type="button" class="analysis-status-tab" data-analysis-queue="rejected">Rejeitadas <span id="analysis-tab-rejected-count">0</span></button>
@@ -104,6 +137,11 @@
       <div id="inspection-files-grid" class="inspection-media-grid"></div>
     </section>
     <div class="form-grid" style="margin-top:18px">
+      <label class="span-2"><strong>O.B.S. Supervisão</strong>
+        <textarea id="supervision-note" maxlength="1200" rows="4" placeholder="Escreva aqui orientações, cobranças ou observações para o analista responsável."></textarea>
+        <small id="supervision-note-meta" class="helper">A observação ficará visível para o analista ao abrir esta vistoria.</small>
+      </label>
+      <div class="span-2 actions" style="margin-top:0"><button id="save-supervision-note" class="secondary" type="button">Salvar O.B.S. Supervisão</button></div>
       <div id="inspection-analyst-wrap" class="span-2" hidden>
         <label>Analista responsável<select id="inspection-analyst">
           <option value="">Selecione o analista</option>
@@ -113,19 +151,27 @@
         </label>
         <p id="inspection-analyst-helper" class="helper">O responsável ficará registrado no histórico desta análise.</p>
       </div>
-      <label>Decisão da supervisão<select id="inspection-status" required>
+      <label id="supervision-decision-status-wrap">Decisão da supervisão<select id="inspection-status" required>
         <option value="">Selecione</option>
         <option value="APPROVED">Aprovar vistoria</option>
         <option value="REJECTED">Rejeitar vistoria</option>
       </select></label>
-      <label class="span-2">Observação da análise<textarea id="inspection-note" maxlength="1200" rows="4" placeholder="Obrigatório: informe por que a vistoria está sendo aprovada ou rejeitada."></textarea></label>
+      <label id="supervision-decision-note-wrap" class="span-2">Observação da decisão final<textarea id="inspection-note" maxlength="1200" rows="4" placeholder="Obrigatório: informe por que a vistoria está sendo aprovada ou rejeitada."></textarea></label>
     </div>
     <div id="inspection-links" class="actions"></div>
     <div id="associate-notification" class="message success" hidden>
       Status atualizado. Use o botão abaixo para informar o associado pelo WhatsApp.
       <div class="actions"><button id="notify-associate" class="secondary" type="button">Enviar mensagem ao associado</button></div>
     </div>
-    <div class="actions dialog-actions"><button id="cancel-dialog" class="outline" type="button">Fechar</button><button class="primary" type="submit">Salvar decisão da supervisão</button></div>
+    <div id="webauthn-notification" class="message success webauthn-send-box" hidden>
+      <strong>Aceite digital WebAuthn pendente</strong>
+      <p>Envie o token/link seguro ao associado para ele abrir no próprio celular e confirmar o PPV com biometria, PIN ou bloqueio seguro do aparelho.</p>
+      <div class="actions">
+        <button id="send-webauthn-token" class="secondary" type="button">Enviar token WebAuthn</button>
+        <button id="copy-webauthn-link" class="outline" type="button">Copiar link do aceite</button>
+      </div>
+    </div>
+    <div class="actions dialog-actions"><button id="cancel-dialog" class="outline" type="button">Fechar</button><button id="save-supervision-decision" class="primary" type="submit">Salvar decisão da supervisão</button></div>
   </form>
 </dialog>
 
@@ -173,7 +219,11 @@
 
 <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
-<script src="/supervisao/supervisao.js?v=20260819-supervision-v2"></script>
+<script src="/supervisao/supervisao.js?v=20260820-webauthn-token-v3"></script>
 <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
+
+  <div class="nh-dev-credit" aria-label="Crédito de desenvolvimento">
+    @desenvolvido por <a href="https://www.linkedin.com/in/devcarloslima/" target="_blank" rel="noopener noreferrer">Carlos Lima</a>
+  </div>
 </body>
 </html>

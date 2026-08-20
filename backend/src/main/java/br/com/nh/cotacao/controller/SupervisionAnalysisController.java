@@ -5,6 +5,7 @@ import br.com.nh.cotacao.dto.AdminDtos.UpdateInspectionStatusRequest;
 import br.com.nh.cotacao.security.PortalPrincipal;
 import br.com.nh.cotacao.service.AdminActivityService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -25,6 +26,16 @@ public class SupervisionAnalysisController {
         return service.inspectionsForSupervision();
     }
 
+    @PatchMapping("/{id}/supervision-note")
+    public AdminInspectionResponse updateSupervisionNote(
+            @PathVariable UUID id,
+            @Valid @RequestBody SupervisionNoteRequest request,
+            Authentication authentication
+    ) {
+        PortalPrincipal principal = (PortalPrincipal) authentication.getPrincipal();
+        return service.updateSupervisionNote(id, request.note(), principal.username(), principal.role());
+    }
+
     @PatchMapping("/{id}/status")
     public AdminInspectionResponse updateStatus(
             @PathVariable UUID id,
@@ -40,4 +51,6 @@ public class SupervisionAnalysisController {
         PortalPrincipal principal = (PortalPrincipal) authentication.getPrincipal();
         return service.markDecisionMessageSentForSupervision(id, principal.username(), principal.role());
     }
+
+    public record SupervisionNoteRequest(@Size(max = 1200) String note) {}
 }

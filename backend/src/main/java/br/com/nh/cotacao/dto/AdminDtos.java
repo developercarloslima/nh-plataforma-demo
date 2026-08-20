@@ -290,6 +290,9 @@ public final class AdminDtos {
             OffsetDateTime expiresAt,
             OffsetDateTime completedAt,
             String adminNote,
+            String supervisionNote,
+            OffsetDateTime supervisionNoteUpdatedAt,
+            String supervisionNoteByName,
             OffsetDateTime reviewedAt,
             UUID reviewedByCollaboratorId,
             String reviewedByName,
@@ -308,6 +311,9 @@ public final class AdminDtos {
             int assetCount,
             int expiredAssetCount,
             OffsetDateTime filesExpireAt,
+            OffsetDateTime digitalAcceptedAt,
+            String digitalAcceptanceProofHash,
+            boolean digitalAcceptanceUserVerified,
             List<InspectionDtos.InspectionAssetResponse> assets
     ) {}
 

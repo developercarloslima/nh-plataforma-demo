@@ -510,7 +510,7 @@ function renderConsultants() {
     <td>${statusBadge(collaboratorRoleLabel(item.role), item.role === 'ANALYST' ? 'warn' : item.role === 'SUPERVISION_ANALYSIS' ? 'ok' : '')}</td>
     <td>${esc(item.city || '—')}</td>
     <td>${esc(formatPhone(item.whatsapp) || 'Não cadastrado')}</td>
-    <td>${item.role === 'CONSULTANT' ? esc(item.assignedAnalystName || 'Não vinculado') : item.role === 'ANALYST' ? `${Number(item.assignedConsultantCount || 0)}/15 consultores` : 'Supervisão'}</td>
+    <td>${item.role === 'CONSULTANT' ? esc(item.assignedAnalystName || 'Não vinculado') : item.role === 'ANALYST' ? `${Number(item.assignedConsultantCount || 0)}/30 consultores` : 'Supervisão'}</td>
     <td>${item.quoteCount}</td>
     <td>${item.inspectionCount}</td><td>${statusBadge(item.active ? 'Ativo' : 'Inativo', item.active ? 'ok' : 'off')}</td>
     <td><div class="row-actions">

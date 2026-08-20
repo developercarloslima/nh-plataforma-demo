@@ -5,6 +5,7 @@ import br.com.nh.cotacao.entity.InspectionRequestStatus;
 import br.com.nh.cotacao.entity.InspectionRequestType;
 import br.com.nh.cotacao.entity.InspectionVehicleType;
 import br.com.nh.cotacao.entity.RearWindowBranding;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -44,6 +45,84 @@ public final class InspectionDtos {
             OffsetDateTime purgedAt
     ) {}
 
+    public record DigitalAcceptanceStatusResponse(
+            boolean required,
+            boolean eligible,
+            boolean accepted,
+            OffsetDateTime acceptedAt,
+            String evidenceHash,
+            String proofHash,
+            String dossierSha256,
+            String selfieSha256,
+            boolean userVerified
+    ) {}
+
+    public record DeviceMetadata(
+            @Size(max = 1200) String userAgent,
+            @Size(max = 160) String platform,
+            @Size(max = 160) String vendor,
+            @Size(max = 40) String language,
+            @Size(max = 400) String languages,
+            @Size(max = 120) String timezone,
+            Integer screenWidth,
+            Integer screenHeight,
+            Integer colorDepth,
+            Double pixelRatio,
+            Integer touchPoints,
+            Integer hardwareConcurrency,
+            Double deviceMemory,
+            Boolean cookieEnabled,
+            Boolean online,
+            Boolean webdriver,
+            Boolean webauthnAvailable,
+            Boolean platformAuthenticatorAvailable,
+            @Size(max = 600) String currentUrl,
+            @Size(max = 600) String referrer,
+            Double latitude,
+            Double longitude,
+            Double accuracyMeters,
+            @Size(max = 80) String capturedAt
+    ) {}
+
+    public record WebAuthnRegistrationOptionsResponse(
+            String challenge,
+            String rpId,
+            String rpName,
+            String userId,
+            String userName,
+            String userDisplayName,
+            long timeoutMs
+    ) {}
+
+    public record WebAuthnRegistrationFinishRequest(
+            @NotBlank @Size(max = 2048) String id,
+            @NotBlank @Size(max = 2048) String rawId,
+            @NotBlank @Size(max = 80) String type,
+            @NotBlank @Size(max = 12000) String clientDataJSON,
+            @NotBlank @Size(max = 30000) String attestationObject,
+            @NotNull @Valid DeviceMetadata device
+    ) {}
+
+    public record WebAuthnAssertionOptionsResponse(
+            String challenge,
+            String rpId,
+            String credentialId,
+            long timeoutMs,
+            String evidenceHash,
+            String dossierSha256,
+            String selfieSha256
+    ) {}
+
+    public record WebAuthnAssertionFinishRequest(
+            @NotBlank @Size(max = 2048) String id,
+            @NotBlank @Size(max = 2048) String rawId,
+            @NotBlank @Size(max = 80) String type,
+            @NotBlank @Size(max = 12000) String clientDataJSON,
+            @NotBlank @Size(max = 12000) String authenticatorData,
+            @NotBlank @Size(max = 12000) String signature,
+            @Size(max = 12000) String userHandle
+    ) {}
+
     public record InspectionResponse(
             UUID id,
             String publicToken,
@@ -69,6 +148,7 @@ public final class InspectionDtos {
             String associateCompletionWhatsappUrl,
             String driveFolderUrl,
             String reportUrl,
+            DigitalAcceptanceStatusResponse digitalAcceptance,
             List<InspectionAssetResponse> assets
     ) {}
 

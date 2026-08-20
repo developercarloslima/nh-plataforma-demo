@@ -12,7 +12,7 @@ import java.util.UUID;
 
 @Service
 public class ConsultantService {
-    public static final int MAX_CONSULTANTS_PER_ANALYST = 15;
+    public static final int MAX_CONSULTANTS_PER_ANALYST = 30;
 
     private final ConsultantRepository repository;
     private final QuotationRepository quotationRepository;

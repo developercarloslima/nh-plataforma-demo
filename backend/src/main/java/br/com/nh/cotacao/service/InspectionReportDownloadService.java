@@ -3,7 +3,6 @@ package br.com.nh.cotacao.service;
 import br.com.nh.cotacao.entity.InspectionAsset;
 import br.com.nh.cotacao.entity.InspectionAssetType;
 import br.com.nh.cotacao.entity.InspectionRequest;
-import br.com.nh.cotacao.entity.InspectionRequestStatus;
 import br.com.nh.cotacao.entity.InspectionRequestType;
 import br.com.nh.cotacao.repository.InspectionRequestRepository;
 import org.springframework.stereotype.Service;
@@ -36,54 +35,69 @@ public class InspectionReportDownloadService {
             Optional<InspectionAsset> storedReport = request.getAssets().stream()
                     .filter(asset -> asset.getAssetType() == InspectionAssetType.REPORT)
                     .filter(storageService::isAvailable)
-                    .findFirst();
+                    .max((a, b) -> {
+                        if (a.getStoredAt() == null && b.getStoredAt() == null) return 0;
+                        if (a.getStoredAt() == null) return -1;
+                        if (b.getStoredAt() == null) return 1;
+                        return a.getStoredAt().compareTo(b.getStoredAt());
+                    });
 
-            boolean finalDecision = request.getStatus() == InspectionRequestStatus.APPROVED
-                    || request.getStatus() == InspectionRequestStatus.REJECTED;
+            byte[] storedBytes = storedReport.isPresent()
+                    ? storageService.readAll(storedReport.get().getId())
+                    : null;
 
-            // Depois da decisão da Supervisão, o dossiê salvo é a fonte oficial.
-            // Isso evita que uma troca futura do regulamento altere um PDF já aprovado/rejeitado.
-            if (finalDecision && storedReport.isPresent() && isGeneratedAfterDecision(storedReport.get(), request)) {
-                return storageService.readAll(storedReport.get().getId());
+            // Não troca o arquivo no meio de uma cerimônia WebAuthn já iniciada, pois o
+            // hash do dossiê faz parte da evidência criptográfica em andamento. Depois do
+            // aceite o próprio fluxo gera novamente o PDF no layout vigente.
+            java.time.OffsetDateTime now = java.time.OffsetDateTime.now();
+            boolean digitalAcceptanceInProgress = request.getAcceptedAt() == null
+                    && request.getAcceptanceEvidenceHash() != null
+                    && !request.getAcceptanceEvidenceHash().isBlank()
+                    && ((request.getWebauthnRegistrationExpiresAt() != null && request.getWebauthnRegistrationExpiresAt().isAfter(now))
+                        || (request.getWebauthnAssertionExpiresAt() != null && request.getWebauthnAssertionExpiresAt().isAfter(now)));
+            if (digitalAcceptanceInProgress && storedBytes != null) {
+                return storedBytes;
+            }
+
+            // Todo download passa pelo verificador de versão do layout. Assim, PDFs antigos
+            // já aprovados/rejeitados também são atualizados para o padrão vigente.
+            if (storedBytes != null && pdfService.isCurrentLayout(storedBytes)) {
+                return storedBytes;
             }
 
             boolean sourceAssetUnavailable = request.getAssets().stream()
                     .filter(asset -> asset.getAssetType() != InspectionAssetType.REPORT)
                     .anyMatch(asset -> !storageService.isAvailable(asset));
 
-            // Para decisões antigas cujo PDF ainda seja anterior à decisão, tenta fazer o upgrade
-            // enquanto os arquivos originais continuam disponíveis.
-            if (finalDecision && !sourceAssetUnavailable) {
-                byte[] finalReport = pdfService.generate(request);
-                int reportOrder = storedReport.map(InspectionAsset::getSortOrder)
-                        .orElseGet(() -> defaultReportOrder(request));
-                storageService.replaceGeneratedReport(
-                        request,
-                        "Dossiê final da vistoria",
-                        "dossie-final-vistoria-" + request.getId() + ".pdf",
-                        reportOrder,
-                        finalReport
-                );
-                inspectionRepository.flush();
-                return finalReport;
+            byte[] standardized;
+            if (!sourceAssetUnavailable) {
+                // Melhor cenário: reconstrói todo o dossiê com fotos/documentos originais,
+                // CPF completo e o rodapé de assinaturas em todas as páginas.
+                standardized = pdfService.generate(request);
+            } else if (storedBytes != null) {
+                // Para históricos fora da retenção, preserva integralmente o PDF anterior
+                // como anexo visual dentro do documento padronizado.
+                standardized = pdfService.standardizeLegacyReport(request, storedBytes);
+            } else {
+                standardized = pdfService.generate(request);
             }
 
-            // Depois que algum original sair da retenção operacional, usamos o relatório
-            // consolidado permanente que foi criado enquanto todos os arquivos ainda existiam.
-            if (sourceAssetUnavailable && storedReport.isPresent()) {
-                return storageService.readAll(storedReport.get().getId());
-            }
-
-            return pdfService.generate(request);
+            int reportOrder = storedReport.map(InspectionAsset::getSortOrder)
+                    .orElseGet(() -> defaultReportOrder(request));
+            storageService.replaceGeneratedReport(
+                    request,
+                    "Dossiê padronizado da vistoria",
+                    "dossie-padronizado-vistoria-" + request.getId() + ".pdf",
+                    reportOrder,
+                    standardized
+            );
+            inspectionRepository.flush();
+            return standardized;
         } catch (Exception exception) {
             throw new IllegalStateException("Não foi possível gerar o relatório desta vistoria. Os arquivos preservados não foram alterados.", exception);
         }
     }
 
-    private boolean isGeneratedAfterDecision(InspectionAsset report, InspectionRequest request) {
-        if (request.getReviewedAt() == null || report.getStoredAt() == null) return false;
-        return !report.getStoredAt().isBefore(request.getReviewedAt());
-    }
 
     private int defaultReportOrder(InspectionRequest request) {
         return request.getRequestType() == InspectionRequestType.NEW_INSPECTION

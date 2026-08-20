@@ -16,17 +16,49 @@
   <meta name="twitter:image" content="https://nhprotecao.com.br/assets/simbolo-fundo-azul.png" />
 <link
       rel="stylesheet"
-      href="/shared/portal.css?v=20260820-responsive-portal-v3"
+      href="/shared/portal.css?v=20260820-responsive-portal-v461"
     />
     <link
       rel="stylesheet"
-      href="/shared/responsive.css?v=20260807-responsive-audit-v4"
+      href="/shared/responsive.css?v=20260820-responsive-v461"
     />
     <link
       rel="stylesheet"
       href="/shared/brand-system.css?v=20260807-modals-v5"
     />
-  </head>
+  
+  <style id="nh-dev-credit-style">
+    .nh-dev-credit {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 12px 10px;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 400;
+      line-height: 1.35;
+      letter-spacing: .01em;
+      opacity: .56;
+      color: inherit;
+    }
+    .nh-dev-credit a {
+      color: inherit;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .nh-dev-credit a:hover,
+    .nh-dev-credit a:focus-visible {
+      text-decoration: underline;
+      opacity: .95;
+    }
+    @media (max-width: 640px) {
+      .nh-dev-credit {
+        padding: 7px 10px 9px;
+        font-size: 10px;
+        opacity: .52;
+      }
+    }
+  </style>
+</head>
   <body class="admin-page">
     <header class="portal-header">
       <a class="portal-brand" href="/">
@@ -664,7 +696,7 @@
           <label>Cidade<input id="consultant-city" maxlength="120" placeholder="Ex.: Maceió" /></label>
           <label id="consultant-analyst-wrap" class="span-2" hidden>Analista responsável
             <select id="consultant-assigned-analyst"><option value="">Selecione um analista</option></select>
-            <small class="field-help">Cada consultor pode ter 1 analista responsável. Cada analista pode receber no máximo 15 consultores.</small>
+            <small class="field-help">Cada consultor pode ter 1 analista responsável. Cada analista pode receber no máximo 30 consultores.</small>
           </label>
         </div>
         <p id="consultant-whatsapp-help" class="helper">O Admin pode alterar este número a qualquer momento. Para consultores, ele também será usado para receber a escolha de plano e adicionais feita pelo associado no link de comparação.</p>
@@ -1383,5 +1415,9 @@
     <script src="/shared/money-input.js?v=20260805-brl-mask"></script>
     <script src="/admin/admin.js?v=20260819-analyst-status-v4"></script>
     <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
-  </body>
+  
+  <div class="nh-dev-credit" aria-label="Crédito de desenvolvimento">
+    @desenvolvido por <a href="https://www.linkedin.com/in/devcarloslima/" target="_blank" rel="noopener noreferrer">Carlos Lima</a>
+  </div>
+</body>
 </html>

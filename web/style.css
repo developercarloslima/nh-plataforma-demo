@@ -7334,3 +7334,14 @@ textarea:focus {
     color: var(--brand-blue) !important;
   }
 }
+
+.footer-developer a {
+  color: var(--yellow, #f0f000);
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.footer-developer a:hover,
+.footer-developer a:focus-visible {
+  text-decoration: underline;
+}

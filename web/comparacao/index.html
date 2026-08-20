@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#070c40">
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
-<link rel="stylesheet" href="/shared/responsive.css?v=20260818-comparison-v1">
+<link rel="stylesheet" href="/shared/responsive.css?v=20260820-responsive-v461">
   <link rel="stylesheet" href="/shared/brand-system.css?v=20260818-comparison-v1">
   <link rel="stylesheet" href="./styles.css?v=20260818-comparison-v1">
   <title>Comparação de Planos | Novo Horizonte</title>
@@ -15,6 +15,38 @@
   <meta property="og:image" content="https://nhprotecao.com.br/assets/simbolo-fundo-azul.png" />
   <meta property="og:image:type" content="image/png" />
   <meta name="twitter:image" content="https://nhprotecao.com.br/assets/simbolo-fundo-azul.png" />
+
+  <style id="nh-dev-credit-style">
+    .nh-dev-credit {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 12px 10px;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 400;
+      line-height: 1.35;
+      letter-spacing: .01em;
+      opacity: .56;
+      color: inherit;
+    }
+    .nh-dev-credit a {
+      color: inherit;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .nh-dev-credit a:hover,
+    .nh-dev-credit a:focus-visible {
+      text-decoration: underline;
+      opacity: .95;
+    }
+    @media (max-width: 640px) {
+      .nh-dev-credit {
+        padding: 7px 10px 9px;
+        font-size: 10px;
+        opacity: .52;
+      }
+    }
+  </style>
 </head>
 <body>
   <header class="topbar">
@@ -53,5 +85,9 @@
 
   <script src="/shared/config.js"></script>
   <script src="./app.js?v=20260819-coverage-rules-v1"></script>
+
+  <div class="nh-dev-credit" aria-label="Crédito de desenvolvimento">
+    @desenvolvido por <a href="https://www.linkedin.com/in/devcarloslima/" target="_blank" rel="noopener noreferrer">Carlos Lima</a>
+  </div>
 </body>
 </html>

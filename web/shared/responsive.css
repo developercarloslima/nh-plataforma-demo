@@ -2634,3 +2634,142 @@ button,
     padding: 14px 12px !important;
   }
 }
+
+/* =========================================================
+   V46 - RESPONSIVIDADE FINAL DOS PORTAIS
+   Corrige filas longas, filtros e abas da Supervisão/Análise
+   em notebooks, tablets, celulares e zoom do navegador.
+   ========================================================= */
+.analysis-queues,
+.analysis-queues-head,
+.analysis-status-tabs,
+.analysis-queue-card,
+.analysis-queue-title,
+.analysis-filter-actions {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.analysis-queues-head {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 390px);
+  align-items: end !important;
+  gap: 16px;
+}
+
+.analysis-filter-actions {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+  width: 100%;
+}
+
+.analysis-filter-actions input {
+  width: 100%;
+  min-width: 0 !important;
+}
+
+.analysis-status-tabs {
+  width: 100%;
+  min-width: 0;
+}
+
+.analysis-status-tab {
+  min-width: 0 !important;
+  max-width: 100%;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  line-height: 1.16;
+}
+
+.analysis-status-tab > span {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 1280px) {
+  .analysis-status-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 1000px) {
+  .analysis-queues-head {
+    grid-template-columns: 1fr;
+    align-items: stretch !important;
+  }
+
+  .analysis-filter-actions {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+@media (max-width: 680px) {
+  .analysis-filter-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .analysis-filter-actions button {
+    width: 100%;
+  }
+
+  .analysis-status-tabs {
+    grid-template-columns: 1fr !important;
+    gap: 8px;
+  }
+
+  .analysis-status-tab {
+    justify-content: space-between !important;
+    text-align: left !important;
+    min-height: 50px;
+  }
+
+  .analysis-queue-title {
+    grid-template-columns: auto minmax(0, 1fr) !important;
+  }
+
+  .analysis-queue-count {
+    grid-column: 1 / -1 !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .portal-header {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+
+  .header-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+  }
+
+  .header-actions a,
+  .header-actions button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .analysis-queue-title {
+    padding: 14px !important;
+    gap: 10px !important;
+  }
+
+  .analysis-queue-title h2 {
+    font-size: 18px !important;
+  }
+
+  .analysis-queue-title p,
+  .analysis-status-description {
+    font-size: 13px;
+    line-height: 1.4;
+  }
+}

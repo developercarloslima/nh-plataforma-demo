@@ -11,9 +11,41 @@
   <meta property="og:image" content="https://nhprotecao.com.br/assets/simbolo-fundo-azul.png" />
   <meta property="og:image:type" content="image/png" />
   <meta name="twitter:image" content="https://nhprotecao.com.br/assets/simbolo-fundo-azul.png" />
-<link rel="stylesheet" href="/shared/portal.css?v=20260820-responsive-portal-v3">
-  <link rel="stylesheet" href="/shared/responsive.css?v=20260807-responsive-audit-v4">
+<link rel="stylesheet" href="/shared/portal.css?v=20260820-responsive-portal-v461">
+  <link rel="stylesheet" href="/shared/responsive.css?v=20260820-responsive-v461">
   <link rel="stylesheet" href="/shared/brand-system.css?v=20260807-modals-v5">
+
+  <style id="nh-dev-credit-style">
+    .nh-dev-credit {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 12px 10px;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 400;
+      line-height: 1.35;
+      letter-spacing: .01em;
+      opacity: .56;
+      color: inherit;
+    }
+    .nh-dev-credit a {
+      color: inherit;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .nh-dev-credit a:hover,
+    .nh-dev-credit a:focus-visible {
+      text-decoration: underline;
+      opacity: .95;
+    }
+    @media (max-width: 640px) {
+      .nh-dev-credit {
+        padding: 7px 10px 9px;
+        font-size: 10px;
+        opacity: .52;
+      }
+    }
+  </style>
 </head>
 <body>
 <header class="portal-header">
@@ -185,6 +217,33 @@
     </div>
   </section>
 
+  <section id="digital-acceptance" class="card digital-acceptance-card" hidden style="margin-top:22px">
+    <div class="steps">
+      <span class="step">1. Vistoria</span>
+      <span class="step">2. Supervisão</span>
+      <span class="step active">3. Aceite digital</span>
+    </div>
+    <div class="digital-acceptance-content">
+      <span class="eyebrow">PPV APROVADO</span>
+      <h2>Confirme o aceite digital do dossiê</h2>
+      <p>Para concluir, o aparelho solicitará uma verificação segura disponível nele, como biometria, PIN, senha de bloqueio ou padrão. A NH não recebe nem armazena o seu PIN ou sua biometria.</p>
+      <div class="digital-evidence-list">
+        <strong>O registro criptográfico vinculará:</strong>
+        <span>• CPF e nome do associado</span>
+        <span>• selfie registrada na vistoria</span>
+        <span>• dossiê aprovado pela Supervisão</span>
+        <span>• data/hora, IP e informações técnicas do aparelho</span>
+        <span>• geolocalização, somente quando autorizada pelo associado</span>
+      </div>
+      <p class="muted">Ao continuar, você declara que é o associado identificado nesta vistoria e que está confirmando o aceite do dossiê aprovado.</p>
+      <div id="digital-acceptance-details" class="digital-acceptance-details" hidden></div>
+      <div class="actions">
+        <button id="confirm-digital-acceptance" class="primary" type="button">Confirmar com biometria/PIN do aparelho</button>
+      </div>
+      <p id="digital-acceptance-status" class="muted" aria-live="polite"></p>
+    </div>
+  </section>
+
   <section id="complete" class="card" hidden style="margin-top:22px">
     <div class="steps">
       <span class="step">1. Diretrizes</span>
@@ -242,7 +301,11 @@
 </section>
 
 <script src="/shared/config.js?v=20260804-current-origin"></script>
-<script src="/retrato/retrato.js?v=20260818-video-90s-max-v2"></script>
+<script src="/retrato/retrato.js?v=20260820-webauthn-acceptance-v2"></script>
 <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
+
+  <div class="nh-dev-credit" aria-label="Crédito de desenvolvimento">
+    @desenvolvido por <a href="https://www.linkedin.com/in/devcarloslima/" target="_blank" rel="noopener noreferrer">Carlos Lima</a>
+  </div>
 </body>
 </html>

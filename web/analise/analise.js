@@ -538,6 +538,10 @@ function openInspection(id) {
   $('inspection-id').value = item.id;
   $('dialog-title').textContent = `${item.plate || '0 km — sem placa'} — ${item.associateName}`;
   $('inspection-note').value = item.adminNote || '';
+  $('supervision-note').value = item.supervisionNote || '';
+  $('supervision-note-meta').textContent = item.supervisionNoteUpdatedAt
+    ? `Última atualização: ${date(item.supervisionNoteUpdatedAt)}${item.supervisionNoteByName ? ` por ${item.supervisionNoteByName}` : ''}.`
+    : 'As orientações registradas pela supervisão aparecem aqui.';
   populateAnalystReviewer(item);
   configureStatusOptions(item);
 
@@ -593,7 +597,8 @@ function openInspection(id) {
     ['Situação dos arquivos', retentionText],
     ['Endereço', item.residenceAddress || '—'],
     ['Responsável pela última análise', item.reviewedByName || '—'],
-    ['Observação da última análise', item.adminNote || '—']
+    ['Observação da última análise', item.adminNote || '—'],
+    ['O.B.S. Supervisão', item.supervisionNote || '—']
   );
 
   $('inspection-details').innerHTML = details(inspectionDetails);

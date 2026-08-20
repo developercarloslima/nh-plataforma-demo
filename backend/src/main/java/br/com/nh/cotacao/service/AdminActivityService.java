@@ -177,11 +177,44 @@ public class AdminActivityService {
     @Transactional(readOnly = true)
     public List<AdminInspectionResponse> inspectionsForSupervision() {
         return inspectionRepository.findAllByOrderByCreatedAtDesc().stream()
-                .filter(item -> item.getAnalysisStage() == InspectionAnalysisStage.SUPERVISION_QUEUE
+                .filter(item -> item.getAnalysisStage() == InspectionAnalysisStage.ANALYST_QUEUE
+                        || item.getAnalysisStage() == InspectionAnalysisStage.ANALYST_PENDING
+                        || item.getAnalysisStage() == InspectionAnalysisStage.SUPERVISION_QUEUE
                         || (item.getAnalysisStage() == InspectionAnalysisStage.FINISHED
                             && "SUPERVISION_ANALYSIS".equals(item.getReviewedByRole())))
                 .map(item -> toInspection(item, true))
                 .toList();
+    }
+
+    @Transactional
+    public AdminInspectionResponse updateSupervisionNote(
+            UUID id, String note, String username, PortalRole actorRole
+    ) {
+        if (actorRole != PortalRole.SUPERVISION_ANALYSIS && actorRole != PortalRole.ADMIN) {
+            throw new IllegalArgumentException("Este usuário não possui permissão para registrar O.B.S. da Supervisão.");
+        }
+        portalUserService.assertSupervisionInspectionAccess(username, actorRole, id);
+        InspectionRequest inspection = inspectionRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
+
+        String supervisorName = "Administrador";
+        if (actorRole == PortalRole.SUPERVISION_ANALYSIS) {
+            UUID supervisorId = portalUserService.linkedSupervisorId(username)
+                    .orElseThrow(() -> new IllegalArgumentException("Este usuário de supervisão não está vinculado a um colaborador."));
+            supervisorName = consultantService.findActiveSupervisor(supervisorId).getName();
+        }
+
+        String oldNote = inspection.getSupervisionNote();
+        inspection.updateSupervisionNote(note, supervisorName);
+        inspectionRepository.flush();
+        auditRepository.save(CatalogChangeAudit.createText(
+                "INSPECTION_SUPERVISION_NOTE", null, id.toString(),
+                "O.B.S. da Supervisão atualizada por " + supervisorName,
+                oldNote == null ? "sem observação" : oldNote,
+                inspection.getSupervisionNote() == null ? "sem observação" : inspection.getSupervisionNote(),
+                username
+        ));
+        return toInspection(inspection, true);
     }
 
     @Transactional
@@ -537,12 +570,14 @@ public class AdminActivityService {
                 item.getConsultant() == null ? null : item.getConsultant().getId(), item.getConsultantName(),
                 item.getAssignedAnalyst() == null ? null : item.getAssignedAnalyst().getId(), item.getAssignedAnalystName(),
                 item.getAnalysisStage(), item.getRegistrationCompletedAt(), item.getRegistrationCompletedByName(), displayStatus,
-                item.getCreatedAt(), item.getExpiresAt(), item.getCompletedAt(), item.getAdminNote(), item.getReviewedAt(),
+                item.getCreatedAt(), item.getExpiresAt(), item.getCompletedAt(), item.getAdminNote(),
+                item.getSupervisionNote(), item.getSupervisionNoteUpdatedAt(), item.getSupervisionNoteByName(), item.getReviewedAt(),
                 item.getReviewedByCollaborator() == null ? null : item.getReviewedByCollaborator().getId(),
                 item.getReviewedByName(), item.getReviewedByRole(),
                 publicUrl, null, null, quotationPdfUrl, whatsappUrl(whatsapp, message), emailUrl(email, subject, message), associateInspectionUrl,
                 consultantInspectionUrl, associateDecisionUrl, item.getDecisionMessageSentAt(), decisionMessagePending,
-                availableCount, expiredCount, filesExpireAt, assets
+                availableCount, expiredCount, filesExpireAt, item.getAcceptedAt(), item.getAcceptanceProofHash(),
+                item.isAcceptanceUserVerified(), assets
         );
     }
 
@@ -593,7 +628,11 @@ public class AdminActivityService {
                 ? "associado" : item.getAssociateName().trim().split("\\s+")[0];
         String message;
         if (item.getStatus() == InspectionRequestStatus.APPROVED) {
-            message = "Olá, " + firstName + "! Sua vistoria foi aprovada pela equipe Novo Horizonte Proteção Veicular.";
+            String acceptanceUrl = publicWebUrl + "/retrato/?token=" + item.getPublicToken();
+            message = "Olá, " + firstName + "! Sua vistoria foi aprovada pela equipe Novo Horizonte Proteção Veicular. "
+                    + "Para concluir o aceite digital do PPV/dossiê aprovado, abra o link abaixo no seu próprio aparelho e confirme com a verificação segura disponível nele (biometria, PIN, senha/padrão de bloqueio):\n"
+                    + acceptanceUrl
+                    + "\n\nA Novo Horizonte não recebe nem armazena sua biometria ou o PIN do aparelho.";
         } else {
             message = "Olá, " + firstName + "! Sua vistoria foi recusada pela equipe Novo Horizonte Proteção Veicular."
                     + (item.getAdminNote() == null || item.getAdminNote().isBlank()

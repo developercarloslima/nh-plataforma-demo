@@ -4,9 +4,11 @@ import br.com.nh.cotacao.dto.InspectionDtos.*;
 import br.com.nh.cotacao.entity.InspectionAssetType;
 import br.com.nh.cotacao.security.PortalPrincipal;
 import br.com.nh.cotacao.service.InspectionResumableUploadService;
+import br.com.nh.cotacao.service.InspectionDigitalAcceptanceService;
 import br.com.nh.cotacao.service.PortalUserService;
 import br.com.nh.cotacao.service.RetratoService;
 import jakarta.validation.Valid;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
@@ -20,15 +22,18 @@ public class RetratoController {
     private final RetratoService service;
     private final InspectionResumableUploadService resumableUploadService;
     private final PortalUserService portalUserService;
+    private final InspectionDigitalAcceptanceService digitalAcceptanceService;
 
     public RetratoController(
             RetratoService service,
             InspectionResumableUploadService resumableUploadService,
-            PortalUserService portalUserService
+            PortalUserService portalUserService,
+            InspectionDigitalAcceptanceService digitalAcceptanceService
     ) {
         this.service = service;
         this.resumableUploadService = resumableUploadService;
         this.portalUserService = portalUserService;
+        this.digitalAcceptanceService = digitalAcceptanceService;
     }
 
     @PostMapping("/api/inspections")
@@ -116,6 +121,41 @@ public class RetratoController {
                 token,
                 request == null ? null : request.residenceAddress()
         );
+    }
+
+    @GetMapping("/api/public/inspections/{token}/digital-acceptance")
+    public DigitalAcceptanceStatusResponse digitalAcceptanceStatus(@PathVariable String token) {
+        return digitalAcceptanceService.status(token);
+    }
+
+    @PostMapping("/api/public/inspections/{token}/digital-acceptance/registration-options")
+    public WebAuthnRegistrationOptionsResponse webAuthnRegistrationOptions(
+            @PathVariable String token,
+            @Valid @RequestBody DeviceMetadata device,
+            HttpServletRequest httpRequest
+    ) {
+        return digitalAcceptanceService.beginRegistration(token, device, httpRequest);
+    }
+
+    @PostMapping("/api/public/inspections/{token}/digital-acceptance/registration-finish")
+    public WebAuthnAssertionOptionsResponse webAuthnRegistrationFinish(
+            @PathVariable String token,
+            @Valid @RequestBody WebAuthnRegistrationFinishRequest request
+    ) {
+        return digitalAcceptanceService.finishRegistration(token, request);
+    }
+
+    @PostMapping("/api/public/inspections/{token}/digital-acceptance/assertion-options")
+    public WebAuthnAssertionOptionsResponse webAuthnAssertionOptions(@PathVariable String token) {
+        return digitalAcceptanceService.assertionOptions(token);
+    }
+
+    @PostMapping("/api/public/inspections/{token}/digital-acceptance/assertion-finish")
+    public DigitalAcceptanceStatusResponse webAuthnAssertionFinish(
+            @PathVariable String token,
+            @Valid @RequestBody WebAuthnAssertionFinishRequest request
+    ) {
+        return digitalAcceptanceService.finishAssertion(token, request);
     }
 
 }

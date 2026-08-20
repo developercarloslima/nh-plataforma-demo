@@ -40,6 +40,7 @@ public class RetratoService {
     private final RetratoPdfService pdfService;
     private final String publicWebUrl;
     private final CommunicationSettingsService communicationSettings;
+    private final InspectionDigitalAcceptanceService digitalAcceptanceService;
 
     public RetratoService(
             InspectionRequestRepository repository,
@@ -47,6 +48,7 @@ public class RetratoService {
             InspectionAssetStorageService storageService,
             RetratoPdfService pdfService,
             CommunicationSettingsService communicationSettings,
+            InspectionDigitalAcceptanceService digitalAcceptanceService,
             @Value("${app.public-web-url:https://aforma-demo.vercel.app}") String publicWebUrl
     ) {
         this.repository = repository;
@@ -55,6 +57,7 @@ public class RetratoService {
         this.pdfService = pdfService;
         this.publicWebUrl = normalizePublicWebUrl(publicWebUrl);
         this.communicationSettings = communicationSettings;
+        this.digitalAcceptanceService = digitalAcceptanceService;
     }
 
     @Transactional
@@ -362,7 +365,7 @@ public class RetratoService {
                 request.getConsultant() == null ? null : request.getConsultant().getId(),
                 request.getConsultantName(), request.getStatus(), request.getCreatedAt(), request.getExpiresAt(),
                 request.getCompletedAt(), publicUrl, whatsappUrl, teamWhatsappUrl, associateCompletionWhatsappUrl,
-                null, null, assets
+                null, null, digitalAcceptanceService.toStatus(request), assets
         );
     }
 

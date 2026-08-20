@@ -65,7 +65,8 @@ function inspectionNeedsFiles(item) {
 }
 
 const ANALYSIS_QUEUE_INFO = {
-  review: { label: 'Aguardando supervisão', description: 'Vistorias marcadas como Cadastro feito pelos analistas e que aguardam sua decisão.' },
+  analyst_pending: { label: 'Vistorias pendentes dos analistas', description: 'Todas as vistorias que ainda estão com os analistas: sem documentos, com documentos pendentes, aguardando análise ou ainda sem Cadastro feito.' },
+  review: { label: 'Aguardando supervisão', description: 'Vistorias marcadas como Cadastro feito pelos analistas e que aguardam sua decisão final.' },
   approved: { label: 'Aprovadas', description: 'Vistorias já aprovadas pela Supervisão de Análise.' },
   rejected: { label: 'Rejeitadas', description: 'Vistorias já rejeitadas pela Supervisão de Análise.' }
 };
@@ -73,12 +74,27 @@ const ANALYSIS_QUEUE_INFO = {
 function inspectionQueueKey(item) {
   if (item?.status === 'APPROVED') return 'approved';
   if (item?.status === 'REJECTED') return 'rejected';
+  if (item?.analysisStage === 'ANALYST_QUEUE' || item?.analysisStage === 'ANALYST_PENDING') return 'analyst_pending';
   return 'review';
+}
+
+function analystPendingLabel(item) {
+  if (inspectionNeedsFiles(item)) return 'Aguardando documentos';
+  if (item?.reviewedByRole === 'ANALYST' && item?.status === 'UNDER_REVIEW' && !item?.registrationCompletedAt) {
+    return 'Cadastro não feito';
+  }
+  return 'Aguardando análise do analista';
 }
 
 function badge(status, item = null) {
   if (item?.analysisStage === 'SUPERVISION_QUEUE') {
     return `<span class="badge ok">Cadastro feito</span>`;
+  }
+  if (item?.analysisStage === 'ANALYST_PENDING') {
+    return `<span class="badge warn">${esc(analystPendingLabel(item))}</span>`;
+  }
+  if (item?.analysisStage === 'ANALYST_QUEUE') {
+    return `<span class="badge warn">${esc(analystPendingLabel(item))}</span>`;
   }
   const [label, kind] = STATUS[status] || [status, ''];
   return `<span class="badge ${kind}">${esc(label)}</span>`;
@@ -385,7 +401,7 @@ function actionLink(url, label, style = 'outline') {
 
 function inspectionMatchesFilter(item, filter) {
   if (!filter) return true;
-  return `${item.associateName} ${item.plate || ''} ${item.consultantName} ${item.reviewedByName || ''} ${item.status}`
+  return `${item.associateName} ${item.plate || ''} ${item.consultantName} ${item.assignedAnalystName || ''} ${item.reviewedByName || ''} ${item.supervisionNote || ''} ${item.status}`
     .toLowerCase()
     .includes(filter);
 }
@@ -409,7 +425,7 @@ function inspectionRows(items, emptyMessage) {
       <td><strong>${esc(item.associateName)}</strong><small class="table-code">${esc(formatPhone(item.whatsapp) || 'Sem WhatsApp')}</small></td>
       <td>${esc(item.plate || '0 km — sem placa')}</td>
       <td>${esc(item.consultantName)}</td>
-      <td>${esc(item.assignedAnalystName || currentUser?.consultantName || '—')}</td>
+      <td>${esc(item.assignedAnalystName || 'Não vinculado')}</td>
       <td>${date(item.completedAt || item.createdAt)}</td>
       <td><div class="status-with-action">${badge(item.status, item)}${statusActions}</div></td>
       <td><div class="row-actions">${pendingActions}<button class="secondary small-button" data-analyze="${item.id}" type="button">Analisar</button></div></td>
@@ -427,7 +443,7 @@ function render() {
   const filter = $('filter').value.trim().toLowerCase();
   const filtered = inspections.filter(item => inspectionMatchesFilter(item, filter));
 
-  const counts = { review: 0, approved: 0, rejected: 0 };
+  const counts = { analyst_pending: 0, review: 0, approved: 0, rejected: 0 };
   filtered.forEach(item => { counts[inspectionQueueKey(item)] += 1; });
   Object.entries(counts).forEach(([key, value]) => {
     const counter = $(`analysis-tab-${key}-count`);
@@ -485,6 +501,23 @@ function configureStatusOptions(item) {
   const select = $('inspection-status');
   if (item?.status === 'APPROVED' || item?.status === 'REJECTED') select.value = item.status;
   else select.value = '';
+
+  const pendingAnalyst = item?.analysisStage === 'ANALYST_QUEUE' || item?.analysisStage === 'ANALYST_PENDING';
+  const canDecide = item?.analysisStage === 'SUPERVISION_QUEUE';
+  $('supervision-decision-status-wrap').hidden = pendingAnalyst;
+  $('supervision-decision-note-wrap').hidden = pendingAnalyst;
+  $('save-supervision-decision').hidden = !canDecide;
+  select.disabled = !canDecide;
+  $('inspection-note').readOnly = !canDecide;
+}
+
+function supervisionStageLabel(item) {
+  if (item?.status === 'APPROVED') return 'Aprovada';
+  if (item?.status === 'REJECTED') return 'Rejeitada';
+  if (item?.analysisStage === 'SUPERVISION_QUEUE') return 'Cadastro feito · aguardando decisão da supervisão';
+  if (item?.analysisStage === 'ANALYST_PENDING') return `Pendência do analista · ${analystPendingLabel(item)}`;
+  if (item?.analysisStage === 'ANALYST_QUEUE') return analystPendingLabel(item);
+  return 'Em acompanhamento';
 }
 
 function openInspection(id) {
@@ -502,6 +535,10 @@ function openInspection(id) {
   $('inspection-id').value = item.id;
   $('dialog-title').textContent = `${item.plate || '0 km — sem placa'} — ${item.associateName}`;
   $('inspection-note').value = item.adminNote || '';
+  $('supervision-note').value = item.supervisionNote || '';
+  $('supervision-note-meta').textContent = item.supervisionNoteUpdatedAt
+    ? `Última atualização: ${date(item.supervisionNoteUpdatedAt)}${item.supervisionNoteByName ? ` por ${item.supervisionNoteByName}` : ''}. A observação fica visível para o analista.`
+    : 'A observação ficará visível para o analista ao abrir esta vistoria.';
   populateAnalystReviewer(item);
   configureStatusOptions(item);
 
@@ -525,9 +562,9 @@ function openInspection(id) {
     ['CPF', item.maskedCpf],
     ['WhatsApp', formatPhone(item.whatsapp) || '—'],
     ['Consultor', item.consultantName],
-    ['Analista responsável', item.assignedAnalystName || currentUser?.consultantName || '—'],
+    ['Analista responsável', item.assignedAnalystName || 'Não vinculado'],
     ['Cadastro feito por', item.registrationCompletedByName || item.assignedAnalystName || '—'],
-    ['Etapa', item.status === 'APPROVED' ? 'Aprovada' : item.status === 'REJECTED' ? 'Rejeitada' : 'Aguardando decisão da supervisão'],
+    ['Etapa', supervisionStageLabel(item)],
     ['Placa', item.plate || '0 km — sem placa'],
     ['Tipo', item.requestType === 'NEW_INSPECTION' ? 'Nova vistoria' : 'Atualização de boleto']
   ];
@@ -558,7 +595,11 @@ function openInspection(id) {
     ['Situação dos arquivos', retentionText],
     ['Endereço', item.residenceAddress || '—'],
     ['Responsável pela última análise', item.reviewedByName || '—'],
-    ['Observação da última análise', item.adminNote || '—']
+    ['Observação da última análise', item.adminNote || '—'],
+    ['O.B.S. Supervisão', item.supervisionNote || '—'],
+    ['Aceite digital do associado', item.digitalAcceptedAt ? `Confirmado em ${date(item.digitalAcceptedAt)}` : (item.status === 'APPROVED' ? 'Aguardando confirmação WebAuthn' : '—')],
+    ['Verificação WebAuthn', item.digitalAcceptedAt ? (item.digitalAcceptanceUserVerified ? 'Usuário verificado pelo aparelho' : 'Registrada') : '—'],
+    ['Hash da prova digital', item.digitalAcceptanceProofHash || '—']
   );
 
   $('inspection-details').innerHTML = details(inspectionDetails);
@@ -797,11 +838,58 @@ function showNotificationButton(item) {
     button.removeAttribute('data-inspection-id');
     box.hidden = true;
   }
+
+  const webauthnBox = $('webauthn-notification');
+  const sendWebauthn = $('send-webauthn-token');
+  const copyWebauthn = $('copy-webauthn-link');
+  const pendingWebauthn = item?.status === 'APPROVED' && !item?.digitalAcceptedAt && Boolean(item?.publicUrl);
+  if (pendingWebauthn) {
+    sendWebauthn.dataset.inspectionId = item.id;
+    copyWebauthn.dataset.inspectionId = item.id;
+    webauthnBox.hidden = false;
+  } else {
+    sendWebauthn.removeAttribute('data-inspection-id');
+    copyWebauthn.removeAttribute('data-inspection-id');
+    webauthnBox.hidden = true;
+  }
 }
+
+$('save-supervision-note').addEventListener('click', async () => {
+  const id = $('inspection-id').value;
+  if (!id) return;
+  const button = $('save-supervision-note');
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Salvando...';
+  try {
+    const updated = await api(`/api/supervision/inspections/${encodeURIComponent(id)}/supervision-note`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: $('supervision-note').value.trim() })
+    });
+    const index = inspections.findIndex(item => item.id === updated.id);
+    if (index >= 0) inspections[index] = updated;
+    $('supervision-note').value = updated.supervisionNote || '';
+    $('supervision-note-meta').textContent = updated.supervisionNoteUpdatedAt
+      ? `Última atualização: ${date(updated.supervisionNoteUpdatedAt)}${updated.supervisionNoteByName ? ` por ${updated.supervisionNoteByName}` : ''}. A observação fica visível para o analista.`
+      : 'A observação ficará visível para o analista ao abrir esta vistoria.';
+    render();
+    message(updated.supervisionNote ? 'O.B.S. da Supervisão salva e disponibilizada ao analista.' : 'O.B.S. da Supervisão removida.', 'success');
+  } catch (error) {
+    message(error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+});
 
 $('inspection-form').addEventListener('submit', async event => {
   event.preventDefault();
   const id = $('inspection-id').value;
+  const item = inspections.find(value => value.id === id);
+  if (!item || item.analysisStage !== 'SUPERVISION_QUEUE') {
+    return message('Esta vistoria ainda está com o analista. Use O.B.S. Supervisão para registrar orientações; a decisão final só fica disponível após Cadastro feito.');
+  }
   const status = $('inspection-status').value;
   const note = $('inspection-note').value.trim();
   if (!['APPROVED', 'REJECTED'].includes(status)) return message('Selecione Aprovar ou Rejeitar vistoria.');
@@ -860,6 +948,51 @@ async function sendDecisionCommunication() {
     button.textContent = 'Enviar mensagem ao associado';
   }
 }
+
+function webauthnPendingInspection(buttonId) {
+  const id = $(buttonId)?.dataset?.inspectionId;
+  return inspections.find(value => value.id === id);
+}
+
+function webauthnAcceptanceUrl(item) {
+  if (!item?.publicUrl) return '';
+  try {
+    const url = new URL(item.publicUrl, window.location.origin);
+    url.pathname = '/retrato/';
+    return url.toString();
+  } catch (_) {
+    return item.publicUrl;
+  }
+}
+
+$('send-webauthn-token')?.addEventListener('click', () => {
+  const item = webauthnPendingInspection('send-webauthn-token');
+  if (!item) return message('Vistoria não encontrada para envio do WebAuthn.');
+  if (item.digitalAcceptedAt) return message('O associado já concluiu o aceite digital WebAuthn.', 'success');
+  if (item.associateDecisionWhatsappUrl) {
+    window.open(item.associateDecisionWhatsappUrl, '_blank', 'noopener,noreferrer');
+    message('WhatsApp aberto com o link/token do aceite WebAuthn.', 'success');
+    return;
+  }
+  const link = webauthnAcceptanceUrl(item);
+  if (!link) return message('Não foi possível montar o link do aceite WebAuthn.');
+  navigator.clipboard?.writeText(link).then(
+    () => message('O associado não possui WhatsApp válido cadastrado. Link WebAuthn copiado para você enviar manualmente.', 'success'),
+    () => message(`Copie e envie este link ao associado: ${link}`)
+  );
+});
+
+$('copy-webauthn-link')?.addEventListener('click', async () => {
+  const item = webauthnPendingInspection('copy-webauthn-link');
+  const link = webauthnAcceptanceUrl(item);
+  if (!link) return message('Não foi possível montar o link do aceite WebAuthn.');
+  try {
+    await navigator.clipboard.writeText(link);
+    message('Link/token WebAuthn copiado.', 'success');
+  } catch (_) {
+    window.prompt('Copie o link do aceite WebAuthn:', link);
+  }
+});
 
 $('inspection-analyst')?.addEventListener('change', syncNewAnalystInput);
 $('notify-associate').addEventListener('click', () => {

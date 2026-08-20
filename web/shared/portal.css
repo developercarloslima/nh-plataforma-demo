@@ -986,11 +986,10 @@ button:focus-visible,
   letter-spacing:.02em;
   text-align:center;
   border-bottom:3px solid #f4ee00;
-
-  .coverage-plan-separator td:hover {
-    background-color: #f4ee00 !important;
-    color:#070c40 !important;
-  }
+}
+.coverage-plan-separator td:hover {
+  background-color:#f4ee00 !important;
+  color:#070c40 !important;
 }
 @media (max-width:1100px) {
   .coverage-rule-row { grid-template-columns:repeat(2,minmax(0,1fr)); }
@@ -1086,3 +1085,71 @@ button:focus-visible,
   .header-actions{grid-template-columns:1fr;}
   .portal-brand{justify-content:center;}
 }
+
+/* Aceite digital WebAuthn do PPV */
+.digital-acceptance-card { border-top: 4px solid #ffec00; }
+.digital-acceptance-content { display: grid; gap: 14px; }
+.digital-acceptance-content h2 { margin: 0; color: #080f63; }
+.digital-evidence-list { display: grid; gap: 5px; padding: 14px; border: 1px solid #dce0ea; border-radius: 12px; background: #f7f8fc; }
+.digital-evidence-list strong { color: #080f63; margin-bottom: 3px; }
+.digital-acceptance-details { padding: 12px 14px; border-radius: 10px; background: #edf8f1; border: 1px solid #b9dfc7; overflow-wrap: anywhere; }
+.digital-acceptance-details strong { color: #176f45; }
+
+/* V46 - Supervisão/Análise: abas flexíveis sem estouro horizontal. */
+.analysis-status-tab {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.16;
+}
+@media (max-width: 1280px) {
+  .analysis-status-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 680px) {
+  .analysis-status-tabs { grid-template-columns: 1fr; }
+}
+
+
+/* V46.1 - proteção global contra estouro horizontal em todos os portais. */
+html, body { max-width:100%; overflow-x:hidden; }
+.shell, .card, .hero-panel, .section-head, .actions, .form-grid,
+.tool-grid, .upload-grid, .kpi-grid, .detail-grid, .analysis-queues,
+.admin-tabs, .dialog-card, .inspection-media-grid { min-width:0; }
+img, video, canvas, svg { max-width:100%; }
+input, select, textarea, button, a { max-width:100%; }
+.section-head > *, .actions > *, .form-grid > *, .detail-grid > * { min-width:0; }
+
+@media (max-width: 1180px) {
+  .shell { width:min(100% - 28px, 1180px); }
+  .portal-header { padding-inline:14px; }
+}
+
+@media (max-width: 760px) {
+  .shell { width:calc(100% - 20px) !important; margin:18px auto 48px !important; }
+  .hero-panel, .card { border-radius:16px !important; }
+  .hero-panel { padding:20px 16px !important; }
+  .card { padding:16px !important; }
+  .section-head { gap:12px !important; }
+  .admin-dialog, .admin-dialog.wide-dialog { width:calc(100% - 16px) !important; max-width:none !important; }
+  .dialog-card { max-height:calc(100dvh - 16px) !important; padding:16px !important; }
+  .dialog-head { gap:10px; }
+  .dialog-head h2 { overflow-wrap:anywhere; }
+  .table-wrap { width:100%; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+}
+
+@media (max-width: 420px) {
+  .shell { width:calc(100% - 12px) !important; }
+  .hero-panel { padding:17px 13px !important; }
+  .card { padding:13px !important; }
+  .dialog-card { padding:13px !important; border-radius:14px !important; }
+}
+
+/* Envio explícito do aceite WebAuthn pela supervisão */
+.webauthn-send-box { margin-top: 12px; }
+.webauthn-send-box p { margin: 6px 0 10px; }
+.webauthn-send-box .actions { margin-top: 6px; }
+@media (max-width: 640px) {
+  .webauthn-send-box .actions { display: grid; grid-template-columns: 1fr; }
+  .webauthn-send-box .actions button { width: 100%; }
+}
+
+.footer-note .footer-developer a{color:var(--navy);font-weight:900;text-decoration:none}.footer-note .footer-developer a:hover,.footer-note .footer-developer a:focus-visible{text-decoration:underline}

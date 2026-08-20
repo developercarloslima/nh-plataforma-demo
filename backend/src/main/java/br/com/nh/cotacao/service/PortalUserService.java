@@ -154,10 +154,12 @@ public class PortalUserService {
         }
         var inspection = inspectionRepository.findById(inspectionId)
                 .orElseThrow(() -> new IllegalArgumentException("Vistoria não encontrada."));
-        boolean visible = inspection.getAnalysisStage() == br.com.nh.cotacao.entity.InspectionAnalysisStage.SUPERVISION_QUEUE
+        boolean visible = inspection.getAnalysisStage() == br.com.nh.cotacao.entity.InspectionAnalysisStage.ANALYST_QUEUE
+                || inspection.getAnalysisStage() == br.com.nh.cotacao.entity.InspectionAnalysisStage.ANALYST_PENDING
+                || inspection.getAnalysisStage() == br.com.nh.cotacao.entity.InspectionAnalysisStage.SUPERVISION_QUEUE
                 || (inspection.getAnalysisStage() == br.com.nh.cotacao.entity.InspectionAnalysisStage.FINISHED
                     && "SUPERVISION_ANALYSIS".equals(inspection.getReviewedByRole()));
-        if (!visible) throw new IllegalArgumentException("Esta vistoria ainda não foi encaminhada para a Supervisão de Análise.");
+        if (!visible) throw new IllegalArgumentException("Esta vistoria não faz parte do fluxo de análise/supervisão.");
     }
 
     @Transactional(readOnly = true)

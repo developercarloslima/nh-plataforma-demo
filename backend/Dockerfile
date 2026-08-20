@@ -22,5 +22,5 @@ RUN chmod +x /app/entrypoint.sh
 
 USER app
 EXPOSE 8080
-ENV JAVA_TOOL_OPTIONS="-Dfile.encoding=UTF-8 -Duser.timezone=America/Maceio"
+ENV JAVA_TOOL_OPTIONS="-Dfile.encoding=UTF-8 -Duser.timezone=America/Maceio -Djava.awt.headless=true"
 ENTRYPOINT ["/app/entrypoint.sh"]

@@ -87,6 +87,15 @@ public class InspectionRequest {
     @Column(name = "admin_note", length = 1200)
     private String adminNote;
 
+    @Column(name = "supervision_note", length = 1200)
+    private String supervisionNote;
+
+    @Column(name = "supervision_note_updated_at")
+    private OffsetDateTime supervisionNoteUpdatedAt;
+
+    @Column(name = "supervision_note_by_name", length = 160)
+    private String supervisionNoteByName;
+
     @Column(name = "reviewed_at")
     private OffsetDateTime reviewedAt;
 
@@ -117,6 +126,78 @@ public class InspectionRequest {
 
     @Column(name = "report_url", length = 500)
     private String reportUrl;
+
+    @Column(name = "webauthn_registration_challenge", length = 160)
+    private String webauthnRegistrationChallenge;
+
+    @Column(name = "webauthn_registration_expires_at")
+    private OffsetDateTime webauthnRegistrationExpiresAt;
+
+    @Column(name = "webauthn_origin", length = 320)
+    private String webauthnOrigin;
+
+    @Column(name = "webauthn_rp_id", length = 253)
+    private String webauthnRpId;
+
+    @Column(name = "webauthn_credential_id", length = 1024)
+    private String webauthnCredentialId;
+
+    @Column(name = "webauthn_public_key", columnDefinition = "bytea")
+    private byte[] webauthnPublicKey;
+
+    @Column(name = "webauthn_algorithm")
+    private Integer webauthnAlgorithm;
+
+    @Column(name = "webauthn_sign_count")
+    private Long webauthnSignCount;
+
+    @Column(name = "webauthn_assertion_challenge", length = 160)
+    private String webauthnAssertionChallenge;
+
+    @Column(name = "webauthn_assertion_expires_at")
+    private OffsetDateTime webauthnAssertionExpiresAt;
+
+    @Column(name = "acceptance_evidence_hash", length = 64)
+    private String acceptanceEvidenceHash;
+
+    @Column(name = "acceptance_selfie_sha256", length = 64)
+    private String acceptanceSelfieSha256;
+
+    @Column(name = "acceptance_dossier_sha256", length = 64)
+    private String acceptanceDossierSha256;
+
+    @Column(name = "acceptance_device_metadata", columnDefinition = "text")
+    private String acceptanceDeviceMetadata;
+
+    @Column(name = "acceptance_ip", length = 80)
+    private String acceptanceIp;
+
+    @Column(name = "acceptance_latitude")
+    private Double acceptanceLatitude;
+
+    @Column(name = "acceptance_longitude")
+    private Double acceptanceLongitude;
+
+    @Column(name = "acceptance_accuracy_meters")
+    private Double acceptanceAccuracyMeters;
+
+    @Column(name = "acceptance_assertion_signature", columnDefinition = "text")
+    private String acceptanceAssertionSignature;
+
+    @Column(name = "acceptance_authenticator_data", columnDefinition = "text")
+    private String acceptanceAuthenticatorData;
+
+    @Column(name = "acceptance_client_data_json", columnDefinition = "text")
+    private String acceptanceClientDataJson;
+
+    @Column(name = "acceptance_proof_hash", length = 64)
+    private String acceptanceProofHash;
+
+    @Column(name = "acceptance_user_verified")
+    private Boolean acceptanceUserVerified;
+
+    @Column(name = "accepted_at")
+    private OffsetDateTime acceptedAt;
 
     @OneToMany(mappedBy = "inspectionRequest", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sortOrder ASC")
@@ -522,6 +603,61 @@ public class InspectionRequest {
         this.decisionMessageSentAt = OffsetDateTime.now();
     }
 
+    public void beginWebAuthnRegistration(
+            String challenge, OffsetDateTime expiresAt, String origin, String rpId,
+            String evidenceHash, String selfieSha256, String dossierSha256,
+            String deviceMetadata, String ip, Double latitude, Double longitude, Double accuracyMeters
+    ) {
+        this.webauthnRegistrationChallenge = challenge;
+        this.webauthnRegistrationExpiresAt = expiresAt;
+        this.webauthnOrigin = origin;
+        this.webauthnRpId = rpId;
+        this.acceptanceEvidenceHash = evidenceHash;
+        this.acceptanceSelfieSha256 = selfieSha256;
+        this.acceptanceDossierSha256 = dossierSha256;
+        this.acceptanceDeviceMetadata = deviceMetadata;
+        this.acceptanceIp = ip;
+        this.acceptanceLatitude = latitude;
+        this.acceptanceLongitude = longitude;
+        this.acceptanceAccuracyMeters = accuracyMeters;
+        this.webauthnAssertionChallenge = null;
+        this.webauthnAssertionExpiresAt = null;
+    }
+
+    public void registerWebAuthnCredential(String credentialId, byte[] publicKey, int algorithm, long signCount) {
+        this.webauthnCredentialId = credentialId;
+        this.webauthnPublicKey = publicKey == null ? null : publicKey.clone();
+        this.webauthnAlgorithm = algorithm;
+        this.webauthnSignCount = signCount;
+        this.webauthnRegistrationChallenge = null;
+        this.webauthnRegistrationExpiresAt = null;
+    }
+
+    public void beginWebAuthnAssertion(String challenge, OffsetDateTime expiresAt) {
+        this.webauthnAssertionChallenge = challenge;
+        this.webauthnAssertionExpiresAt = expiresAt;
+    }
+
+    public void completeDigitalAcceptance(
+            long signCount, String assertionSignature, String authenticatorData,
+            String clientDataJson, String proofHash, boolean userVerified, OffsetDateTime acceptedAt
+    ) {
+        this.webauthnSignCount = signCount;
+        this.acceptanceAssertionSignature = assertionSignature;
+        this.acceptanceAuthenticatorData = authenticatorData;
+        this.acceptanceClientDataJson = clientDataJson;
+        this.acceptanceProofHash = proofHash;
+        this.acceptanceUserVerified = userVerified;
+        this.acceptedAt = acceptedAt;
+        // Mantemos o challenge assinado para auditoria da prova WebAuthn.
+    }
+
+    public void updateSupervisionNote(String note, String supervisorName) {
+        this.supervisionNote = cleanNote(note);
+        this.supervisionNoteUpdatedAt = OffsetDateTime.now();
+        this.supervisionNoteByName = cleanReviewerName(supervisorName);
+    }
+
     private String cleanReviewerName(String value) {
         if (value == null || value.isBlank()) return null;
         String clean = value.trim().replaceAll("\\s+", " ");
@@ -559,6 +695,9 @@ public class InspectionRequest {
     public OffsetDateTime getExpiresAt() { return expiresAt; }
     public OffsetDateTime getCompletedAt() { return completedAt; }
     public String getAdminNote() { return adminNote; }
+    public String getSupervisionNote() { return supervisionNote; }
+    public OffsetDateTime getSupervisionNoteUpdatedAt() { return supervisionNoteUpdatedAt; }
+    public String getSupervisionNoteByName() { return supervisionNoteByName; }
     public OffsetDateTime getReviewedAt() { return reviewedAt; }
     public Consultant getReviewedByCollaborator() { return reviewedByCollaborator; }
     public String getReviewedByName() { return reviewedByName; }
@@ -569,5 +708,29 @@ public class InspectionRequest {
     public String getDriveFolderUrl() { return driveFolderUrl; }
     public String getReportFileId() { return reportFileId; }
     public String getReportUrl() { return reportUrl; }
+    public String getWebauthnRegistrationChallenge() { return webauthnRegistrationChallenge; }
+    public OffsetDateTime getWebauthnRegistrationExpiresAt() { return webauthnRegistrationExpiresAt; }
+    public String getWebauthnOrigin() { return webauthnOrigin; }
+    public String getWebauthnRpId() { return webauthnRpId; }
+    public String getWebauthnCredentialId() { return webauthnCredentialId; }
+    public byte[] getWebauthnPublicKey() { return webauthnPublicKey == null ? null : webauthnPublicKey.clone(); }
+    public Integer getWebauthnAlgorithm() { return webauthnAlgorithm; }
+    public long getWebauthnSignCount() { return webauthnSignCount == null ? 0L : webauthnSignCount; }
+    public String getWebauthnAssertionChallenge() { return webauthnAssertionChallenge; }
+    public OffsetDateTime getWebauthnAssertionExpiresAt() { return webauthnAssertionExpiresAt; }
+    public String getAcceptanceEvidenceHash() { return acceptanceEvidenceHash; }
+    public String getAcceptanceSelfieSha256() { return acceptanceSelfieSha256; }
+    public String getAcceptanceDossierSha256() { return acceptanceDossierSha256; }
+    public String getAcceptanceDeviceMetadata() { return acceptanceDeviceMetadata; }
+    public String getAcceptanceIp() { return acceptanceIp; }
+    public Double getAcceptanceLatitude() { return acceptanceLatitude; }
+    public Double getAcceptanceLongitude() { return acceptanceLongitude; }
+    public Double getAcceptanceAccuracyMeters() { return acceptanceAccuracyMeters; }
+    public String getAcceptanceAssertionSignature() { return acceptanceAssertionSignature; }
+    public String getAcceptanceAuthenticatorData() { return acceptanceAuthenticatorData; }
+    public String getAcceptanceClientDataJson() { return acceptanceClientDataJson; }
+    public String getAcceptanceProofHash() { return acceptanceProofHash; }
+    public boolean isAcceptanceUserVerified() { return Boolean.TRUE.equals(acceptanceUserVerified); }
+    public OffsetDateTime getAcceptedAt() { return acceptedAt; }
     public List<InspectionAsset> getAssets() { return assets; }
 }

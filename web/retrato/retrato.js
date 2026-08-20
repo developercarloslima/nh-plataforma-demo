@@ -460,6 +460,213 @@ function clearMessage() {
   element.textContent = '';
 }
 
+function webAuthnApi(path) {
+  const relative = `/api/public/inspections/${encodeURIComponent(token)}/digital-acceptance${path}`;
+  return window.NH_API?.backend(relative) || relative;
+}
+
+function base64UrlToBytes(value) {
+  const normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+  const binary = atob(padded);
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+function bytesToBase64Url(value) {
+  const bytes = value instanceof ArrayBuffer
+    ? new Uint8Array(value)
+    : new Uint8Array(value?.buffer || value || []);
+  let binary = '';
+  for (let index = 0; index < bytes.byteLength; index += 1) binary += String.fromCharCode(bytes[index]);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+async function optionalGeolocation() {
+  if (!navigator.geolocation) return {};
+  return new Promise((resolve) => {
+    const timeout = window.setTimeout(() => resolve({}), 7000);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        window.clearTimeout(timeout);
+        resolve({
+          latitude: Number(position.coords.latitude),
+          longitude: Number(position.coords.longitude),
+          accuracyMeters: Number(position.coords.accuracy)
+        });
+      },
+      () => {
+        window.clearTimeout(timeout);
+        resolve({});
+      },
+      { enableHighAccuracy: false, timeout: 6000, maximumAge: 60000 }
+    );
+  });
+}
+
+async function collectDigitalAcceptanceDeviceMetadata() {
+  let platformAuthenticatorAvailable = false;
+  if (window.PublicKeyCredential?.isUserVerifyingPlatformAuthenticatorAvailable) {
+    try {
+      platformAuthenticatorAvailable = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+    } catch (_) {
+      platformAuthenticatorAvailable = false;
+    }
+  }
+  const geo = await optionalGeolocation();
+  return {
+    userAgent: navigator.userAgent || '',
+    platform: navigator.userAgentData?.platform || navigator.platform || '',
+    vendor: navigator.vendor || '',
+    language: navigator.language || '',
+    languages: Array.isArray(navigator.languages) ? navigator.languages.join(',') : '',
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+    screenWidth: Number(screen?.width || 0),
+    screenHeight: Number(screen?.height || 0),
+    colorDepth: Number(screen?.colorDepth || 0),
+    pixelRatio: Number(window.devicePixelRatio || 1),
+    touchPoints: Number(navigator.maxTouchPoints || 0),
+    hardwareConcurrency: Number(navigator.hardwareConcurrency || 0),
+    deviceMemory: navigator.deviceMemory == null ? null : Number(navigator.deviceMemory),
+    cookieEnabled: Boolean(navigator.cookieEnabled),
+    online: Boolean(navigator.onLine),
+    webdriver: Boolean(navigator.webdriver),
+    webauthnAvailable: Boolean(window.PublicKeyCredential && navigator.credentials),
+    platformAuthenticatorAvailable,
+    currentUrl: location.href,
+    referrer: document.referrer || '',
+    latitude: geo.latitude ?? null,
+    longitude: geo.longitude ?? null,
+    accuracyMeters: geo.accuracyMeters ?? null,
+    capturedAt: new Date().toISOString()
+  };
+}
+
+async function digitalAcceptancePost(path, body) {
+  const response = await fetch(webAuthnApi(path), {
+    method: 'POST',
+    headers: body == null ? {} : { 'Content-Type': 'application/json' },
+    body: body == null ? undefined : JSON.stringify(body)
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(data?.message || 'Não foi possível concluir o aceite digital.');
+  return data;
+}
+
+function showDigitalAcceptance(data) {
+  $('guideline-card').hidden = true;
+  $('upload-card').hidden = true;
+  $('complete').hidden = true;
+  $('digital-acceptance').hidden = false;
+  $('title').textContent = 'Vistoria aprovada pela Supervisão';
+  $('subtitle').textContent = `${data.associateName} · ${vehiclePlateLabel(data.plate)}`;
+  $('digital-acceptance-status').textContent = 'Aguardando confirmação do associado.';
+  $('digital-acceptance-details').hidden = true;
+}
+
+function showDigitalAcceptanceComplete(data) {
+  $('guideline-card').hidden = true;
+  $('upload-card').hidden = true;
+  $('complete').hidden = true;
+  $('digital-acceptance').hidden = false;
+  $('title').textContent = 'Aceite digital confirmado';
+  $('subtitle').textContent = `${data.associateName} · ${vehiclePlateLabel(data.plate)}`;
+  const button = $('confirm-digital-acceptance');
+  button.hidden = true;
+  const status = data.digitalAcceptance || {};
+  const details = $('digital-acceptance-details');
+  details.hidden = false;
+  details.innerHTML = `<strong>✓ Confirmação criptográfica concluída</strong><br>
+    Data: ${status.acceptedAt ? new Date(status.acceptedAt).toLocaleString('pt-BR') : 'confirmada'}<br>
+    Verificação do usuário: ${status.userVerified ? 'confirmada pelo aparelho' : 'registrada'}<br>
+    Prova: <code>${status.proofHash || 'registrada no dossiê'}</code>`;
+  $('digital-acceptance-status').textContent = 'O dossiê final foi atualizado com as evidências do aceite WebAuthn.';
+}
+
+async function performDigitalAcceptance() {
+  const button = $('confirm-digital-acceptance');
+  const status = $('digital-acceptance-status');
+  if (!window.PublicKeyCredential || !navigator.credentials) {
+    throw new Error('Este navegador não oferece WebAuthn. Abra o link em Chrome, Edge, Safari ou outro navegador moderno no aparelho do associado.');
+  }
+
+  button.disabled = true;
+  status.textContent = 'Coletando dados técnicos do aparelho e preparando a confirmação segura...';
+  try {
+    const device = await collectDigitalAcceptanceDeviceMetadata();
+    const registration = await digitalAcceptancePost('/registration-options', device);
+
+    status.textContent = 'Confirme a biometria, PIN ou bloqueio seguro solicitado pelo aparelho...';
+    const created = await navigator.credentials.create({
+      publicKey: {
+        challenge: base64UrlToBytes(registration.challenge),
+        rp: { id: registration.rpId, name: registration.rpName },
+        user: {
+          id: base64UrlToBytes(registration.userId),
+          name: registration.userName,
+          displayName: registration.userDisplayName
+        },
+        pubKeyCredParams: [
+          { type: 'public-key', alg: -7 },
+          { type: 'public-key', alg: -257 }
+        ],
+        authenticatorSelection: {
+          authenticatorAttachment: 'platform',
+          residentKey: 'discouraged',
+          requireResidentKey: false,
+          userVerification: 'required'
+        },
+        timeout: Number(registration.timeoutMs || 120000),
+        attestation: 'none'
+      }
+    });
+    if (!created) throw new Error('O aparelho não criou a credencial segura para este aceite.');
+
+    const assertionOptions = await digitalAcceptancePost('/registration-finish', {
+      id: created.id,
+      rawId: bytesToBase64Url(created.rawId),
+      type: created.type,
+      clientDataJSON: bytesToBase64Url(created.response.clientDataJSON),
+      attestationObject: bytesToBase64Url(created.response.attestationObject),
+      device
+    });
+
+    status.textContent = 'Credencial criada. Confirme uma segunda vez para assinar criptograficamente o dossiê aprovado...';
+    const assertion = await navigator.credentials.get({
+      publicKey: {
+        challenge: base64UrlToBytes(assertionOptions.challenge),
+        rpId: assertionOptions.rpId,
+        allowCredentials: [{
+          type: 'public-key',
+          id: base64UrlToBytes(assertionOptions.credentialId)
+        }],
+        userVerification: 'required',
+        timeout: Number(assertionOptions.timeoutMs || 120000)
+      }
+    });
+    if (!assertion) throw new Error('O aparelho não confirmou a assinatura WebAuthn.');
+
+    const result = await digitalAcceptancePost('/assertion-finish', {
+      id: assertion.id,
+      rawId: bytesToBase64Url(assertion.rawId),
+      type: assertion.type,
+      clientDataJSON: bytesToBase64Url(assertion.response.clientDataJSON),
+      authenticatorData: bytesToBase64Url(assertion.response.authenticatorData),
+      signature: bytesToBase64Url(assertion.response.signature),
+      userHandle: assertion.response.userHandle ? bytesToBase64Url(assertion.response.userHandle) : null
+    });
+
+    request.digitalAcceptance = result;
+    showDigitalAcceptanceComplete(request);
+  } catch (error) {
+    if (error?.name === 'NotAllowedError') {
+      throw new Error('A confirmação foi cancelada ou excedeu o tempo. Toque no botão e tente novamente.');
+    }
+    throw error;
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function load() {
   $('connection-actions').hidden = true;
   clearMessage();
@@ -482,6 +689,13 @@ async function load() {
 
     request = body;
     configureInspectionProfile(body.vehicleType);
+
+    if (body.status === 'APPROVED') {
+      if (body.digitalAcceptance?.accepted) showDigitalAcceptanceComplete(body);
+      else showDigitalAcceptance(body);
+      return;
+    }
+
     const pendingSlots = pendingRequiredSlots();
     const selective = isSelectiveResubmission();
     $('vehicle-guide-count').textContent = selective
@@ -2078,6 +2292,15 @@ $('residence-address').addEventListener('input', () => {
   scheduleDraftSave(700, 'Endereço salvo neste aparelho.');
 });
 $('retry-load').addEventListener('click', () => load());
+$('confirm-digital-acceptance').addEventListener('click', async () => {
+  clearMessage();
+  try {
+    await performDigitalAcceptance();
+  } catch (error) {
+    $('digital-acceptance-status').textContent = error?.message || 'Não foi possível concluir o aceite digital.';
+    msg(error?.message || 'Não foi possível concluir o aceite digital.');
+  }
+});
 $('discard-draft').addEventListener('click', async () => {
   if (!window.confirm('Apagar as fotos, o vídeo, os documentos, o endereço e a assinatura salvos neste aparelho?')) return;
   await removeDraft();

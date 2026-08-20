@@ -1903,3 +1903,20 @@ footer {
 .vehicle-history-selector legend { margin-bottom:0; color:#070c40; }
 .vehicle-history-selector legend small { font-weight:600; color:#6a7086; }
 .vehicle-history-selector .field-help { max-width:760px; line-height:1.45; }
+
+footer {
+  flex-wrap: wrap;
+}
+footer .footer-developer {
+  width: 100%;
+  text-align: center;
+}
+footer .footer-developer a {
+  color: #f0f000;
+  font-weight: 900;
+  text-decoration: none;
+}
+footer .footer-developer a:hover,
+footer .footer-developer a:focus-visible {
+  text-decoration: underline;
+}

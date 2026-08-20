@@ -16,17 +16,49 @@
   <meta name="twitter:image" content="https://nhprotecao.com.br/assets/simbolo-fundo-azul.png" />
 <link
       rel="stylesheet"
-      href="/shared/portal.css?v=20260820-responsive-portal-v3"
+      href="/shared/portal.css?v=20260820-responsive-portal-v461"
     />
     <link
       rel="stylesheet"
-      href="/shared/responsive.css?v=20260807-responsive-audit-v4"
+      href="/shared/responsive.css?v=20260820-responsive-v461"
     />
     <link
       rel="stylesheet"
       href="/shared/brand-system.css?v=20260807-modals-v5"
     />
-  </head>
+  
+  <style id="nh-dev-credit-style">
+    .nh-dev-credit {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 12px 10px;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 400;
+      line-height: 1.35;
+      letter-spacing: .01em;
+      opacity: .56;
+      color: inherit;
+    }
+    .nh-dev-credit a {
+      color: inherit;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .nh-dev-credit a:hover,
+    .nh-dev-credit a:focus-visible {
+      text-decoration: underline;
+      opacity: .95;
+    }
+    @media (max-width: 640px) {
+      .nh-dev-credit {
+        padding: 7px 10px 9px;
+        font-size: 10px;
+        opacity: .52;
+      }
+    }
+  </style>
+</head>
   <body>
     <header class="portal-header">
       <a class="portal-brand" href="/"
@@ -220,8 +252,8 @@
         </div>
       </section>
       <p class="footer-note">
-        Novo Horizonte Proteção Veicular · Ambiente interno
-      </p>
+        Novo Horizonte Proteção Veicular · Ambiente interno<br />
+</p>
     </main>
     <dialog id="consultant-confirm-dialog" class="admin-dialog">
       <form method="dialog" class="dialog-card">
@@ -483,5 +515,9 @@
     <script src="/shared/config.js?v=20260804-current-origin"></script>
     <script src="/colaborador/portal.js?v=20260819-analysis-team-v2"></script>
     <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
-  </body>
+  
+  <div class="nh-dev-credit" aria-label="Crédito de desenvolvimento">
+    @desenvolvido por <a href="https://www.linkedin.com/in/devcarloslima/" target="_blank" rel="noopener noreferrer">Carlos Lima</a>
+  </div>
+</body>
 </html>
