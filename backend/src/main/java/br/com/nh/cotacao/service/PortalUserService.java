@@ -158,7 +158,8 @@ public class PortalUserService {
                 || inspection.getAnalysisStage() == br.com.nh.cotacao.entity.InspectionAnalysisStage.ANALYST_PENDING
                 || inspection.getAnalysisStage() == br.com.nh.cotacao.entity.InspectionAnalysisStage.SUPERVISION_QUEUE
                 || (inspection.getAnalysisStage() == br.com.nh.cotacao.entity.InspectionAnalysisStage.FINISHED
-                    && "SUPERVISION_ANALYSIS".equals(inspection.getReviewedByRole()));
+                    && ("SUPERVISION_ANALYSIS".equals(inspection.getReviewedByRole())
+                        || "ADMIN_SUPERVISION".equals(inspection.getReviewedByRole())));
         if (!visible) throw new IllegalArgumentException("Esta vistoria não faz parte do fluxo de análise/supervisão.");
     }
 
@@ -330,7 +331,7 @@ public class PortalUserService {
         // Os três usuários padrão continuam existindo. O consultor padrão permanece
         // sem vínculo específico para preservar a seleção manual legada do portal.
         if (repository.count() > 0) return;
-        createBootstrapUser(adminUsername, "Administrador principal", adminPassword, PortalRole.ADMIN);
+        createBootstrapUser(adminUsername, "Pedro Henrique", adminPassword, PortalRole.ADMIN);
         createBootstrapUser(analystUsername, "Equipe de análise", analystPassword, PortalRole.ANALYST);
         createBootstrapUser(consultantUsername, "Portal de consultores", consultantPassword, PortalRole.CONSULTANT);
     }

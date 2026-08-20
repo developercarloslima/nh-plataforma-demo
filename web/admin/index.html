@@ -1326,40 +1326,48 @@
           ></div>
         </section>
         <div class="form-grid" style="margin-top: 18px">
-          <label
-            >Status<select id="inspection-analysis-status">
-              <option value="WAITING_FILES">Aguardando arquivos</option>
+          <label>Situação operacional<select id="inspection-analysis-status">
+              <option value="WAITING_FILES">Aguardando documentos</option>
               <option value="UPLOADING_FILES">Envio em andamento</option>
-              <option value="UNDER_REVIEW">Em análise</option>
-              <option value="COMPLETED">Material enviado</option>
-              <option value="APPROVED">Aprovada</option>
-              <option value="REJECTED">Rejeitada</option>
+              <option value="UNDER_REVIEW">Em análise / Cadastro não feito</option>
               <option value="CANCELLED">Cancelada</option>
               <option value="EXPIRED">Expirada</option>
-            </select></label
-          >
-          <label class="span-2"
-            >Observação da aprovação/rejeição<textarea
+            </select></label>
+          <label class="span-2">Observação da análise<textarea
               id="inspection-analysis-note"
               maxlength="1200"
               rows="4"
-              placeholder="Obrigatória ao aprovar ou rejeitar: informe o motivo da decisão."
+              placeholder="Registre pendências, conferências e observações da análise administrativa."
             ></textarea>
           </label>
+          <label class="span-2"><strong>O.B.S. Supervisão</strong><textarea
+              id="admin-supervision-note"
+              maxlength="1200"
+              rows="4"
+              placeholder="Orientações e cobranças para o analista responsável."
+            ></textarea><small id="admin-supervision-note-meta" class="helper">A observação ficará visível para o analista.</small></label>
+          <div class="span-2 actions" style="margin-top:0"><button id="admin-save-supervision-note" class="secondary" type="button">Salvar O.B.S. Supervisão</button></div>
         </div>
         <div id="inspection-links" class="actions"></div>
+        <div id="admin-registration-actions" class="actions" style="margin-top:18px">
+          <button id="admin-registration-not-complete" class="outline" type="button">Cadastro não feito</button>
+          <button id="admin-registration-complete" class="secondary" type="button">✓ Cadastro feito · Enviar à supervisão</button>
+        </div>
         <div id="admin-inspection-decision-actions" class="actions" style="margin-top:18px">
-          <button id="admin-inspection-reject" class="danger" type="button">Rejeitar vistoria</button>
-          <button id="admin-inspection-approve" class="primary" type="button">Aprovar vistoria</button>
+          <button id="admin-inspection-reject" class="danger" type="button">Rejeitar como Supervisão</button>
+          <button id="admin-inspection-approve" class="primary" type="button">Aprovar como Supervisão</button>
+        </div>
+        <div id="admin-webauthn-notification" class="message success webauthn-send-box" hidden>
+          <strong>Aceite digital WebAuthn pendente</strong>
+          <p>O administrador pode enviar o token/link seguro ao associado depois da aprovação final.</p>
+          <div class="actions">
+            <button id="admin-send-webauthn-token" class="secondary" type="button">Enviar aceite digital ao cliente</button>
+            <button id="admin-copy-webauthn-link" class="outline" type="button">Copiar link do aceite</button>
+          </div>
         </div>
         <div class="actions dialog-actions">
-          <button
-            class="outline"
-            type="button"
-            data-close-dialog="inspection-dialog"
-          >
-            Fechar</button
-          ><button class="primary" type="submit">Salvar análise</button>
+          <button class="outline" type="button" data-close-dialog="inspection-dialog">Fechar</button>
+          <button id="admin-save-analysis" class="primary" type="submit">Salvar análise</button>
         </div>
       </form>
     </dialog>
@@ -1413,7 +1421,7 @@
     <script src="/shared/config.js?v=20260804-current-origin"></script>
     <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
     <script src="/shared/money-input.js?v=20260805-brl-mask"></script>
-    <script src="/admin/admin.js?v=20260819-analyst-status-v4"></script>
+    <script src="/admin/admin.js?v=20260820-admin-supervision-v1"></script>
     <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
   
   <div class="nh-dev-credit" aria-label="Crédito de desenvolvimento">

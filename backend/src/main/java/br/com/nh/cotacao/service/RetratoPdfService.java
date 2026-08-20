@@ -296,7 +296,7 @@ public class RetratoPdfService {
         }
         if (isFinalDecision(request)) {
             addLabelValue(table, "Decisão final", decisionLabel(request));
-            addLabelValue(table, "Supervisão responsável", supervisionResponsibleName);
+            addLabelValue(table, "Supervisão responsável", effectiveSupervisionResponsibleName(request));
         }
         document.add(table);
     }
@@ -642,7 +642,7 @@ public class RetratoPdfService {
 
         String statement = "A vistoria do associado " + safe(request.getAssociateName()) + " foi analisada e "
                 + (request.getStatus() == InspectionRequestStatus.APPROVED ? "APROVADA" : "REJEITADA")
-                + " pela Supervisão de Análise responsável, " + supervisionResponsibleName + ".";
+                + " pela Supervisão de Análise responsável, " + effectiveSupervisionResponsibleName(request) + ".";
         Paragraph decisionStatement = new Paragraph(statement, font(10.5f, Font.NORMAL, TEXT));
         decisionStatement.setAlignment(Element.ALIGN_JUSTIFIED);
         decisionStatement.setSpacingAfter(14);
@@ -655,7 +655,7 @@ public class RetratoPdfService {
         addDecisionRow(details, "CPF", formatCpf(request.getCpf()));
         addDecisionRow(details, "Placa", request.getPlate() == null || request.getPlate().isBlank() ? "Veículo 0 km - sem placa" : request.getPlate());
         addDecisionRow(details, "Status", decisionLabel(request));
-        addDecisionRow(details, "Supervisão responsável", supervisionResponsibleName);
+        addDecisionRow(details, "Supervisão responsável", effectiveSupervisionResponsibleName(request));
         addDecisionRow(details, "Decisão registrada por", safeReviewer(request));
         addDecisionRow(details, "Data e hora", request.getReviewedAt() == null ? "-" : request.getReviewedAt().format(SIGNATURE_DATE_TIME));
         addDecisionRow(details, "Observação", request.getAdminNote());
@@ -874,7 +874,7 @@ public class RetratoPdfService {
         auditCell.addElement(new Paragraph("REGISTRO DIGITAL DE ANÁLISE E DECISÃO", font(10, Font.BOLD, NAVY)));
         auditCell.addElement(signatureLine("Documento", "Relatório final da vistoria + Regulamento do Associado NH"));
         auditCell.addElement(signatureLine("Resultado", decisionLabel(request)));
-        auditCell.addElement(signatureLine("Supervisão responsável", supervisionResponsibleName));
+        auditCell.addElement(signatureLine("Supervisão responsável", effectiveSupervisionResponsibleName(request)));
         auditCell.addElement(signatureLine("Registrado por", safeReviewer(request)));
         auditCell.addElement(signatureLine("Data", request.getReviewedAt() == null ? "-" : request.getReviewedAt().format(SIGNATURE_DATE_TIME)));
         auditCell.addElement(signatureLine("Razão", request.getAdminNote() == null || request.getAdminNote().isBlank()
@@ -1043,6 +1043,17 @@ public class RetratoPdfService {
         };
     }
 
+    private String effectiveSupervisionResponsibleName(InspectionRequest request) {
+        if (request != null
+                && ("SUPERVISION_ANALYSIS".equals(request.getReviewedByRole())
+                    || "ADMIN_SUPERVISION".equals(request.getReviewedByRole()))
+                && request.getReviewedByName() != null
+                && !request.getReviewedByName().isBlank()) {
+            return request.getReviewedByName().trim();
+        }
+        return supervisionResponsibleName;
+    }
+
     private String safeReviewer(InspectionRequest request) {
         if (request.getReviewedByName() != null && !request.getReviewedByName().isBlank()) {
             return request.getReviewedByName();
@@ -1055,7 +1066,7 @@ public class RetratoPdfService {
         String payload = request.getId() + "|"
                 + request.getStatus() + "|"
                 + (request.getReviewedAt() == null ? "" : request.getReviewedAt()) + "|"
-                + supervisionResponsibleName + "|"
+                + effectiveSupervisionResponsibleName(request) + "|"
                 + safeReviewer(request) + "|"
                 + safe(request.getAdminNote()) + "|"
                 + regulation.fileName() + "|"
@@ -1246,7 +1257,7 @@ public class RetratoPdfService {
             String payload = request.getId() + "|" + safe(request.getAssociateName()) + "|"
                     + safe(request.getCpf()) + "|" + request.getStatus() + "|"
                     + (request.getReviewedAt() == null ? "" : request.getReviewedAt().toString()) + "|"
-                    + supervisionResponsibleName;
+                    + effectiveSupervisionResponsibleName(request);
             String hash = HexFormat.of().withUpperCase().formatHex(digest.digest(payload.getBytes(StandardCharsets.UTF_8)));
             return hash.substring(0, 12);
         } catch (Exception ignored) {
@@ -1331,7 +1342,7 @@ public class RetratoPdfService {
             ColumnText.showTextAligned(canvas, Element.ALIGN_LEFT,
                     new Phrase(ASSOCIATION_NAME + " • CNPJ " + ASSOCIATION_CNPJ, font(5.1f, Font.BOLD, TEXT)), x + 6f, y + h - 17f, 0);
             ColumnText.showTextAligned(canvas, Element.ALIGN_LEFT,
-                    new Phrase("Responsável: " + supervisionResponsibleName + " • " + decisionLabel(request), font(5.5f, Font.NORMAL, TEXT)), x + 6f, y + h - 25f, 0);
+                    new Phrase("Responsável: " + effectiveSupervisionResponsibleName(request) + " • " + decisionLabel(request), font(5.5f, Font.NORMAL, TEXT)), x + 6f, y + h - 25f, 0);
             String date = request.getReviewedAt() == null ? "data não registrada" : request.getReviewedAt().format(SIGNATURE_DATE_TIME);
             ColumnText.showTextAligned(canvas, Element.ALIGN_LEFT,
                     new Phrase("Data: " + date, font(5f, Font.NORMAL, MUTED)), x + 6f, y + h - 33f, 0);

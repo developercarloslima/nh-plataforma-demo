@@ -19,6 +19,7 @@ import java.util.UUID;
 @Service
 public class AdminActivityService {
     private static final String DEFAULT_PUBLIC_WEB_URL = "https://aforma-demo.vercel.app";
+    private static final String ADMIN_RESPONSIBLE_NAME = "Pedro Henrique";
     private final QuotationRepository quotationRepository;
     private final InspectionRequestRepository inspectionRepository;
     private final CatalogChangeAuditRepository auditRepository;
@@ -181,7 +182,8 @@ public class AdminActivityService {
                         || item.getAnalysisStage() == InspectionAnalysisStage.ANALYST_PENDING
                         || item.getAnalysisStage() == InspectionAnalysisStage.SUPERVISION_QUEUE
                         || (item.getAnalysisStage() == InspectionAnalysisStage.FINISHED
-                            && "SUPERVISION_ANALYSIS".equals(item.getReviewedByRole())))
+                            && ("SUPERVISION_ANALYSIS".equals(item.getReviewedByRole())
+                                || "ADMIN_SUPERVISION".equals(item.getReviewedByRole()))))
                 .map(item -> toInspection(item, true))
                 .toList();
     }
@@ -197,7 +199,7 @@ public class AdminActivityService {
         InspectionRequest inspection = inspectionRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
 
-        String supervisorName = "Administrador";
+        String supervisorName = ADMIN_RESPONSIBLE_NAME;
         if (actorRole == PortalRole.SUPERVISION_ANALYSIS) {
             UUID supervisorId = portalUserService.linkedSupervisorId(username)
                     .orElseThrow(() -> new IllegalArgumentException("Este usuário de supervisão não está vinculado a um colaborador."));
@@ -224,21 +226,22 @@ public class AdminActivityService {
         }
         InspectionRequest inspection = inspectionRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
-        Consultant analyst;
+        String old = inspectionAnalysisSummary(inspection);
+        String reviewerName;
         if (actorRole == PortalRole.ADMIN) {
-            analyst = inspection.getAssignedAnalyst();
-            if (analyst == null) throw new IllegalArgumentException("Vincule um analista responsável antes de marcar Cadastro feito.");
+            reviewerName = ADMIN_RESPONSIBLE_NAME;
+            inspection.markRegistrationCompletedByAdministrator(reviewerName, note);
         } else {
             UUID analystId = portalUserService.linkedAnalystId(username)
                     .orElseThrow(() -> new IllegalArgumentException("Este usuário de análise não está vinculado a um analista específico."));
-            analyst = consultantService.findActiveAnalyst(analystId);
+            Consultant analyst = consultantService.findActiveAnalyst(analystId);
+            reviewerName = analyst.getName();
+            inspection.markRegistrationCompleted(analyst, note);
         }
-        String old = inspectionAnalysisSummary(inspection);
-        inspection.markRegistrationCompleted(analyst, note);
         inspectionRepository.flush();
         auditRepository.save(CatalogChangeAudit.createText(
                 "INSPECTION_REGISTRATION", null, id.toString(),
-                "Cadastro concluído por " + analyst.getName() + " e enviado à Supervisão de Análise",
+                "Cadastro concluído por " + reviewerName + " e enviado à Supervisão de Análise",
                 old, inspectionAnalysisSummary(inspection) + "; etapa=SUPERVISION_QUEUE", username
         ));
         return toInspection(inspection, true);
@@ -251,21 +254,22 @@ public class AdminActivityService {
         }
         InspectionRequest inspection = inspectionRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
-        Consultant analyst;
+        String old = inspectionAnalysisSummary(inspection);
+        String reviewerName;
         if (actorRole == PortalRole.ADMIN) {
-            analyst = inspection.getAssignedAnalyst();
-            if (analyst == null) throw new IllegalArgumentException("Vincule um analista responsável antes de marcar Cadastro não feito.");
+            reviewerName = ADMIN_RESPONSIBLE_NAME;
+            inspection.markRegistrationNotCompletedByAdministrator(reviewerName, note);
         } else {
             UUID analystId = portalUserService.linkedAnalystId(username)
                     .orElseThrow(() -> new IllegalArgumentException("Este usuário de análise não está vinculado a um analista específico."));
-            analyst = consultantService.findActiveAnalyst(analystId);
+            Consultant analyst = consultantService.findActiveAnalyst(analystId);
+            reviewerName = analyst.getName();
+            inspection.markRegistrationNotCompleted(analyst, note);
         }
-        String old = inspectionAnalysisSummary(inspection);
-        inspection.markRegistrationNotCompleted(analyst, note);
         inspectionRepository.flush();
         auditRepository.save(CatalogChangeAudit.createText(
                 "INSPECTION_REGISTRATION", null, id.toString(),
-                "Cadastro marcado como não feito por " + analyst.getName(),
+                "Cadastro marcado como não feito por " + reviewerName,
                 old, inspectionAnalysisSummary(inspection) + "; etapa=ANALYST_QUEUE; situação=CADASTRO_NAO_FEITO", username
         ));
         return toInspection(inspection, true);
@@ -327,12 +331,12 @@ public class AdminActivityService {
         }
         InspectionRequest inspection = inspectionRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
-        if (actorRole != PortalRole.ADMIN && inspection.getAnalysisStage() != InspectionAnalysisStage.SUPERVISION_QUEUE) {
-            throw new IllegalArgumentException("Esta vistoria ainda não foi marcada como Cadastro feito pelo analista.");
+        if (inspection.getAnalysisStage() != InspectionAnalysisStage.SUPERVISION_QUEUE) {
+            throw new IllegalArgumentException("Esta vistoria ainda não foi marcada como Cadastro feito e enviada para a Supervisão.");
         }
         Consultant supervisorCollaborator = null;
-        String reviewerName = "Análise feita pelo administrador";
-        String reviewerRole = "ADMIN";
+        String reviewerName = ADMIN_RESPONSIBLE_NAME;
+        String reviewerRole = "ADMIN_SUPERVISION";
         if (actorRole == PortalRole.SUPERVISION_ANALYSIS) {
             UUID supervisorId = portalUserService.linkedSupervisorId(username)
                     .orElseThrow(() -> new IllegalArgumentException("Este usuário de supervisão não está vinculado a um colaborador."));
@@ -341,9 +345,12 @@ public class AdminActivityService {
             reviewerRole = "SUPERVISION_ANALYSIS";
         }
         String old = inspectionAnalysisSummary(inspection);
+        // A entrada em SUPERVISION_QUEUE já comprova que os requisitos foram conferidos
+        // no momento do Cadastro feito. Isso também permite decidir vistorias históricas
+        // cujos arquivos operacionais já expiraram, preservando o dossiê permanente.
         inspection.adminReview(
                 request.status(), request.adminNote(), supervisorCollaborator, reviewerName, reviewerRole,
-                actorRole == PortalRole.ADMIN
+                true
         );
         inspectionRepository.flush();
         persistFinalInspectionDossier(inspection);
@@ -376,13 +383,12 @@ public class AdminActivityService {
             throw new IllegalArgumentException("A Equipe de Análise trabalha somente com Cadastro feito, Cadastro não feito e Aguardando documentos. A decisão final pertence à Supervisão de Análise.");
         }
         if (actorRole == PortalRole.ADMIN
-                && (request.status() == InspectionRequestStatus.APPROVED || request.status() == InspectionRequestStatus.REJECTED)
-                && (request.adminNote() == null || request.adminNote().isBlank())) {
-            throw new IllegalArgumentException("Informe uma observação explicando o motivo da aprovação ou rejeição da vistoria.");
+                && (request.status() == InspectionRequestStatus.APPROVED || request.status() == InspectionRequestStatus.REJECTED)) {
+            throw new IllegalArgumentException("A aprovação ou rejeição final deve ser feita pelos controles de Supervisão após o Cadastro feito.");
         }
         if (actorRole == PortalRole.ADMIN) {
-            reviewerName = "Análise feita pelo administrador";
-            reviewerRole = "ADMIN";
+            reviewerName = ADMIN_RESPONSIBLE_NAME;
+            reviewerRole = "ADMIN_ANALYSIS";
         } else if (actorRole == PortalRole.ANALYST) {
             reviewerCollaborator = resolveAnalystReviewer(request, username);
             reviewerName = reviewerCollaborator.getName();

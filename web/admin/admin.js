@@ -917,6 +917,41 @@ function openQuoteAnalysis(id) {
   openDialog('quote-dialog');
 }
 
+function adminSupervisionStageLabel(item) {
+  if (item?.status === 'APPROVED') return item.reviewedByRole === 'ADMIN_SUPERVISION' ? 'Aprovada pelo Admin como Supervisão' : 'Aprovada pela Supervisão';
+  if (item?.status === 'REJECTED') return item.reviewedByRole === 'ADMIN_SUPERVISION' ? 'Rejeitada pelo Admin como Supervisão' : 'Rejeitada pela Supervisão';
+  if (item?.analysisStage === 'SUPERVISION_QUEUE') return 'Cadastro feito · aguardando decisão da Supervisão';
+  if (item?.analysisStage === 'ANALYST_PENDING') return 'Pendência do analista / aguardando documentos';
+  if (item?.analysisStage === 'ANALYST_QUEUE') return 'Em análise / cadastro ainda não concluído';
+  return 'Em acompanhamento';
+}
+
+function adminWebauthnAcceptanceUrl(item) {
+  if (!item?.publicUrl) return '';
+  try {
+    const url = new URL(item.publicUrl, window.location.origin);
+    url.pathname = '/retrato/';
+    return url.toString();
+  } catch (_) {
+    return item.publicUrl;
+  }
+}
+
+function syncAdminWebauthnBox(item) {
+  const box = $('admin-webauthn-notification');
+  const send = $('admin-send-webauthn-token');
+  const copy = $('admin-copy-webauthn-link');
+  const pending = item?.status === 'APPROVED' && !item?.digitalAcceptedAt && Boolean(item?.publicUrl);
+  box.hidden = !pending;
+  if (pending) {
+    send.dataset.inspectionId = item.id;
+    copy.dataset.inspectionId = item.id;
+  } else {
+    send.removeAttribute('data-inspection-id');
+    copy.removeAttribute('data-inspection-id');
+  }
+}
+
 function openInspectionAnalysis(id) {
   const item = inspections.find(value => value.id === id);
   if (!item) return;
@@ -930,23 +965,29 @@ function openInspectionAnalysis(id) {
   $('inspection-analysis-id').value = item.id;
   $('inspection-dialog-title').textContent = `${item.plate || '0 km — sem placa'} — ${item.associateName}`;
   $('inspection-analysis-note').value = item.adminNote || '';
+  $('admin-supervision-note').value = item.supervisionNote || '';
+  $('admin-supervision-note-meta').textContent = item.supervisionNoteUpdatedAt
+    ? `Última atualização: ${date(item.supervisionNoteUpdatedAt)}${item.supervisionNoteByName ? ` por ${item.supervisionNoteByName}` : ''}. Visível para o analista.`
+    : 'A observação ficará visível para o analista responsável.';
 
   const statusSelect = $('inspection-analysis-status');
   const readyForAnalysis = filesAvailable && Boolean(item.completedAt);
-  const allowedWhileWaiting = new Set(['WAITING_FILES', 'UPLOADING_FILES', 'CANCELLED', 'EXPIRED']);
-  Array.from(statusSelect.options).forEach(option => {
-    const adminDecision = option.value === 'APPROVED' || option.value === 'REJECTED';
-    option.disabled = !adminDecision && !readyForAnalysis && !allowedWhileWaiting.has(option.value);
-  });
-  if (!filesAvailable) {
-    statusSelect.value = item.status === 'CANCELLED' || item.status === 'EXPIRED' ? item.status : 'WAITING_FILES';
-  } else if (!readyForAnalysis) {
-    statusSelect.value = item.status === 'CANCELLED' || item.status === 'EXPIRED' ? item.status : 'UPLOADING_FILES';
-  } else {
-    statusSelect.value = item.status;
-  }
-  $('admin-inspection-approve').hidden = false;
-  $('admin-inspection-reject').hidden = false;
+  const awaitingSupervision = item.analysisStage === 'SUPERVISION_QUEUE';
+  const finished = item.analysisStage === 'FINISHED' || ['APPROVED', 'REJECTED', 'CANCELLED', 'EXPIRED'].includes(item.status);
+  const operationalStatus = ['WAITING_FILES', 'UPLOADING_FILES', 'UNDER_REVIEW', 'CANCELLED', 'EXPIRED'].includes(item.status)
+    ? item.status
+    : (filesAvailable ? 'UNDER_REVIEW' : 'WAITING_FILES');
+  statusSelect.value = operationalStatus;
+  statusSelect.disabled = awaitingSupervision || finished;
+  $('admin-save-analysis').hidden = awaitingSupervision || finished;
+  $('admin-registration-actions').hidden = awaitingSupervision || finished;
+  $('admin-registration-complete').disabled = !readyForAnalysis || needsFiles;
+  $('admin-registration-not-complete').disabled = !readyForAnalysis || needsFiles;
+  const canFinalDecision = awaitingSupervision;
+  $('admin-inspection-decision-actions').hidden = !canFinalDecision;
+  $('admin-inspection-approve').hidden = !canFinalDecision;
+  $('admin-inspection-reject').hidden = !canFinalDecision;
+  syncAdminWebauthnBox(item);
 
   const inspectionDiscount = Number(item.discountPercent || 0);
   const inspectionDetails = [
@@ -967,8 +1008,14 @@ function openInspectionAnalysis(id) {
     ['Arquivos disponíveis', item.assetCount], ['Situação dos arquivos', filesAvailable ? (needsFiles ? `${pendingCount} ${pendingCount === 1 ? 'item pendente' : 'itens pendentes'}; os demais continuam armazenados` : `Armazenados no sistema até ${date(item.filesExpireAt)}`) : (Number(item.expiredAssetCount || 0) > 0 ? 'Arquivos apagados após 40 dias' : 'Aguardando envio do associado')],
     ['Criada em', date(item.createdAt)], ['Expira em', date(item.expiresAt)],
     ['Concluída em', date(item.completedAt)], ['Última análise', date(item.reviewedAt)],
-    ['Responsável pela análise', item.reviewedByName || '—'],
-    ['Observação da análise', item.adminNote || '—']
+    ['Analista responsável', item.assignedAnalystName || 'Não vinculado'],
+    ['Cadastro feito por', item.registrationCompletedByName || '—'],
+    ['Etapa', adminSupervisionStageLabel(item)],
+    ['Responsável pela última ação', item.reviewedByName || '—'],
+    ['Perfil da última ação', item.reviewedByRole === 'ADMIN_ANALYSIS' ? 'Administrador · Análise' : item.reviewedByRole === 'ADMIN_SUPERVISION' ? 'Administrador · Supervisão' : item.reviewedByRole || '—'],
+    ['Observação da análise', item.adminNote || '—'],
+    ['O.B.S. Supervisão', item.supervisionNote || '—'],
+    ['Aceite digital', item.digitalAcceptedAt ? `Confirmado em ${date(item.digitalAcceptedAt)}` : (item.status === 'APPROVED' ? 'Aguardando WebAuthn' : '—')]
   );
   $('inspection-detail-grid').innerHTML = detailItems(inspectionDetails);
 
@@ -2060,18 +2107,18 @@ async function setAdminInspectionDecision(status) {
   const confirmed = await confirmAction(
     approved ? 'Aprovar vistoria?' : 'Rejeitar vistoria?',
     approved
-      ? 'A vistoria será marcada como aprovada pelo administrador com a observação registrada.'
-      : 'A vistoria será marcada como rejeitada pelo administrador com o motivo registrado.',
+      ? 'A decisão final será registrada por Pedro Henrique com os poderes de Supervisão.'
+      : 'A rejeição final será registrada por Pedro Henrique com os poderes de Supervisão.',
     approved ? 'Aprovar vistoria' : 'Rejeitar vistoria'
   );
   if (!confirmed) return;
   try {
-    await api(`/api/admin/inspections/${id}/status`, {
+    await api(`/api/admin/inspections/${id}/supervision-status`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status, adminNote: note })
     });
     closeDialog('inspection-dialog');
-    message(approved ? 'Vistoria aprovada pelo administrador.' : 'Vistoria rejeitada pelo administrador.', 'success');
+    message(approved ? 'Vistoria aprovada por Pedro Henrique como Supervisão.' : 'Vistoria rejeitada por Pedro Henrique como Supervisão.', 'success');
     await load();
   } catch (error) { message(error.message); }
 }
@@ -2084,22 +2131,109 @@ $('inspection-analysis-form').addEventListener('submit', async event => {
   const id = $('inspection-analysis-id').value;
   const status = $('inspection-analysis-status').value;
   const adminNote = $('inspection-analysis-note').value.trim();
-  if ((status === 'APPROVED' || status === 'REJECTED') && !adminNote) {
-    message(status === 'APPROVED'
-      ? 'Informe na observação por que esta vistoria está sendo aprovada.'
-      : 'Informe na observação por que esta vistoria está sendo rejeitada.');
-    $('inspection-analysis-note').focus();
-    return;
-  }
   try {
     await api(`/api/admin/inspections/${id}/status`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status, adminNote })
     });
     closeDialog('inspection-dialog');
-    message('Análise do Retrato NH salva.', 'success');
+    message('Análise administrativa salva. Para decisão final, marque Cadastro feito e use os controles de Supervisão.', 'success');
     await load();
   } catch (error) { message(error.message); }
+});
+
+$('admin-save-supervision-note')?.addEventListener('click', async () => {
+  const id = $('inspection-analysis-id').value;
+  if (!id) return;
+  const button = $('admin-save-supervision-note');
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Salvando...';
+  try {
+    const updated = await api(`/api/admin/inspections/${encodeURIComponent(id)}/supervision-note`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: $('admin-supervision-note').value.trim() })
+    });
+    const index = inspections.findIndex(item => item.id === updated.id);
+    if (index >= 0) inspections[index] = updated;
+    $('admin-supervision-note').value = updated.supervisionNote || '';
+    $('admin-supervision-note-meta').textContent = updated.supervisionNoteUpdatedAt
+      ? `Última atualização: ${date(updated.supervisionNoteUpdatedAt)}${updated.supervisionNoteByName ? ` por ${updated.supervisionNoteByName}` : ''}. Visível para o analista.`
+      : 'A observação ficará visível para o analista responsável.';
+    message(updated.supervisionNote ? 'O.B.S. Supervisão salva e enviada ao analista.' : 'O.B.S. Supervisão removida.', 'success');
+  } catch (error) {
+    message(error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+});
+
+$('admin-registration-not-complete')?.addEventListener('click', async () => {
+  const id = $('inspection-analysis-id').value;
+  const item = inspections.find(value => value.id === id);
+  if (!item) return;
+  if (adminInspectionNeedsFiles(item)) return message('Ainda existem documentos ou arquivos pendentes.');
+  const confirmed = await confirmAction('Marcar Cadastro não feito?', 'Pedro Henrique ficará registrado como responsável pela análise administrativa. A vistoria continuará na fila de análise.', 'Cadastro não feito');
+  if (!confirmed) return;
+  try {
+    await api(`/api/admin/inspections/${encodeURIComponent(id)}/registration-not-complete`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: $('inspection-analysis-note').value.trim() })
+    });
+    closeDialog('inspection-dialog');
+    await load();
+    message('Cadastro não feito registrado por Pedro Henrique.', 'success');
+  } catch (error) { message(error.message); }
+});
+
+$('admin-registration-complete')?.addEventListener('click', async () => {
+  const id = $('inspection-analysis-id').value;
+  const item = inspections.find(value => value.id === id);
+  if (!item) return;
+  if (adminInspectionNeedsFiles(item)) return message('Ainda existem documentos ou arquivos pendentes.');
+  const confirmed = await confirmAction('Marcar Cadastro feito?', 'A análise será registrada em nome de Pedro Henrique e a vistoria será obrigatoriamente encaminhada para a fila da Supervisão antes de qualquer aprovação final.', 'Cadastro feito');
+  if (!confirmed) return;
+  try {
+    await api(`/api/admin/inspections/${encodeURIComponent(id)}/registration-complete`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: $('inspection-analysis-note').value.trim() })
+    });
+    closeDialog('inspection-dialog');
+    await load();
+    message('Cadastro feito por Pedro Henrique. Vistoria encaminhada para a Supervisão.', 'success');
+  } catch (error) { message(error.message); }
+});
+
+$('admin-send-webauthn-token')?.addEventListener('click', () => {
+  const id = $('admin-send-webauthn-token').dataset.inspectionId;
+  const item = inspections.find(value => value.id === id);
+  if (!item) return message('Vistoria não encontrada para envio do aceite digital.');
+  if (item.digitalAcceptedAt) return message('O associado já concluiu o aceite digital WebAuthn.', 'success');
+  if (item.associateDecisionWhatsappUrl) {
+    window.open(item.associateDecisionWhatsappUrl, '_blank', 'noopener,noreferrer');
+    message('WhatsApp aberto com o link do aceite digital WebAuthn.', 'success');
+    return;
+  }
+  const link = adminWebauthnAcceptanceUrl(item);
+  if (!link) return message('Não foi possível montar o link do aceite digital.');
+  navigator.clipboard?.writeText(link).then(
+    () => message('Link do aceite digital copiado para envio manual.', 'success'),
+    () => window.prompt('Copie o link do aceite digital:', link)
+  );
+});
+
+$('admin-copy-webauthn-link')?.addEventListener('click', async () => {
+  const id = $('admin-copy-webauthn-link').dataset.inspectionId;
+  const item = inspections.find(value => value.id === id);
+  const link = adminWebauthnAcceptanceUrl(item);
+  if (!link) return message('Não foi possível montar o link do aceite digital.');
+  try {
+    await navigator.clipboard.writeText(link);
+    message('Link do aceite WebAuthn copiado.', 'success');
+  } catch (_) {
+    window.prompt('Copie o link do aceite WebAuthn:', link);
+  }
 });
 
 $('settings-form').addEventListener('submit', async event => {

@@ -46,8 +46,9 @@ O projeto integra o fluxo comercial e operacional da associação em uma única 
 - Aba **Vistorias pendentes dos analistas**.
 - Identificação do analista responsável por vistoria.
 - Inclusão de **O.B.S. Supervisão** com autor e data da alteração.
-- Decisão final de aprovação ou rejeição.
-- Histórico de aprovadas e rejeitadas.
+- Toda vistoria marcada como **Cadastro feito**, inclusive quando a análise foi executada pelo administrador, passa obrigatoriamente pela fila da Supervisão antes da decisão final.
+- Decisão final de aprovação ou rejeição pela Supervisão ou pelo administrador atuando explicitamente com poderes de Supervisão.
+- Histórico de aprovadas e rejeitadas, com identificação de quem tomou a decisão final.
 
 ### Dossiê e relatórios PDF
 
@@ -86,6 +87,10 @@ O projeto integra o fluxo comercial e operacional da associação em uma única 
 - Gestão de colaboradores.
 - Perfis e permissões.
 - Consultores, analistas e Supervisão.
+- Administrador principal identificado operacionalmente como **Pedro Henrique**.
+- Pode realizar a análise administrativa e marcar **Cadastro feito**, encaminhando obrigatoriamente a vistoria para a Supervisão.
+- Possui os mesmos poderes da Supervisão para aprovar/rejeitar quando a vistoria já estiver na fila de decisão final.
+- Pode registrar **O.B.S. Supervisão** para os analistas e enviar o link/token de aceite digital WebAuthn ao associado após a aprovação.
 - Catálogo de planos e coberturas.
 - Categorias de veículos.
 - Faixas de preço e regras de cobertura.
@@ -111,7 +116,7 @@ A aplicação possui os seguintes papéis internos:
 | `CONSULTANT` | Cotação, geração de vistoria e acompanhamento dos próprios associados |
 | `ANALYST` | Conferência das vistorias e atualização do cadastro |
 | `SUPERVISION_ANALYSIS` | Acompanhamento da equipe de análise e decisão final |
-| `ADMIN` | Administração geral da plataforma |
+| `ADMIN` | Administração geral; pode analisar, registrar O.B.S., atuar como Supervisão na decisão final e enviar o aceite digital |
 
 ---
 
@@ -126,13 +131,15 @@ Associado envia fotos, selfie, vídeos e documentos
    ↓
 Vistoria entra na fila da Equipe de Análise
    ↓
-Analista responsável confere os arquivos
+Analista ou Admin (Pedro Henrique) confere os arquivos
    ↓
 Cadastro feito / Cadastro não feito / Aguardando documentos
    ↓
+Cadastro feito entra obrigatoriamente na fila da Supervisão
+   ↓
 Supervisão acompanha e registra O.B.S.
    ↓
-Supervisão aprova ou rejeita
+Supervisão ou Admin atuando como Supervisão aprova/rejeita
    ↓
 Dossiê PDF consolidado
    ↓
@@ -266,7 +273,9 @@ O projeto atualmente contém migrations até a versão **V45**, incluindo evolu�
 - Supervisão;
 - relatório permanente;
 - evidências WebAuthn;
-- fila de pendências dos analistas e O.B.S. da Supervisão.
+- fila de pendências dos analistas e O.B.S. da Supervisão;
+- fluxo obrigatório Admin → Supervisão para análises administrativas;
+- decisão final do Admin registrada separadamente como `ADMIN_SUPERVISION`.
 
 As migrations são aplicadas automaticamente durante a inicialização do backend.
 

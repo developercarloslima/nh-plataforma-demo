@@ -347,6 +347,42 @@ public class InspectionRequest {
         this.assignedAnalystName = analyst.getName();
     }
 
+    public void markRegistrationCompletedByAdministrator(String administratorName, String note) {
+        assertStoredCompletionRequirements(true);
+        String cleanAdministratorName = cleanReviewerName(administratorName);
+        if (cleanAdministratorName == null) {
+            throw new IllegalArgumentException("Informe o nome do administrador responsável.");
+        }
+        this.adminNote = cleanNote(note);
+        this.registrationCompletedAt = OffsetDateTime.now();
+        this.registrationCompletedByName = cleanAdministratorName;
+        this.status = InspectionRequestStatus.UNDER_REVIEW;
+        this.analysisStage = InspectionAnalysisStage.SUPERVISION_QUEUE;
+        this.reviewedAt = this.registrationCompletedAt;
+        this.reviewedByCollaborator = null;
+        this.reviewedByName = cleanAdministratorName;
+        this.reviewedByRole = "ADMIN_ANALYSIS";
+        this.decisionMessageSentAt = null;
+    }
+
+    public void markRegistrationNotCompletedByAdministrator(String administratorName, String note) {
+        assertStoredCompletionRequirements(true);
+        String cleanAdministratorName = cleanReviewerName(administratorName);
+        if (cleanAdministratorName == null) {
+            throw new IllegalArgumentException("Informe o nome do administrador responsável.");
+        }
+        this.adminNote = cleanNote(note);
+        this.registrationCompletedAt = null;
+        this.registrationCompletedByName = null;
+        this.status = InspectionRequestStatus.UNDER_REVIEW;
+        this.analysisStage = InspectionAnalysisStage.ANALYST_QUEUE;
+        this.reviewedAt = OffsetDateTime.now();
+        this.reviewedByCollaborator = null;
+        this.reviewedByName = cleanAdministratorName;
+        this.reviewedByRole = "ADMIN_ANALYSIS";
+        this.decisionMessageSentAt = null;
+    }
+
     public void markRegistrationCompleted(Consultant analyst, String note) {
         if (analyst == null || analyst.getRole() != CollaboratorRole.ANALYST) {
             throw new IllegalArgumentException("Apenas um analista vinculado pode concluir o cadastro.");
