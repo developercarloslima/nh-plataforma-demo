@@ -1153,3 +1153,17 @@ input, select, textarea, button, a { max-width:100%; }
 }
 
 .footer-note .footer-developer a{color:var(--navy);font-weight:900;text-decoration:none}.footer-note .footer-developer a:hover,.footer-note .footer-developer a:focus-visible{text-decoration:underline}
+
+/* V47 - compatibilidade WebAuthn em iPhone/iOS */
+.ios-webauthn-help {
+  display:grid; gap:8px; padding:14px; border:1px solid #f0d75c;
+  border-radius:12px; background:#fffbea; color:#242424;
+}
+.ios-webauthn-help[hidden] { display:none !important; }
+.ios-webauthn-help strong { color:#080f63; }
+.ios-webauthn-help p, .ios-webauthn-help small { margin:0; line-height:1.45; }
+.ios-webauthn-help .actions { margin-top:4px; }
+@media (max-width:640px) {
+  .ios-webauthn-help .actions { display:grid; grid-template-columns:1fr; }
+  .ios-webauthn-help .actions button { width:100%; }
+}

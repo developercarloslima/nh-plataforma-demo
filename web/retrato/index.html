@@ -226,7 +226,7 @@
     <div class="digital-acceptance-content">
       <span class="eyebrow">PPV APROVADO</span>
       <h2>Confirme o aceite digital do dossiê</h2>
-      <p>Para concluir, o aparelho solicitará uma verificação segura disponível nele, como biometria, PIN, senha de bloqueio ou padrão. A NH não recebe nem armazena o seu PIN ou sua biometria.</p>
+      <p>Para concluir, o aparelho fará a verificação local usando Face ID, Touch ID, PIN, senha de bloqueio ou outro método seguro disponível. <strong>A NH nunca recebe, lê ou armazena a senha/PIN do celular.</strong></p>
       <div class="digital-evidence-list">
         <strong>O registro criptográfico vinculará:</strong>
         <span>• CPF e nome do associado</span>
@@ -236,9 +236,18 @@
         <span>• geolocalização, somente quando autorizada pelo associado</span>
       </div>
       <p class="muted">Ao continuar, você declara que é o associado identificado nesta vistoria e que está confirmando o aceite do dossiê aprovado.</p>
+
+      <div id="ios-webauthn-help" class="ios-webauthn-help" hidden>
+        <strong>iPhone: abra este aceite no Safari</strong>
+        <p id="ios-webauthn-help-text">Em iPhones recentes, o WebAuthn pode falhar dentro do navegador do WhatsApp, Google, Chrome ou outros navegadores internos. Abra este mesmo link diretamente no Safari para usar Face ID/Touch ID/código do iPhone.</p>
+        <div class="actions">
+          <button id="copy-ios-webauthn-link" class="outline" type="button">Copiar link para abrir no Safari</button>
+        </div>
+        <small>Se o iPhone pedir para escolher onde gerenciar chaves-senha, habilite um provedor de Senhas/Chaves-senha nos Ajustes. Essa conta serve apenas para guardar a chave-senha; o sistema da NH não recebe o e-mail nem a senha dessa conta.</small>
+      </div>
       <div id="digital-acceptance-details" class="digital-acceptance-details" hidden></div>
       <div class="actions">
-        <button id="confirm-digital-acceptance" class="primary" type="button">Confirmar com biometria/PIN do aparelho</button>
+        <button id="confirm-digital-acceptance" class="primary" type="button">Confirmar com Face ID/biometria/PIN do aparelho</button>
       </div>
       <p id="digital-acceptance-status" class="muted" aria-live="polite"></p>
     </div>
@@ -301,7 +310,7 @@
 </section>
 
 <script src="/shared/config.js?v=20260804-current-origin"></script>
-<script src="/retrato/retrato.js?v=20260820-webauthn-acceptance-v2"></script>
+<script src="/retrato/retrato.js?v=20260825-ios-webauthn-v4"></script>
 <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
 
   <div class="nh-dev-credit" aria-label="Crédito de desenvolvimento">

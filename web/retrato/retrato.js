@@ -465,6 +465,37 @@ function webAuthnApi(path) {
   return window.NH_API?.backend(relative) || relative;
 }
 
+function isIOSDevice() {
+  const ua = navigator.userAgent || '';
+  return /iPad|iPhone|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function isSafariOnIOS() {
+  if (!isIOSDevice()) return false;
+  const ua = navigator.userAgent || '';
+  const knownNonSafari = /CriOS|FxiOS|EdgiOS|OPiOS|GSA|FBAN|FBAV|Instagram|WhatsApp|Line\//i;
+  return /Safari/i.test(ua) && !knownNonSafari.test(ua);
+}
+
+function isLikelyEmbeddedIOSBrowser() {
+  if (!isIOSDevice()) return false;
+  const ua = navigator.userAgent || '';
+  return !isSafariOnIOS() || /WhatsApp|FBAN|FBAV|Instagram|GSA/i.test(ua);
+}
+
+function showIOSWebAuthnHelp(reason = '') {
+  const box = $('ios-webauthn-help');
+  const text = $('ios-webauthn-help-text');
+  if (!box) return;
+  box.hidden = false;
+  if (text && reason) text.textContent = reason;
+}
+
+function hideIOSWebAuthnHelp() {
+  const box = $('ios-webauthn-help');
+  if (box) box.hidden = true;
+}
+
 function base64UrlToBytes(value) {
   const normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
   const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
@@ -582,84 +613,135 @@ function showDigitalAcceptanceComplete(data) {
   $('digital-acceptance-status').textContent = 'O dossiê final foi atualizado com as evidências do aceite WebAuthn.';
 }
 
+async function completeWebAuthnAssertion(assertionOptions, status) {
+  status.textContent = 'Confirme no aparelho com Face ID, Touch ID, PIN ou código de bloqueio...';
+  const assertion = await navigator.credentials.get({
+    publicKey: {
+      challenge: base64UrlToBytes(assertionOptions.challenge),
+      rpId: assertionOptions.rpId,
+      allowCredentials: [{
+        type: 'public-key',
+        id: base64UrlToBytes(assertionOptions.credentialId)
+      }],
+      userVerification: 'required',
+      timeout: Number(assertionOptions.timeoutMs || 120000)
+    }
+  });
+  if (!assertion) throw new Error('O aparelho não confirmou a assinatura WebAuthn.');
+
+  return digitalAcceptancePost('/assertion-finish', {
+    id: assertion.id,
+    rawId: bytesToBase64Url(assertion.rawId),
+    type: assertion.type,
+    clientDataJSON: bytesToBase64Url(assertion.response.clientDataJSON),
+    authenticatorData: bytesToBase64Url(assertion.response.authenticatorData),
+    signature: bytesToBase64Url(assertion.response.signature),
+    userHandle: assertion.response.userHandle ? bytesToBase64Url(assertion.response.userHandle) : null
+  });
+}
+
+async function existingWebAuthnAssertionOptions() {
+  try {
+    return await digitalAcceptancePost('/assertion-options', null);
+  } catch (error) {
+    if (/Primeiro confirme|credencial segura/i.test(String(error?.message || ''))) return null;
+    throw error;
+  }
+}
+
 async function performDigitalAcceptance() {
   const button = $('confirm-digital-acceptance');
   const status = $('digital-acceptance-status');
   if (!window.PublicKeyCredential || !navigator.credentials) {
-    throw new Error('Este navegador não oferece WebAuthn. Abra o link em Chrome, Edge, Safari ou outro navegador moderno no aparelho do associado.');
+    throw new Error('Este navegador não oferece WebAuthn. Abra o link diretamente no Safari, Chrome ou Edge do aparelho do associado.');
+  }
+
+  // iOS 26/iPhone 17 apresenta incompatibilidades conhecidas com WebAuthn em
+  // navegadores de terceiros e navegadores internos (inclusive links abertos
+  // dentro de apps). No Safari o sistema consegue acionar corretamente o
+  // autenticador/passkey local e solicitar Face ID/Touch ID/código do aparelho.
+  if (isLikelyEmbeddedIOSBrowser()) {
+    const reason = 'Este link está aberto dentro de um app ou navegador que pode bloquear a verificação segura no iPhone. Toque em Compartilhar/Abrir no navegador e abra este mesmo endereço no Safari; depois toque novamente em Confirmar.';
+    showIOSWebAuthnHelp(reason);
+    status.textContent = 'No iPhone, abra o aceite no Safari para continuar com Face ID/Touch ID/código do aparelho.';
+    throw new Error('Para concluir no iPhone, abra este link diretamente no Safari.');
   }
 
   button.disabled = true;
+  hideIOSWebAuthnHelp();
   status.textContent = 'Coletando dados técnicos do aparelho e preparando a confirmação segura...';
   try {
     const device = await collectDigitalAcceptanceDeviceMetadata();
-    const registration = await digitalAcceptancePost('/registration-options', device);
 
-    status.textContent = 'Confirme a biometria, PIN ou bloqueio seguro solicitado pelo aparelho...';
-    const created = await navigator.credentials.create({
-      publicKey: {
-        challenge: base64UrlToBytes(registration.challenge),
-        rp: { id: registration.rpId, name: registration.rpName },
-        user: {
-          id: base64UrlToBytes(registration.userId),
-          name: registration.userName,
-          displayName: registration.userDisplayName
-        },
-        pubKeyCredParams: [
-          { type: 'public-key', alg: -7 },
-          { type: 'public-key', alg: -257 }
-        ],
-        authenticatorSelection: {
-          authenticatorAttachment: 'platform',
-          residentKey: 'discouraged',
-          requireResidentKey: false,
-          userVerification: 'required'
-        },
-        timeout: Number(registration.timeoutMs || 120000),
-        attestation: 'none'
-      }
-    });
-    if (!created) throw new Error('O aparelho não criou a credencial segura para este aceite.');
+    if (isIOSDevice() && device.platformAuthenticatorAvailable === false) {
+      showIOSWebAuthnHelp('O iPhone não disponibilizou o autenticador local. Abra no Safari e confirme se Senhas/Chaves-senha e o Preenchimento Automático estão habilitados nos Ajustes. A NH não recebe a senha nem o e-mail do gerenciador de senhas.');
+      throw new Error('O autenticador seguro do iPhone não está disponível neste navegador/configuração.');
+    }
 
-    const assertionOptions = await digitalAcceptancePost('/registration-finish', {
-      id: created.id,
-      rawId: bytesToBase64Url(created.rawId),
-      type: created.type,
-      clientDataJSON: bytesToBase64Url(created.response.clientDataJSON),
-      attestationObject: bytesToBase64Url(created.response.attestationObject),
-      device
-    });
+    // Se a primeira tentativa já criou uma credencial, retomamos diretamente a
+    // assinatura em vez de criar outra passkey. Isso é especialmente importante
+    // no iPhone quando o usuário saiu do navegador entre as duas confirmações.
+    let assertionOptions = await existingWebAuthnAssertionOptions();
 
-    status.textContent = 'Credencial criada. Confirme uma segunda vez para assinar criptograficamente o dossiê aprovado...';
-    const assertion = await navigator.credentials.get({
-      publicKey: {
-        challenge: base64UrlToBytes(assertionOptions.challenge),
-        rpId: assertionOptions.rpId,
-        allowCredentials: [{
-          type: 'public-key',
-          id: base64UrlToBytes(assertionOptions.credentialId)
-        }],
-        userVerification: 'required',
-        timeout: Number(assertionOptions.timeoutMs || 120000)
-      }
-    });
-    if (!assertion) throw new Error('O aparelho não confirmou a assinatura WebAuthn.');
+    if (!assertionOptions) {
+      const registration = await digitalAcceptancePost('/registration-options', device);
+      status.textContent = 'Confirme a criação da chave segura usando Face ID, Touch ID, PIN ou código do aparelho...';
 
-    const result = await digitalAcceptancePost('/assertion-finish', {
-      id: assertion.id,
-      rawId: bytesToBase64Url(assertion.rawId),
-      type: assertion.type,
-      clientDataJSON: bytesToBase64Url(assertion.response.clientDataJSON),
-      authenticatorData: bytesToBase64Url(assertion.response.authenticatorData),
-      signature: bytesToBase64Url(assertion.response.signature),
-      userHandle: assertion.response.userHandle ? bytesToBase64Url(assertion.response.userHandle) : null
-    });
+      const selection = {
+        residentKey: isIOSDevice() ? 'preferred' : 'discouraged',
+        requireResidentKey: false,
+        userVerification: 'required'
+      };
+      // Em iOS deixamos o Safari escolher o provedor compatível do próprio
+      // sistema. Forçar "platform" em navegadores recentes pode acionar telas de
+      // gerenciador de chaves incompatíveis com WebViews de terceiros.
+      if (!isIOSDevice()) selection.authenticatorAttachment = 'platform';
 
+      const created = await navigator.credentials.create({
+        publicKey: {
+          challenge: base64UrlToBytes(registration.challenge),
+          rp: { id: registration.rpId, name: registration.rpName },
+          user: {
+            id: base64UrlToBytes(registration.userId),
+            name: registration.userName,
+            displayName: registration.userDisplayName
+          },
+          pubKeyCredParams: [
+            { type: 'public-key', alg: -7 },
+            { type: 'public-key', alg: -257 }
+          ],
+          authenticatorSelection: selection,
+          timeout: Number(registration.timeoutMs || 120000),
+          attestation: 'none'
+        }
+      });
+      if (!created) throw new Error('O aparelho não criou a credencial segura para este aceite.');
+
+      assertionOptions = await digitalAcceptancePost('/registration-finish', {
+        id: created.id,
+        rawId: bytesToBase64Url(created.rawId),
+        type: created.type,
+        clientDataJSON: bytesToBase64Url(created.response.clientDataJSON),
+        attestationObject: bytesToBase64Url(created.response.attestationObject),
+        device
+      });
+    }
+
+    const result = await completeWebAuthnAssertion(assertionOptions, status);
     request.digitalAcceptance = result;
     showDigitalAcceptanceComplete(request);
   } catch (error) {
-    if (error?.name === 'NotAllowedError') {
+    const name = String(error?.name || '');
+    const detail = String(error?.message || '');
+    if (isIOSDevice() && /NotAllowedError|SecurityError|UnknownError|InvalidStateError/.test(name)) {
+      showIOSWebAuthnHelp('O iPhone não conseguiu concluir a chave-senha neste navegador. Abra o link diretamente no Safari e verifique em Ajustes se Senhas/Chaves-senha e Preenchimento Automático estão habilitados. O código do iPhone é validado somente pelo próprio aparelho e nunca é enviado para a NH.');
+      throw new Error('O iPhone não concluiu a verificação segura. Abra o link no Safari e tente novamente.');
+    }
+    if (name === 'NotAllowedError') {
       throw new Error('A confirmação foi cancelada ou excedeu o tempo. Toque no botão e tente novamente.');
+    }
+    if (/passkey|chave-senha|autenticador/i.test(detail) && isIOSDevice()) {
+      showIOSWebAuthnHelp();
     }
     throw error;
   } finally {
@@ -2376,3 +2458,12 @@ window.addEventListener('beforeunload', () => {
   stopCameraStream();
 });
 load();
+
+$('copy-ios-webauthn-link')?.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(location.href);
+    $('digital-acceptance-status').textContent = 'Link copiado. Abra o Safari, cole o endereço e confirme o aceite por lá.';
+  } catch (_) {
+    window.prompt('Copie este link e abra no Safari:', location.href);
+  }
+});

@@ -129,7 +129,7 @@ public class ConsultantService {
             applyAnalystAssignment(collaborator, requestedRole, assignedAnalystId);
         }
 
-        Consultant saved = repository.save(collaborator);
+        Consultant saved = repository.saveAndFlush(collaborator);
         syncOpenInspectionAssignments(saved);
         auditRepository.save(CatalogChangeAudit.createText(
                 "COLLABORATOR", null, saved.getId().toString(),
@@ -229,7 +229,7 @@ public class ConsultantService {
             collaborator.assignAnalyst(null);
         }
 
-        Consultant saved = repository.save(collaborator);
+        Consultant saved = repository.saveAndFlush(collaborator);
         syncOpenInspectionAssignments(saved);
         auditRepository.save(CatalogChangeAudit.createText(
                 "COLLABORATOR", null, id.toString(), "Colaborador alterado — " + saved.getName(),
@@ -279,12 +279,26 @@ public class ConsultantService {
 
     private void syncOpenInspectionAssignments(Consultant collaborator) {
         if (collaborator.getRole() != CollaboratorRole.CONSULTANT) return;
-        for (InspectionRequest inspection : inspectionRepository.findAllByConsultant_IdOrderByCreatedAtDesc(collaborator.getId())) {
-            if (inspection.getAnalysisStage() == InspectionAnalysisStage.FINISHED
-                    || inspection.getAnalysisStage() == InspectionAnalysisStage.SUPERVISION_QUEUE) continue;
-            inspection.assignAnalyst(collaborator.getAssignedAnalyst());
-        }
-        inspectionRepository.flush();
+
+        // A troca de analista de um consultor deve afetar somente vistorias que ainda
+        // estão efetivamente na fila dos analistas. Cotações/vendas e vistorias já
+        // concluídas permanecem como histórico e não participam da transferência.
+        // O update em lote também evita carregar anexos/relatórios antigos durante a
+        // simples edição do colaborador, o que causava erro 500 em consultores com
+        // histórico grande de atividades.
+        Consultant analyst = collaborator.getAssignedAnalyst();
+        inspectionRepository.reassignPendingAnalysisForConsultant(
+                collaborator.getId(),
+                analyst,
+                analyst == null ? null : analyst.getName(),
+                List.of(InspectionAnalysisStage.ANALYST_QUEUE, InspectionAnalysisStage.ANALYST_PENDING),
+                List.of(
+                        InspectionRequestStatus.APPROVED,
+                        InspectionRequestStatus.REJECTED,
+                        InspectionRequestStatus.CANCELLED,
+                        InspectionRequestStatus.EXPIRED
+                )
+        );
     }
 
     private boolean portalRoleMatchesCollaborator(CollaboratorRole collaboratorRole, br.com.nh.cotacao.security.PortalRole portalRole) {

@@ -485,3 +485,10 @@ A **Novo Horizonte Proteção Veicular** possui o direito de utilização da pla
 É proibida a cópia, modificação, redistribuição, sublicenciamento, comercialização ou reutilização total ou parcial deste código por terceiros sem autorização prévia e expressa de **Carlos Lima**.
 
 Para solicitações relacionadas ao uso do código ou da propriedade intelectual, entre em contato pelo [LinkedIn de Carlos Lima](https://www.linkedin.com/in/devcarloslima/).
+
+## Correções de compatibilidade — 2026-08-25
+
+- Transferência/vinculação de consultores a analistas passa a atualizar somente vistorias ainda pendentes de análise, preservando cotações, vendas e históricos concluídos.
+- Limite visual e de negócio unificado em 30 consultores por analista.
+- WebAuthn no iPhone: detecção de navegadores internos/terceiros, orientação para Safari, retomada de credencial já criada e fluxo compatível com provedores de chaves-senha do iOS.
+- A senha/PIN/Face ID/Touch ID do aparelho nunca é enviado ao servidor; a verificação é feita localmente pelo autenticador do dispositivo.

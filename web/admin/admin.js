@@ -595,8 +595,8 @@ function populateConsultantAnalysts(item = null) {
     .forEach(value => {
       const count = Number(value.assignedConsultantCount || 0);
       const current = String(item?.assignedAnalystId || '') === String(value.id);
-      const full = count >= 15 && !current;
-      options.push(`<option value="${value.id}" ${full ? 'disabled' : ''}>${esc(value.name)} · ${count}/15${full ? ' · equipe completa' : ''}</option>`);
+      const full = count >= 30 && !current;
+      options.push(`<option value="${value.id}" ${full ? 'disabled' : ''}>${esc(value.name)} · ${count}/30${full ? ' · equipe completa' : ''}</option>`);
     });
   select.innerHTML = options.join('');
   select.value = item?.assignedAnalystId || '';

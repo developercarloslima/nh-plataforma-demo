@@ -2,6 +2,8 @@ package br.com.nh.cotacao.repository;
 
 import br.com.nh.cotacao.entity.InspectionRequest;
 import br.com.nh.cotacao.entity.InspectionRequestStatus;
+import br.com.nh.cotacao.entity.InspectionAnalysisStage;
+import br.com.nh.cotacao.entity.Consultant;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -44,6 +46,23 @@ public interface InspectionRequestRepository extends JpaRepository<InspectionReq
 
     @EntityGraph(attributePaths = {"assets", "consultant", "quotation", "assignedAnalyst"})
     List<InspectionRequest> findAllByAssignedAnalyst_IdOrderByCreatedAtDesc(UUID analystId);
+
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            update InspectionRequest i
+               set i.assignedAnalyst = :analyst,
+                   i.assignedAnalystName = :analystName
+             where i.consultant.id = :consultantId
+               and (i.analysisStage is null or i.analysisStage in (:pendingStages))
+               and i.status not in (:finalStatuses)
+            """)
+    int reassignPendingAnalysisForConsultant(
+            @Param("consultantId") UUID consultantId,
+            @Param("analyst") Consultant analyst,
+            @Param("analystName") String analystName,
+            @Param("pendingStages") List<InspectionAnalysisStage> pendingStages,
+            @Param("finalStatuses") List<InspectionRequestStatus> finalStatuses
+    );
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("delete from InspectionRequest i where i.createdAt < :cutoff")
