@@ -37,7 +37,7 @@ import java.util.zip.ZipOutputStream;
 public class InspectionAssetStorageService {
     private static final Logger log = LoggerFactory.getLogger(InspectionAssetStorageService.class);
     private static final int DIRECT_CHUNK_BYTES = 4 * 1024 * 1024;
-    private static final long MAX_VIDEO_BYTES = 10L * 1024 * 1024;
+    private static final long MAX_VIDEO_BYTES = 15L * 1024 * 1024;
     private static final Path VIDEO_DOWNLOAD_CACHE_DIR = Path.of(System.getProperty("java.io.tmpdir"), "nh-video-download-cache");
 
     private final InspectionAssetRepository assetRepository;
@@ -460,7 +460,7 @@ public class InspectionAssetStorageService {
     }
 
     public boolean isAvailable(InspectionAsset asset) {
-        // O limite de 10 MB vale somente para NOVOS uploads.
+        // O limite de 15 MB vale somente para NOVOS uploads.
         // Vídeos legados maiores permanecem disponíveis até o fim da retenção e
         // são compactados apenas no momento do download, sem destruir o original.
         return asset != null
@@ -486,7 +486,7 @@ public class InspectionAssetStorageService {
     }
 
     /**
-     * Para vídeos legados acima de 10 MB, preserva o original no PostgreSQL e
+     * Para vídeos legados acima de 15 MB, preserva o original no PostgreSQL e
      * entrega uma cópia WebM (VP8/Opus) compactada somente durante o download.
      */
     @Transactional(readOnly = true)
@@ -501,7 +501,7 @@ public class InspectionAssetStorageService {
 
     /**
      * Gera a cópia compactada por completo antes de iniciar a resposta HTTP.
-     * Como o resultado é limitado a 10 MB, evitamos manter uma resposta
+     * Como o resultado é limitado a 15 MB, evitamos manter uma resposta
      * assíncrona aberta durante o ffmpeg e eliminamos falsos 403 no download.
      */
     @Transactional(readOnly = true)
@@ -509,7 +509,7 @@ public class InspectionAssetStorageService {
         if (asset == null || !requiresVideoDownloadCompression(asset)) {
             throw new IllegalArgumentException("Este arquivo não requer compactação de vídeo.");
         }
-        ByteArrayOutputStream output = new ByteArrayOutputStream((int) Math.min(MAX_VIDEO_BYTES, 10_000_000L));
+        ByteArrayOutputStream output = new ByteArrayOutputStream((int) Math.min(MAX_VIDEO_BYTES, 15_000_000L));
         writeCompressedVideo(asset, output);
         return output.toByteArray();
     }
@@ -543,7 +543,7 @@ public class InspectionAssetStorageService {
             }
 
             compressed = Files.createTempFile("nh-video-download-", ".webm");
-            long[] targets = { 7_500_000L, 6_500_000L };
+            long[] targets = { 12_500_000L, 11_000_000L };
             boolean success = false;
             for (long targetBytes : targets) {
                 Files.deleteIfExists(compressed);
@@ -556,7 +556,7 @@ public class InspectionAssetStorageService {
                 }
             }
             if (!success) {
-                throw new IllegalStateException("Não foi possível compactar o vídeo para até 10 MB.");
+                throw new IllegalStateException("Não foi possível compactar o vídeo para até 15 MB.");
             }
 
             Files.copy(compressed, cached, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
@@ -600,7 +600,7 @@ public class InspectionAssetStorageService {
 
     private void transcodeVideo(Path source, Path destination, double durationSeconds, long targetBytes) throws Exception {
         // Reserva margem para container/metadata e áudio. O objetivo é ficar
-        // confortavelmente abaixo de 10 MB em vez de encostar no limite.
+        // confortavelmente abaixo de 15 MB em vez de encostar no limite.
         long targetTotalBps = Math.max(120_000L, (long) Math.floor((targetBytes * 8.0) / durationSeconds));
         long audioBps = Math.min(32_000L, Math.max(20_000L, targetTotalBps / 8));
         long videoBps = Math.max(80_000L, targetTotalBps - audioBps - 20_000L);
@@ -645,8 +645,8 @@ public class InspectionAssetStorageService {
     }
 
     private void validateStorageLimit(InspectionAssetType type, long fileSize) {
-        if (type == InspectionAssetType.VIDEO && fileSize > MAX_VIDEO_BYTES) {
-            throw new IllegalArgumentException("O vídeo da vistoria deve possuir no máximo 10 MB.");
+        if (fileSize > MAX_VIDEO_BYTES) {
+            throw new IllegalArgumentException("Cada arquivo enviado deve possuir no máximo 15 MB.");
         }
     }
 

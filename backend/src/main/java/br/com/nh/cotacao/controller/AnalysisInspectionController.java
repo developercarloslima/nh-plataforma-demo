@@ -2,6 +2,7 @@ package br.com.nh.cotacao.controller;
 
 import br.com.nh.cotacao.dto.AdminDtos.AdminInspectionResponse;
 import br.com.nh.cotacao.dto.AdminDtos.UpdateInspectionStatusRequest;
+import br.com.nh.cotacao.dto.AdminDtos.UpdateInspectionDetailsRequest;
 import br.com.nh.cotacao.dto.PortalDtos.ConsultantResponse;
 import br.com.nh.cotacao.security.PortalPrincipal;
 import br.com.nh.cotacao.service.AdminActivityService;
@@ -33,6 +34,16 @@ public class AnalysisInspectionController {
 
     @GetMapping("/analysts")
     public List<ConsultantResponse> analysts() { return consultantService.activeAnalysts(); }
+
+    @PatchMapping("/{id}/details")
+    public AdminInspectionResponse updateDetails(
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateInspectionDetailsRequest request,
+            Authentication authentication
+    ) {
+        PortalPrincipal principal = (PortalPrincipal) authentication.getPrincipal();
+        return service.updateInspectionDetails(id, request, principal.username(), principal.role());
+    }
 
     @PostMapping("/{id}/registration-complete")
     public AdminInspectionResponse registrationComplete(

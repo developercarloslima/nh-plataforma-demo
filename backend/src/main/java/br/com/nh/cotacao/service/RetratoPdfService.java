@@ -42,8 +42,14 @@ import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
 
 import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.math.BigDecimal;
@@ -54,6 +60,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -76,7 +83,11 @@ public class RetratoPdfService {
     private static final String ASSOCIATION_NAME = "ASSOCIAÇÃO DE PROTEÇÃO VEICULAR NOVO HORIZONTE";
     private static final String ASSOCIATION_CNPJ = "38.078.339/0001-83";
     private static final String ASSOCIATION_LOCATION = "Maceió/AL";
-    public static final String REPORT_LAYOUT_VERSION = "NH_RETRATO_LAYOUT_V47";
+    public static final String REPORT_LAYOUT_VERSION = "NH_RETRATO_LAYOUT_V49_COMPACT_15MB";
+    /** Limite funcional do PDF final para compartilhamento/download. */
+    public static final int MAX_FINAL_PDF_BYTES = 15_000_000;
+    private static final int TARGET_FINAL_PDF_BYTES = 14_500_000;
+    private static final int[] COMPACT_DPI_LEVELS = {110, 96, 84, 72, 60, 50, 42, 36};
     private static final int PHOTO_GRID_COLUMNS = 3;
     private static final int DOCUMENT_GRID_COLUMNS = 2;
     private static final float PAGE_FOOTER_TOP = 82f;
@@ -120,7 +131,8 @@ public class RetratoPdfService {
             }
 
             document.close();
-            return stampRequiredSignaturesOnEveryPage(request, output.toByteArray(), null);
+            byte[] stamped = stampRequiredSignaturesOnEveryPage(request, output.toByteArray(), null);
+            return optimizeFinalPdfSize(stamped);
         } catch (Exception exception) {
             throw new IllegalStateException("Não foi possível gerar o relatório da vistoria.", exception);
         }
@@ -132,7 +144,9 @@ public class RetratoPdfService {
         try {
             reader = new PdfReader(pdfBytes);
             String keywords = reader.getInfo().get("Keywords");
-            return keywords != null && keywords.contains(REPORT_LAYOUT_VERSION);
+            return keywords != null
+                    && keywords.contains(REPORT_LAYOUT_VERSION)
+                    && pdfBytes.length <= MAX_FINAL_PDF_BYTES;
         } catch (Exception ignored) {
             return false;
         } finally {
@@ -187,7 +201,8 @@ public class RetratoPdfService {
                 appendLegacyAnnex(document, writer, legacyReport);
             }
             document.close();
-            return stampRequiredSignaturesOnEveryPage(request, output.toByteArray(), legacyReport);
+            byte[] stamped = stampRequiredSignaturesOnEveryPage(request, output.toByteArray(), legacyReport);
+            return optimizeFinalPdfSize(stamped);
         } catch (Exception exception) {
             throw new IllegalStateException("Não foi possível padronizar o dossiê histórico da vistoria.", exception);
         }
@@ -277,6 +292,8 @@ public class RetratoPdfService {
         addLabelValue(table, "Placa", request.getPlate() == null || request.getPlate().isBlank() ? "Veículo 0 km - sem placa" : request.getPlate());
         addLabelValue(table, "Tipo", request.getRequestType().name().equals("NEW_INSPECTION") ? "Nova vistoria" : "Atualização de boleto");
         addLabelValue(table, "Veículo", request.getVehicleType().displayName());
+        addLabelValue(table, "Modelo", request.getVehicleModel() == null || request.getVehicleModel().isBlank() ? "-" : request.getVehicleModel());
+        addLabelValue(table, "Ano do modelo", request.getModelYear() == null ? "-" : request.getModelYear().toString());
         addLabelValue(table, "Criada em", request.getCreatedAt() == null ? "-" : request.getCreatedAt().format(DATE_TIME));
         addLabelValue(table, "Vistoria", shortInspectionId(request));
         if (request.getResidenceAddress() != null && !request.getResidenceAddress().isBlank()) {
@@ -1113,12 +1130,12 @@ public class RetratoPdfService {
             PDFRenderer renderer = new PDFRenderer(pdf);
             int totalPages = pdf.getNumberOfPages();
             for (int pageIndex = 0; pageIndex < totalPages; pageIndex++) {
-                BufferedImage rendered = renderer.renderImageWithDPI(pageIndex, 105, ImageType.RGB);
-                try (ByteArrayOutputStream imageOutput = new ByteArrayOutputStream()) {
-                    ImageIO.write(rendered, "jpg", imageOutput);
+                BufferedImage rendered = renderer.renderImageWithDPI(pageIndex, 92, ImageType.RGB);
+                try {
+                    byte[] preview = encodeJpeg(rendered, 0.62f);
                     String pageLabel = safeValue(label, "Documento PDF") + " - página " + (pageIndex + 1) + "/" + totalPages;
                     String pageFileName = safeValue(fileName, "documento.pdf") + " - página " + (pageIndex + 1);
-                    cards.add(AssetCard.image(pageLabel, pageFileName, imageOutput.toByteArray(), assetType, sizeLabel));
+                    cards.add(AssetCard.image(pageLabel, pageFileName, preview, assetType, sizeLabel));
                 } finally {
                     rendered.flush();
                 }
@@ -1161,6 +1178,153 @@ public class RetratoPdfService {
             try { if (stamper != null) stamper.close(); } catch (Exception ignored) {}
             try { if (reader != null) reader.close(); } catch (Exception ignored) {}
         }
+    }
+
+    /**
+     * Mantém o dossiê final em até 15 MB. Primeiro preserva o PDF vetorial original
+     * quando ele já cabe no limite. Se ultrapassar, cria uma cópia de entrega
+     * compactada página a página. As assinaturas, decisão e regulamento continuam
+     * visualmente presentes porque a compactação ocorre somente após a montagem e
+     * o carimbo de todas as páginas.
+     *
+     * Os arquivos-fonte da vistoria continuam preservados no armazenamento do
+     * sistema; a cópia compacta evita duplicar anexos binários pesados dentro do PDF.
+     */
+    private byte[] optimizeFinalPdfSize(byte[] pdfBytes) {
+        if (pdfBytes == null || pdfBytes.length == 0 || pdfBytes.length <= MAX_FINAL_PDF_BYTES) {
+            return pdfBytes;
+        }
+
+        byte[] smallest = pdfBytes;
+        for (int dpi : COMPACT_DPI_LEVELS) {
+            try {
+                byte[] compact = rasterizeToCompactPdf(pdfBytes, dpi);
+                if (compact.length < smallest.length) {
+                    smallest = compact;
+                }
+                if (compact.length <= MAX_FINAL_PDF_BYTES) {
+                    return compact;
+                }
+            } catch (Exception ignored) {
+                // Tenta o próximo nível de compactação sem perder o dossiê original.
+            }
+        }
+
+        if (smallest.length <= MAX_FINAL_PDF_BYTES) {
+            return smallest;
+        }
+        throw new IllegalStateException(
+                "O dossiê possui páginas demais para atingir o limite de 15 MB sem comprometer a leitura. "
+                        + "Tamanho mínimo obtido: " + humanSize(smallest.length) + "."
+        );
+    }
+
+    private byte[] rasterizeToCompactPdf(byte[] sourcePdf, int dpi) throws Exception {
+        try (PDDocument source = Loader.loadPDF(sourcePdf);
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            int pages = Math.max(1, source.getNumberOfPages());
+            int pageBudget = Math.max(32_000, (TARGET_FINAL_PDF_BYTES - 180_000) / pages);
+
+            Document compact = new Document(PageSize.A4, 0, 0, 0, 0);
+            PdfWriter compactWriter = PdfWriter.getInstance(compact, output);
+            compact.addTitle("Dossiê digital compactado - Novo Horizonte");
+            compact.addAuthor("Novo Horizonte Proteção Veicular");
+            compact.addSubject("Dossiê final otimizado para compartilhamento em até 15 MB");
+            compact.addKeywords(REPORT_LAYOUT_VERSION + ";COMPACT_DELIVERY");
+            compact.open();
+
+            PDFRenderer renderer = new PDFRenderer(source);
+            for (int pageIndex = 0; pageIndex < pages; pageIndex++) {
+                if (pageIndex > 0) compact.newPage();
+                BufferedImage rendered = renderer.renderImageWithDPI(pageIndex, dpi, ImageType.RGB);
+                try {
+                    byte[] jpeg = encodeJpegForBudget(rendered, pageBudget);
+                    Image page = Image.getInstance(jpeg);
+                    page.scaleAbsolute(PageSize.A4.getWidth(), PageSize.A4.getHeight());
+                    page.setAbsolutePosition(0, 0);
+                    compactWriter.getDirectContent().addImage(page);
+                } finally {
+                    rendered.flush();
+                }
+            }
+            compact.close();
+            return output.toByteArray();
+        }
+    }
+
+    private byte[] encodeJpegForBudget(BufferedImage source, int targetBytes) throws Exception {
+        BufferedImage current = ensureRgb(source);
+        byte[] best = null;
+        float[] qualities = {0.74f, 0.66f, 0.58f, 0.50f, 0.43f, 0.37f, 0.32f};
+
+        for (int resizeRound = 0; resizeRound < 8; resizeRound++) {
+            for (float quality : qualities) {
+                byte[] encoded = encodeJpeg(current, quality);
+                if (best == null || encoded.length < best.length) best = encoded;
+                if (encoded.length <= targetBytes) return encoded;
+            }
+
+            int nextWidth = Math.max(260, Math.round(current.getWidth() * 0.86f));
+            int nextHeight = Math.max(368, Math.round(current.getHeight() * 0.86f));
+            if (nextWidth >= current.getWidth() || nextHeight >= current.getHeight()) break;
+            BufferedImage resized = resizeRgb(current, nextWidth, nextHeight);
+            if (current != source) current.flush();
+            current = resized;
+        }
+        return best == null ? encodeJpeg(current, 0.30f) : best;
+    }
+
+    private byte[] encodeJpeg(BufferedImage source, float quality) throws Exception {
+        BufferedImage rgb = ensureRgb(source);
+        Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpeg");
+        if (!writers.hasNext()) {
+            throw new IllegalStateException("Codificador JPEG não disponível no servidor.");
+        }
+        ImageWriter imageWriter = writers.next();
+        try (ByteArrayOutputStream output = new ByteArrayOutputStream();
+             ImageOutputStream imageOutput = ImageIO.createImageOutputStream(output)) {
+            imageWriter.setOutput(imageOutput);
+            ImageWriteParam params = imageWriter.getDefaultWriteParam();
+            if (params.canWriteCompressed()) {
+                params.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+                params.setCompressionQuality(Math.max(0.25f, Math.min(0.90f, quality)));
+            }
+            imageWriter.write(null, new IIOImage(rgb, null, null), params);
+            imageOutput.flush();
+            return output.toByteArray();
+        } finally {
+            imageWriter.dispose();
+            if (rgb != source) rgb.flush();
+        }
+    }
+
+    private BufferedImage ensureRgb(BufferedImage source) {
+        if (source.getType() == BufferedImage.TYPE_INT_RGB) return source;
+        BufferedImage rgb = new BufferedImage(source.getWidth(), source.getHeight(), BufferedImage.TYPE_INT_RGB);
+        Graphics2D graphics = rgb.createGraphics();
+        try {
+            graphics.setColor(Color.WHITE);
+            graphics.fillRect(0, 0, rgb.getWidth(), rgb.getHeight());
+            graphics.drawImage(source, 0, 0, null);
+        } finally {
+            graphics.dispose();
+        }
+        return rgb;
+    }
+
+    private BufferedImage resizeRgb(BufferedImage source, int width, int height) {
+        BufferedImage resized = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        Graphics2D graphics = resized.createGraphics();
+        try {
+            graphics.setColor(Color.WHITE);
+            graphics.fillRect(0, 0, width, height);
+            graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            graphics.drawImage(source, 0, 0, width, height, null);
+        } finally {
+            graphics.dispose();
+        }
+        return resized;
     }
 
     private String humanSize(long bytes) {

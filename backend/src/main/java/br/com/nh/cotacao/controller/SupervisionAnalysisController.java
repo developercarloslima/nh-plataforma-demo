@@ -2,6 +2,7 @@ package br.com.nh.cotacao.controller;
 
 import br.com.nh.cotacao.dto.AdminDtos.AdminInspectionResponse;
 import br.com.nh.cotacao.dto.AdminDtos.UpdateInspectionStatusRequest;
+import br.com.nh.cotacao.dto.AdminDtos.UpdateInspectionDetailsRequest;
 import br.com.nh.cotacao.security.PortalPrincipal;
 import br.com.nh.cotacao.service.AdminActivityService;
 import jakarta.validation.Valid;
@@ -26,6 +27,16 @@ public class SupervisionAnalysisController {
         return service.inspectionsForSupervision();
     }
 
+    @PatchMapping("/{id}/details")
+    public AdminInspectionResponse updateDetails(
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateInspectionDetailsRequest request,
+            Authentication authentication
+    ) {
+        PortalPrincipal principal = (PortalPrincipal) authentication.getPrincipal();
+        return service.updateInspectionDetails(id, request, principal.username(), principal.role());
+    }
+
     @PatchMapping("/{id}/supervision-note")
     public AdminInspectionResponse updateSupervisionNote(
             @PathVariable UUID id,
@@ -34,6 +45,16 @@ public class SupervisionAnalysisController {
     ) {
         PortalPrincipal principal = (PortalPrincipal) authentication.getPrincipal();
         return service.updateSupervisionNote(id, request.note(), principal.username(), principal.role());
+    }
+
+    @PostMapping("/{id}/registration-complete")
+    public AdminInspectionResponse registrationComplete(
+            @PathVariable UUID id,
+            @Valid @RequestBody SupervisionRegistrationRequest request,
+            Authentication authentication
+    ) {
+        PortalPrincipal principal = (PortalPrincipal) authentication.getPrincipal();
+        return service.markRegistrationCompleted(id, request.note(), principal.username(), principal.role());
     }
 
     @PatchMapping("/{id}/status")
@@ -53,4 +74,5 @@ public class SupervisionAnalysisController {
     }
 
     public record SupervisionNoteRequest(@Size(max = 1200) String note) {}
+    public record SupervisionRegistrationRequest(@Size(max = 1200) String note) {}
 }

@@ -605,7 +605,7 @@
             />
           </label>
           <p class="helper">
-            Envie somente PDF, com até 20 MB. Ao salvar, o botão do site passa a
+            Envie somente PDF, com até 15 MB. Ao salvar, o botão do site passa a
             baixar este arquivo automaticamente.
           </p>
           <div class="actions" style="margin-top: 14px">
@@ -1242,6 +1242,17 @@
         </div>
         <input id="quote-analysis-id" type="hidden" />
         <div id="quote-detail-grid" class="detail-grid"></div>
+        <section class="message" style="margin-top:18px">
+          <strong>Editar dados do associado e veículo</strong>
+          <p>Admin pode corrigir estes dados sem alterar plano, FIPE, coberturas, CPF ou placa. Se existir vistoria vinculada, ela será sincronizada.</p>
+          <div class="form-grid" style="margin-top:12px">
+            <label>Nome do associado<input id="quote-edit-name" maxlength="120"></label>
+            <label>WhatsApp<input id="quote-edit-whatsapp" maxlength="30" inputmode="tel" placeholder="(82) 99999-9999"></label>
+            <label>Modelo do veículo<input id="quote-edit-model" maxlength="120"></label>
+            <label>Ano do modelo<input id="quote-edit-model-year" type="number" min="1950" max="2100"></label>
+          </div>
+          <div class="actions" style="margin-top:10px"><button id="quote-save-details" class="secondary" type="button">Salvar dados corrigidos</button></div>
+        </section>
         <div class="form-grid" style="margin-top: 18px">
           <label id="quote-analysis-consultant-field" class="span-2" hidden
             >Consultor responsável
@@ -1300,6 +1311,17 @@
         </div>
         <input id="inspection-analysis-id" type="hidden" />
         <div id="inspection-detail-grid" class="detail-grid"></div>
+        <section class="message" style="margin-top:18px">
+          <strong>Editar dados do associado e veículo</strong>
+          <p>Admin pode corrigir nome, WhatsApp, modelo e ano do modelo. A cotação vinculada também será atualizada.</p>
+          <div class="form-grid" style="margin-top:12px">
+            <label>Nome do associado<input id="inspection-edit-name" maxlength="140"></label>
+            <label>WhatsApp<input id="inspection-edit-whatsapp" maxlength="30" inputmode="tel" placeholder="(82) 99999-9999"></label>
+            <label>Modelo do veículo<input id="inspection-edit-model" maxlength="120"></label>
+            <label>Ano do modelo<input id="inspection-edit-model-year" type="number" min="1950" max="2100"></label>
+          </div>
+          <div class="actions" style="margin-top:10px"><button id="inspection-save-details" class="secondary" type="button">Salvar dados corrigidos</button></div>
+        </section>
         <section
           id="admin-inspection-files-section"
           class="inspection-media-section"
@@ -1351,7 +1373,7 @@
         <div id="inspection-links" class="actions"></div>
         <div id="admin-registration-actions" class="actions" style="margin-top:18px">
           <button id="admin-registration-not-complete" class="outline" type="button">Cadastro não feito</button>
-          <button id="admin-registration-complete" class="secondary" type="button">✓ Cadastro feito · Enviar à supervisão</button>
+          <button id="admin-registration-complete" class="secondary" type="button">✓ Cadastro realizado · Liberar decisão</button>
         </div>
         <div id="admin-inspection-decision-actions" class="actions" style="margin-top:18px">
           <button id="admin-inspection-reject" class="danger" type="button">Rejeitar como Supervisão</button>
@@ -1421,7 +1443,7 @@
     <script src="/shared/config.js?v=20260804-current-origin"></script>
     <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
     <script src="/shared/money-input.js?v=20260805-brl-mask"></script>
-    <script src="/admin/admin.js?v=20260820-admin-supervision-v1"></script>
+    <script src="/admin/admin.js?v=20260831-editable-data-15mb-v1"></script>
     <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
   
   <div class="nh-dev-credit" aria-label="Crédito de desenvolvimento">

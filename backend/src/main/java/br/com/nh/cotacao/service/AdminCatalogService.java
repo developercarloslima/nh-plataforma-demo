@@ -190,23 +190,35 @@ public class AdminCatalogService {
     @Transactional
     public void deletePlan(Long id, String username) {
         Plan plan = findPlan(id);
-        List<Long> coverageIds = planCoverageRepository.findByPlan_Id(id).stream()
-                .map(item -> item.getCoverage().getId())
-                .distinct()
-                .toList();
-        int priceCount = priceRepository.findByPlan_Id(id).size();
-        int coverageCount = coverageIds.size();
+
+        // O histórico das cotações guarda snapshots do código/nome/valor do plano e
+        // não possui FK para plans. Portanto, excluir o catálogo não apaga vendas
+        // nem cotações antigas.
+        long priceCount = priceRepository.countByPlan_Id(id);
+        long coverageCount = planCoverageRepository.countByPlan_Id(id);
+        List<Long> coverageIds = planCoverageRepository.findCoverageIdsByPlanId(id);
         String old = planSummary(plan)
                 + "; faixas=" + priceCount
                 + "; coberturas=" + coverageCount;
         String name = plan.getName();
-        planRepository.delete(plan);
+
+        // Removemos explicitamente os filhos antes do plano. Apesar das FKs terem
+        // ON DELETE CASCADE, fazer o delete em lote evita conflito entre o cascade
+        // do PostgreSQL e entidades PlanCoverage/PriceRange gerenciadas pelo Hibernate.
+        priceRepository.deleteAllByPlanId(id);
+        planCoverageRepository.deleteAllByPlanId(id);
+        planRepository.deleteById(id);
         planRepository.flush();
+
+        // Se uma cobertura pertencia somente a esse plano, removemos também a
+        // definição e suas regras. As coberturas compartilhadas são preservadas.
         for (Long coverageId : coverageIds) {
             if (planCoverageRepository.countByCoverage_Id(coverageId) == 0) {
+                coverageRuleRepository.deleteByCoverage_Id(coverageId);
                 coverageRepository.deleteById(coverageId);
             }
         }
+
         auditRepository.save(CatalogChangeAudit.createText(
                 "PLAN", id, "Plano excluído — " + name, old, null, username
         ));

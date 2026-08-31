@@ -159,11 +159,16 @@ class QuotationTest {
                 quotation.getCustomerName(), quotation.getCustomerCpf(),
                 quotation.getWhatsapp(), quotation.getPlate()
         );
+        inspection.updateEditableAssociateVehicleData(
+                quotation.getCustomerName(), quotation.getWhatsapp(), quotation.getModel(), quotation.getManufactureYear()
+        );
 
         assertEquals("Novo Nome", inspection.getAssociateName());
         assertEquals("52998224725", inspection.getCpf());
         assertEquals("82988887777", inspection.getWhatsapp());
         assertEquals("DEF4G56", inspection.getPlate());
+        assertEquals("Modelo novo", inspection.getVehicleModel());
+        assertEquals(2026, inspection.getModelYear());
         assertEquals(new BigDecimal("100.00"), quotation.getMonthlyValue());
     }
 

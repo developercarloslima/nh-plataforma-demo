@@ -1227,7 +1227,15 @@ async function loadPhotoSource(file) {
   }
 }
 
+const UPLOAD_MAX_BYTES = 15 * 1024 * 1024;
+
 async function compressPhoto(file) {
+  if (!file || file.size <= 0) {
+    throw new Error('A foto selecionada está vazia.');
+  }
+  if (file.size > UPLOAD_MAX_BYTES) {
+    throw new Error('Cada arquivo enviado deve possuir no máximo 15 MB.');
+  }
   const photo = await loadPhotoSource(file);
   try {
     const maxDimension = 1920;
@@ -1244,6 +1252,9 @@ async function compressPhoto(file) {
     const blob = await new Promise((resolve, reject) =>
       canvas.toBlob(result => result ? resolve(result) : reject(new Error('Não foi possível processar a foto.')), 'image/jpeg', 0.84)
     );
+    if (blob.size > UPLOAD_MAX_BYTES) {
+      throw new Error('A foto processada ultrapassou 15 MB. Tire a foto novamente com uma resolução menor.');
+    }
     return new File([blob], `vistoria-${state.inspectionIndex + 1}.jpg`, { type: 'image/jpeg' });
   } finally {
     photo.close();

@@ -206,6 +206,20 @@ public final class AdminDtos {
 
     public record UpdateQuoteConsultantRequest(@NotNull UUID consultantId) {}
 
+    public record UpdateAdminQuoteDetailsRequest(
+            @NotBlank @Size(max = 120) String customerName,
+            @Size(max = 30) String whatsapp,
+            @NotBlank @Size(max = 120) String model,
+            @NotNull @Min(1950) @Max(2100) Integer modelYear
+    ) {}
+
+    public record UpdateInspectionDetailsRequest(
+            @NotBlank @Size(max = 140) String associateName,
+            @Size(max = 30) String whatsapp,
+            @NotBlank @Size(max = 120) String model,
+            @NotNull @Min(1950) @Max(2100) Integer modelYear
+    ) {}
+
     public record UpdatePublicQuoteAssignmentSettingsRequest(@NotNull Boolean enabled) {}
 
     public record PublicQuoteAssignmentSettingsResponse(
@@ -271,6 +285,8 @@ public final class AdminDtos {
             String maskedCpf,
             String whatsapp,
             String plate,
+            String vehicleModel,
+            Integer modelYear,
             String residenceAddress,
             String contractedPlan,
             Integer billingDueDay,

@@ -308,7 +308,7 @@ function inspectionWorkflowBadge(item) {
       return statusBadge('Aguardando documentos', 'warn');
     }
     if (item.analysisStage === 'SUPERVISION_QUEUE' || item.registrationCompletedAt) {
-      return statusBadge('Cadastro feito', 'ok');
+      return statusBadge('Cadastro realizado', 'ok');
     }
     if (item.analysisStage === 'ANALYST_QUEUE') {
       return statusBadge('Cadastro não feito', 'warn');
@@ -882,6 +882,10 @@ function openQuoteAnalysis(id) {
   $('quote-dialog-title').textContent = item.quoteNumber;
   $('quote-analysis-status').value = item.status;
   $('quote-analysis-note').value = item.adminNote || '';
+  $('quote-edit-name').value = item.customerName || '';
+  $('quote-edit-whatsapp').value = formatPhone(item.whatsapp) || '';
+  $('quote-edit-model').value = item.model || '';
+  $('quote-edit-model-year').value = item.manufactureYear || '';
   const consultantField = $('quote-analysis-consultant-field');
   consultantField.hidden = item.origin !== 'SELF_SERVICE';
   if (item.origin === 'SELF_SERVICE') populateQuoteConsultantSelect(item);
@@ -920,7 +924,7 @@ function openQuoteAnalysis(id) {
 function adminSupervisionStageLabel(item) {
   if (item?.status === 'APPROVED') return item.reviewedByRole === 'ADMIN_SUPERVISION' ? 'Aprovada pelo Admin como Supervisão' : 'Aprovada pela Supervisão';
   if (item?.status === 'REJECTED') return item.reviewedByRole === 'ADMIN_SUPERVISION' ? 'Rejeitada pelo Admin como Supervisão' : 'Rejeitada pela Supervisão';
-  if (item?.analysisStage === 'SUPERVISION_QUEUE') return 'Cadastro feito · aguardando decisão da Supervisão';
+  if (item?.analysisStage === 'SUPERVISION_QUEUE') return 'Cadastro realizado · aguardando decisão da Supervisão';
   if (item?.analysisStage === 'ANALYST_PENDING') return 'Pendência do analista / aguardando documentos';
   if (item?.analysisStage === 'ANALYST_QUEUE') return 'Em análise / cadastro ainda não concluído';
   return 'Em acompanhamento';
@@ -965,6 +969,12 @@ function openInspectionAnalysis(id) {
   $('inspection-analysis-id').value = item.id;
   $('inspection-dialog-title').textContent = `${item.plate || '0 km — sem placa'} — ${item.associateName}`;
   $('inspection-analysis-note').value = item.adminNote || '';
+  $('inspection-edit-name').value = item.associateName || '';
+  $('inspection-edit-whatsapp').value = formatPhone(item.whatsapp) || '';
+  $('inspection-edit-model').value = item.vehicleModel || '';
+  $('inspection-edit-model-year').value = item.modelYear || '';
+  const inspectionEditableLocked = Boolean(item.digitalAcceptedAt);
+  ['inspection-edit-name','inspection-edit-whatsapp','inspection-edit-model','inspection-edit-model-year','inspection-save-details'].forEach(id => { const el = $(id); if (el) el.disabled = inspectionEditableLocked; });
   $('admin-supervision-note').value = item.supervisionNote || '';
   $('admin-supervision-note-meta').textContent = item.supervisionNoteUpdatedAt
     ? `Última atualização: ${date(item.supervisionNoteUpdatedAt)}${item.supervisionNoteByName ? ` por ${item.supervisionNoteByName}` : ''}. Visível para o analista.`
@@ -981,7 +991,7 @@ function openInspectionAnalysis(id) {
   statusSelect.disabled = awaitingSupervision || finished;
   $('admin-save-analysis').hidden = awaitingSupervision || finished;
   $('admin-registration-actions').hidden = awaitingSupervision || finished;
-  $('admin-registration-complete').disabled = !readyForAnalysis || needsFiles;
+  $('admin-registration-complete').disabled = finished || awaitingSupervision;
   $('admin-registration-not-complete').disabled = !readyForAnalysis || needsFiles;
   const canFinalDecision = awaitingSupervision;
   $('admin-inspection-decision-actions').hidden = !canFinalDecision;
@@ -993,6 +1003,7 @@ function openInspectionAnalysis(id) {
   const inspectionDetails = [
     ['Associado', item.associateName], ['CPF', item.maskedCpf], ['WhatsApp', formatPhone(item.whatsapp) || '—'],
     ['Consultor', item.consultantName], ['Placa', item.plate || '0 km — sem placa'],
+    ['Modelo', item.vehicleModel || '—'], ['Ano do modelo', item.modelYear || '—'],
     ['Endereço residencial', item.residenceAddress || '—'],
     ['Tipo', item.requestType === 'NEW_INSPECTION' ? 'Nova vistoria' : 'Atualização de boleto']
   ];
@@ -1063,10 +1074,10 @@ function renderAdminInspectionFiles(item) {
         ? `<div class="inspection-media-preview"><div class="inspection-media-placeholder">▶ Vídeo disponível</div><video data-admin-video-preview="${asset.id}" controls hidden></video></div>`
         : `<div class="inspection-media-preview"><div class="inspection-media-placeholder">${asset.type === 'REPORT' ? 'PDF' : 'DOCUMENTO'}</div></div>`;
     const canDelete = asset.available && ['PHOTO', 'VIDEO', 'SIGNATURE', 'VEHICLE_DOCUMENT', 'IDENTITY_DOCUMENT'].includes(asset.type);
-    const legacyLargeVideo = video && Number(asset.fileSize || 0) > 10 * 1024 * 1024;
+    const legacyLargeVideo = video && Number(asset.fileSize || 0) > 15 * 1024 * 1024;
     const downloadName = legacyLargeVideo ? compactedVideoFileName(asset.fileName) : asset.fileName;
     const compressionNote = legacyLargeVideo
-      ? '<small class="inspection-media-note">Original preservado · download em WebM compactado automaticamente para até 10 MB.</small>'
+      ? '<small class="inspection-media-note">Original preservado · download em WebM compactado automaticamente para até 15 MB.</small>'
       : '';
     const canRegenerateReport = asset.type === 'REPORT' && Boolean(item.completedAt);
     const actions = canRegenerateReport
@@ -2050,6 +2061,58 @@ $('coverage-form').addEventListener('submit', async event => {
   } catch (error) { message(error.message); }
 });
 
+$('quote-save-details').addEventListener('click', async () => {
+  const id = $('quote-analysis-id').value;
+  if (!id) return;
+  const button = $('quote-save-details');
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Salvando...';
+  try {
+    const updated = await api(`/api/admin/quotes/${encodeURIComponent(id)}/details`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customerName: $('quote-edit-name').value.trim(),
+        whatsapp: $('quote-edit-whatsapp').value.trim(),
+        model: $('quote-edit-model').value.trim(),
+        modelYear: Number($('quote-edit-model-year').value)
+      })
+    });
+    const index = quotes.findIndex(item => item.id === updated.id);
+    if (index >= 0) quotes[index] = updated;
+    renderQuotes();
+    openQuoteAnalysis(updated.id);
+    message('Nome, WhatsApp, modelo e ano do modelo atualizados na cotação e na vistoria vinculada.', 'success');
+  } catch (error) { message(error.message); }
+  finally { button.disabled = false; button.textContent = original; }
+});
+
+$('inspection-save-details').addEventListener('click', async () => {
+  const id = $('inspection-analysis-id').value;
+  if (!id) return;
+  const button = $('inspection-save-details');
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Salvando...';
+  try {
+    const updated = await api(`/api/admin/inspections/${encodeURIComponent(id)}/details`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        associateName: $('inspection-edit-name').value.trim(),
+        whatsapp: $('inspection-edit-whatsapp').value.trim(),
+        model: $('inspection-edit-model').value.trim(),
+        modelYear: Number($('inspection-edit-model-year').value)
+      })
+    });
+    const index = inspections.findIndex(item => item.id === updated.id);
+    if (index >= 0) inspections[index] = updated;
+    renderInspections();
+    openInspectionAnalysis(updated.id);
+    message('Dados do associado/veículo atualizados. A cotação vinculada também foi sincronizada.', 'success');
+  } catch (error) { message(error.message); }
+  finally { button.disabled = false; button.textContent = original; }
+});
+
 $('quote-analysis-form').addEventListener('submit', async event => {
   event.preventDefault();
   const id = $('quote-analysis-id').value;
@@ -2118,8 +2181,13 @@ async function setAdminInspectionDecision(status) {
       body: JSON.stringify({ status, adminNote: note })
     });
     closeDialog('inspection-dialog');
-    message(approved ? 'Vistoria aprovada por Pedro Henrique como Supervisão.' : 'Vistoria rejeitada por Pedro Henrique como Supervisão.', 'success');
     await load();
+    if (approved) {
+      openInspectionAnalysis(id);
+      message('Vistoria aprovada por Pedro Henrique como Supervisão. Agora use “Enviar aceite digital ao cliente” para encaminhar o WebAuthn.', 'success');
+    } else {
+      message('Vistoria rejeitada por Pedro Henrique como Supervisão.', 'success');
+    }
   } catch (error) { message(error.message); }
 }
 
@@ -2191,8 +2259,11 @@ $('admin-registration-complete')?.addEventListener('click', async () => {
   const id = $('inspection-analysis-id').value;
   const item = inspections.find(value => value.id === id);
   if (!item) return;
-  if (adminInspectionNeedsFiles(item)) return message('Ainda existem documentos ou arquivos pendentes.');
-  const confirmed = await confirmAction('Marcar Cadastro feito?', 'A análise será registrada em nome de Pedro Henrique e a vistoria será obrigatoriamente encaminhada para a fila da Supervisão antes de qualquer aprovação final.', 'Cadastro feito');
+  const pending = adminInspectionPendingCount(item);
+  const text = pending > 0
+    ? `Ainda existem ${pending} ${pending === 1 ? 'pendência' : 'pendências'}. Como Administrador, Pedro Henrique pode assumir a responsabilidade, registrar o cadastro como realizado e liberar a decisão final.`
+    : 'O cadastro será registrado em nome de Pedro Henrique e a decisão final ficará liberada imediatamente.';
+  const confirmed = await confirmAction('Registrar Cadastro realizado?', text, 'Cadastro realizado');
   if (!confirmed) return;
   try {
     await api(`/api/admin/inspections/${encodeURIComponent(id)}/registration-complete`, {
@@ -2201,7 +2272,8 @@ $('admin-registration-complete')?.addEventListener('click', async () => {
     });
     closeDialog('inspection-dialog');
     await load();
-    message('Cadastro feito por Pedro Henrique. Vistoria encaminhada para a Supervisão.', 'success');
+    openInspectionAnalysis(id);
+    message('Cadastro realizado por Pedro Henrique. Os botões de aprovação/rejeição final já estão liberados.', 'success');
   } catch (error) { message(error.message); }
 });
 
@@ -2262,8 +2334,8 @@ $('regulation-upload-form').addEventListener('submit', async event => {
     message('O regulamento precisa estar em formato PDF.');
     return;
   }
-  if (file.size > 20 * 1024 * 1024) {
-    message('O regulamento deve ter no máximo 20 MB.');
+  if (file.size > 15 * 1024 * 1024) {
+    message('O regulamento deve ter no máximo 15 MB.');
     return;
   }
 

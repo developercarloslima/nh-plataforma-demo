@@ -21,10 +21,11 @@ import java.util.Set;
 
 @Service
 public class InspectionResumableUploadService {
-    private static final long MAX_PHOTO_BYTES = 12L * 1024 * 1024;
-    private static final long MAX_VIDEO_BYTES = 10L * 1024 * 1024;
-    private static final long MAX_SIGNATURE_BYTES = 3L * 1024 * 1024;
-    private static final long MAX_DOCUMENT_BYTES = 30L * 1024 * 1024;
+    private static final long MAX_UPLOAD_BYTES = 15L * 1024 * 1024;
+    private static final long MAX_PHOTO_BYTES = MAX_UPLOAD_BYTES;
+    private static final long MAX_VIDEO_BYTES = MAX_UPLOAD_BYTES;
+    private static final long MAX_SIGNATURE_BYTES = MAX_UPLOAD_BYTES;
+    private static final long MAX_DOCUMENT_BYTES = MAX_UPLOAD_BYTES;
     private static final long MAX_CHUNK_BYTES = 6L * 1024 * 1024;
     private static final int MAX_CHUNKS = 512;
     private static final Set<String> PHOTO_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
@@ -291,12 +292,12 @@ public class InspectionResumableUploadService {
                 if (!newInspection || sortOrder < 1 || sortOrder > requiredPhotos) {
                     throw new IllegalArgumentException("A posição da foto é inválida para esta vistoria.");
                 }
-                if (totalSize > MAX_PHOTO_BYTES) throw new IllegalArgumentException("Cada foto deve possuir no máximo 12 MB.");
+                if (totalSize > MAX_PHOTO_BYTES) throw new IllegalArgumentException("Cada foto deve possuir no máximo 15 MB.");
                 if (!PHOTO_TYPES.contains(contentType)) throw new IllegalArgumentException("Envie fotos JPG, PNG ou WebP.");
             }
             case VIDEO -> {
                 if (sortOrder != videoOrder) throw new IllegalArgumentException("A posição do vídeo é inválida para esta vistoria.");
-                if (totalSize > MAX_VIDEO_BYTES) throw new IllegalArgumentException("O vídeo deve possuir no máximo 10 MB.");
+                if (totalSize > MAX_VIDEO_BYTES) throw new IllegalArgumentException("O vídeo deve possuir no máximo 15 MB.");
                 if (videoDurationSeconds == null || !Double.isFinite(videoDurationSeconds) || videoDurationSeconds <= 0 || videoDurationSeconds > 90.5) {
                     throw new IllegalArgumentException("O vídeo deve possuir no máximo 1 minuto e 30 segundos.");
                 }
@@ -306,7 +307,7 @@ public class InspectionResumableUploadService {
                 if (!newInspection || sortOrder != signatureOrder) {
                     throw new IllegalArgumentException("A posição da assinatura é inválida para esta vistoria.");
                 }
-                if (totalSize > MAX_SIGNATURE_BYTES) throw new IllegalArgumentException("A assinatura deve possuir no máximo 3 MB.");
+                if (totalSize > MAX_SIGNATURE_BYTES) throw new IllegalArgumentException("A assinatura deve possuir no máximo 15 MB.");
                 if (!PHOTO_TYPES.contains(contentType)) {
                     throw new IllegalArgumentException("A assinatura deve ser enviada como imagem PNG, JPG ou WebP.");
                 }
@@ -331,11 +332,11 @@ public class InspectionResumableUploadService {
                 }
                 if (VIDEO_TYPES.contains(contentType)) {
                     if (totalSize > MAX_VIDEO_BYTES) {
-                        throw new IllegalArgumentException("Cada vídeo adicional deve possuir no máximo 10 MB.");
+                        throw new IllegalArgumentException("Cada vídeo adicional deve possuir no máximo 15 MB.");
                     }
                 } else if (PHOTO_TYPES.contains(contentType)) {
                     if (totalSize > MAX_PHOTO_BYTES) {
-                        throw new IllegalArgumentException("Cada foto adicional deve possuir no máximo 12 MB.");
+                        throw new IllegalArgumentException("Cada foto adicional deve possuir no máximo 15 MB.");
                     }
                 } else {
                     validateDocument(totalSize, contentType, "o arquivo adicional");
@@ -362,7 +363,7 @@ public class InspectionResumableUploadService {
 
     private void validateDocument(long totalSize, String contentType, String documentName) {
         if (totalSize > MAX_DOCUMENT_BYTES) {
-            throw new IllegalArgumentException(documentName + " deve possuir no máximo 30 MB.");
+            throw new IllegalArgumentException(documentName + " deve possuir no máximo 15 MB.");
         }
         if (!DOCUMENT_TYPES.contains(contentType)) {
             throw new IllegalArgumentException("Envie " + documentName + " em PDF, DOC, DOCX, ODT, RTF, TXT, JPG, PNG ou WebP.");

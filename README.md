@@ -25,6 +25,8 @@ O projeto integra o fluxo comercial e operacional da associação em uma única 
 - Captura orientada de fotos e documentos.
 - Selfie do associado em frente ao veículo.
 - Upload de imagens, vídeos e documentos.
+- Limite de **15 MB por arquivo** para fotos, vídeos, documentos e demais anexos enviados.
+- Gravação de vídeo encerrada automaticamente ao atingir **1 minuto e 30 segundos**.
 - Reenvio somente de arquivos faltantes ou recusados.
 - Armazenamento dos arquivos da vistoria no PostgreSQL.
 - Controle de retenção de arquivos operacionais.
@@ -62,6 +64,9 @@ O projeto integra o fluxo comercial e operacional da associação em uma única 
 - Inclusão do PPV/regulamento no dossiê final.
 - Registro da Supervisão e assinatura do associado em miniatura no rodapé das páginas do dossiê.
 - Relatório consolidado permanente, sem expiração operacional.
+- Admin, Analista e Supervisão podem corrigir nome do associado, WhatsApp, modelo e ano do modelo; quando a vistoria está vinculada a uma cotação, os dados são sincronizados entre os dois registros.
+- Alterações cadastrais ficam bloqueadas após o aceite digital WebAuthn para preservar a integridade das evidências assinadas.
+- Otimização automática do PDF final para **até 15 MB**, preservando visualmente decisão, assinaturas e regulamento; arquivos-fonte continuam armazenados separadamente no sistema.
 - Padronização e regeneração de relatórios históricos quando os dados necessários ainda estão disponíveis.
 
 ### Aceite digital WebAuthn
@@ -262,7 +267,7 @@ Evidências digitais vinculadas ao processo
 
 O schema é versionado com **Flyway**.
 
-O projeto atualmente contém migrations até a versão **V45**, incluindo evoluções para:
+O projeto atualmente contém migrations até a versão **V48**, incluindo evoluções para:
 
 - catálogo e regras de preço;
 - cotações;
@@ -492,3 +497,9 @@ Para solicitações relacionadas ao uso do código ou da propriedade intelectual
 - Limite visual e de negócio unificado em 30 consultores por analista.
 - WebAuthn no iPhone: detecção de navegadores internos/terceiros, orientação para Safari, retomada de credencial já criada e fluxo compatível com provedores de chaves-senha do iOS.
 - A senha/PIN/Face ID/Touch ID do aparelho nunca é enviado ao servidor; a verificação é feita localmente pelo autenticador do dispositivo.
+
+### Compatibilidade com vistorias históricas
+
+A migration `V47__historical_supervision_registration_backfill.sql` aplica o fluxo atual de Supervisão também às vistorias legadas. Decisões finais já realizadas por Supervisão/Admin são preservadas; registros antigos encerrados pelo fluxo anterior são encaminhados à fila adequada para nova decisão final.
+
+A migration `V48__editable_associate_vehicle_data.sql` adiciona modelo e ano do modelo ao registro da vistoria, preenche esses campos em vistorias históricas a partir da cotação vinculada e permite manter cotação/vistoria sincronizadas nas correções autorizadas.

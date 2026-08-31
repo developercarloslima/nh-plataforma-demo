@@ -73,7 +73,7 @@ public class ApiExceptionHandler {
         return ResponseEntity.badRequest().body(new ApiError(
                 OffsetDateTime.now(),
                 HttpStatus.BAD_REQUEST.value(),
-                "As fotos ultrapassaram o limite de tamanho permitido.",
+                "Cada arquivo enviado deve possuir no máximo 15 MB.",
                 Map.of()
         ));
     }

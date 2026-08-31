@@ -3,6 +3,7 @@ package br.com.nh.cotacao.controller;
 import br.com.nh.cotacao.dto.AdminDtos.AdminInspectionResponse;
 import br.com.nh.cotacao.dto.AdminDtos.DeleteSummary;
 import br.com.nh.cotacao.dto.AdminDtos.UpdateInspectionStatusRequest;
+import br.com.nh.cotacao.dto.AdminDtos.UpdateInspectionDetailsRequest;
 import br.com.nh.cotacao.security.PortalPrincipal;
 import br.com.nh.cotacao.service.AdminActivityService;
 import jakarta.validation.Valid;
@@ -22,6 +23,16 @@ public class AdminInspectionController {
 
     @GetMapping
     public List<AdminInspectionResponse> list() { return service.inspections(); }
+
+    @PatchMapping("/{id}/details")
+    public AdminInspectionResponse updateDetails(
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateInspectionDetailsRequest request,
+            Authentication auth
+    ) {
+        PortalPrincipal principal = (PortalPrincipal) auth.getPrincipal();
+        return service.updateInspectionDetails(id, request, principal.username(), principal.role());
+    }
 
     @PatchMapping("/{id}/status")
     public AdminInspectionResponse updateStatus(

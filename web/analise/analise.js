@@ -537,6 +537,12 @@ function openInspection(id) {
 
   $('inspection-id').value = item.id;
   $('dialog-title').textContent = `${item.plate || '0 km — sem placa'} — ${item.associateName}`;
+  $('edit-associate-name').value = item.associateName || '';
+  $('edit-associate-whatsapp').value = formatPhone(item.whatsapp) || '';
+  $('edit-vehicle-model').value = item.vehicleModel || '';
+  $('edit-model-year').value = item.modelYear || '';
+  const editableLocked = Boolean(item.digitalAcceptedAt);
+  ['edit-associate-name','edit-associate-whatsapp','edit-vehicle-model','edit-model-year','save-editable-details'].forEach(id => { const el = $(id); if (el) el.disabled = editableLocked; });
   $('inspection-note').value = item.adminNote || '';
   $('supervision-note').value = item.supervisionNote || '';
   $('supervision-note-meta').textContent = item.supervisionNoteUpdatedAt
@@ -564,6 +570,8 @@ function openInspection(id) {
     ['Associado', item.associateName],
     ['CPF', item.maskedCpf],
     ['WhatsApp', formatPhone(item.whatsapp) || '—'],
+    ['Modelo', item.vehicleModel || '—'],
+    ['Ano do modelo', item.modelYear || '—'],
     ['Consultor', item.consultantName],
     ['Analista responsável', item.assignedAnalystName || currentUser?.consultantName || '—'],
     ['Situação do cadastro', analystRegistrationState(item)[1]],
@@ -663,10 +671,10 @@ function renderInspectionFiles(item) {
         ? `<div class="inspection-media-preview"><div class="inspection-media-placeholder">▶ Vídeo disponível</div><video data-video-preview="${asset.id}" controls hidden></video></div>`
         : `<div class="inspection-media-preview"><div class="inspection-media-placeholder">${asset.type === 'REPORT' ? 'PDF' : 'DOCUMENTO'}</div></div>`;
     const canDelete = asset.available && ['PHOTO', 'VIDEO', 'SIGNATURE', 'VEHICLE_DOCUMENT', 'IDENTITY_DOCUMENT'].includes(asset.type);
-    const legacyLargeVideo = video && Number(asset.fileSize || 0) > 10 * 1024 * 1024;
+    const legacyLargeVideo = video && Number(asset.fileSize || 0) > 15 * 1024 * 1024;
     const downloadName = legacyLargeVideo ? compactedVideoFileName(asset.fileName) : asset.fileName;
     const compressionNote = legacyLargeVideo
-      ? '<small class="inspection-media-note">Original preservado · download em WebM compactado automaticamente para até 10 MB.</small>'
+      ? '<small class="inspection-media-note">Original preservado · download em WebM compactado automaticamente para até 15 MB.</small>'
       : '';
     const canRegenerateReport = asset.type === 'REPORT' && Boolean(item.completedAt);
     const actions = canRegenerateReport
@@ -900,6 +908,32 @@ $('registration-complete').addEventListener('click', async () => {
   } finally {
     button.disabled = false;
   }
+});
+
+$('save-editable-details').addEventListener('click', async () => {
+  const id = $('inspection-id').value;
+  if (!id) return;
+  const button = $('save-editable-details');
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Salvando...';
+  try {
+    const updated = await api(`/api/analysis/inspections/${encodeURIComponent(id)}/details`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        associateName: $('edit-associate-name').value.trim(),
+        whatsapp: $('edit-associate-whatsapp').value.trim(),
+        model: $('edit-vehicle-model').value.trim(),
+        modelYear: Number($('edit-model-year').value)
+      })
+    });
+    const index = inspections.findIndex(item => item.id === updated.id);
+    if (index >= 0) inspections[index] = updated;
+    render();
+    openInspection(updated.id);
+    message('Dados do associado e veículo atualizados. A cotação vinculada também foi sincronizada.', 'success');
+  } catch (error) { message(error.message); }
+  finally { button.disabled = false; button.textContent = original; }
 });
 
 $('inspection-form').addEventListener('submit', async event => {

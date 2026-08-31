@@ -37,6 +37,12 @@ public class InspectionRequest {
     @Column(length = 10)
     private String plate;
 
+    @Column(name = "vehicle_model", length = 120)
+    private String vehicleModel;
+
+    @Column(name = "model_year")
+    private Integer modelYear;
+
     @Column(name = "residence_address", length = 600)
     private String residenceAddress;
 
@@ -292,6 +298,8 @@ public class InspectionRequest {
         request.cpf = cpf.replaceAll("\\D", "");
         request.whatsapp = whatsapp == null ? null : whatsapp.replaceAll("\\D", "");
         request.plate = normalizePlate(plate);
+        request.vehicleModel = quotation == null ? null : quotation.getModel();
+        request.modelYear = quotation == null ? null : quotation.getManufactureYear();
         request.contractedPlan = contractedPlan == null || contractedPlan.isBlank()
                 ? null
                 : contractedPlan.trim().replaceAll("\\s+", " ");
@@ -348,20 +356,33 @@ public class InspectionRequest {
     }
 
     public void markRegistrationCompletedByAdministrator(String administratorName, String note) {
-        assertStoredCompletionRequirements(true);
-        String cleanAdministratorName = cleanReviewerName(administratorName);
-        if (cleanAdministratorName == null) {
-            throw new IllegalArgumentException("Informe o nome do administrador responsável.");
+        markRegistrationCompletedPrivileged(administratorName, note, "ADMIN_ANALYSIS");
+    }
+
+    public void markRegistrationCompletedBySupervisor(String supervisorName, String note) {
+        markRegistrationCompletedPrivileged(supervisorName, note, "SUPERVISION_ANALYSIS");
+    }
+
+    /**
+     * Admin e Supervisão podem assumir a etapa de cadastro mesmo quando ainda existe
+     * algum arquivo pendente. Esta é uma exceção operacional deliberada: analistas
+     * continuam sujeitos à validação completa de documentos, enquanto perfis de
+     * decisão podem assumir a responsabilidade e encaminhar a vistoria à decisão final.
+     */
+    private void markRegistrationCompletedPrivileged(String responsibleName, String note, String reviewerRole) {
+        String cleanResponsibleName = cleanReviewerName(responsibleName);
+        if (cleanResponsibleName == null) {
+            throw new IllegalArgumentException("Informe o responsável pelo cadastro.");
         }
         this.adminNote = cleanNote(note);
         this.registrationCompletedAt = OffsetDateTime.now();
-        this.registrationCompletedByName = cleanAdministratorName;
+        this.registrationCompletedByName = cleanResponsibleName;
         this.status = InspectionRequestStatus.UNDER_REVIEW;
         this.analysisStage = InspectionAnalysisStage.SUPERVISION_QUEUE;
         this.reviewedAt = this.registrationCompletedAt;
         this.reviewedByCollaborator = null;
-        this.reviewedByName = cleanAdministratorName;
-        this.reviewedByRole = "ADMIN_ANALYSIS";
+        this.reviewedByName = cleanResponsibleName;
+        this.reviewedByRole = reviewerRole;
         this.decisionMessageSentAt = null;
     }
 
@@ -429,6 +450,38 @@ public class InspectionRequest {
         }
         this.registrationCompletedAt = null;
         this.registrationCompletedByName = null;
+    }
+
+    /**
+     * Permite correções cadastrais controladas no fluxo de análise/supervisão.
+     * Não altera CPF, placa, plano, valores ou evidências já coletadas.
+     */
+    public void updateEditableAssociateVehicleData(String associateName, String whatsapp, String vehicleModel, Integer modelYear) {
+        if (associateName == null || associateName.isBlank()) {
+            throw new IllegalArgumentException("Informe o nome do associado.");
+        }
+        String cleanName = associateName.trim().replaceAll("\\s+", " ");
+        if (cleanName.length() > 140) {
+            throw new IllegalArgumentException("O nome do associado deve possuir no máximo 140 caracteres.");
+        }
+        String phoneDigits = whatsapp == null ? "" : whatsapp.replaceAll("\\D", "");
+        if (!phoneDigits.isBlank() && (phoneDigits.length() < 10 || phoneDigits.length() > 13)) {
+            throw new IllegalArgumentException("Informe um WhatsApp válido com DDD.");
+        }
+        String cleanModel = vehicleModel == null ? "" : vehicleModel.trim().replaceAll("\\s+", " ");
+        if (cleanModel.isBlank()) {
+            throw new IllegalArgumentException("Informe o modelo do veículo.");
+        }
+        if (cleanModel.length() > 120) {
+            throw new IllegalArgumentException("O modelo do veículo deve possuir no máximo 120 caracteres.");
+        }
+        if (modelYear == null || modelYear < 1950 || modelYear > 2100) {
+            throw new IllegalArgumentException("Informe um ano do modelo válido.");
+        }
+        this.associateName = cleanName;
+        this.whatsapp = phoneDigits.isBlank() ? null : phoneDigits;
+        this.vehicleModel = cleanModel;
+        this.modelYear = modelYear;
     }
 
     /** Sincroniza os dados cadastrais vindos da cotação sem alterar o conteúdo da vistoria. */
@@ -716,6 +769,8 @@ public class InspectionRequest {
     public String getCpf() { return cpf; }
     public String getWhatsapp() { return whatsapp; }
     public String getPlate() { return plate; }
+    public String getVehicleModel() { return vehicleModel; }
+    public Integer getModelYear() { return modelYear; }
     public String getResidenceAddress() { return residenceAddress; }
     public String getContractedPlan() { return contractedPlan; }
     public Consultant getConsultant() { return consultant; }

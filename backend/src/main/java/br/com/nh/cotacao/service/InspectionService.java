@@ -24,7 +24,7 @@ import java.util.UUID;
 public class InspectionService {
 
     private static final int REQUIRED_PHOTO_COUNT = 9;
-    private static final long MAX_PHOTO_BYTES = 10L * 1024 * 1024;
+    private static final long MAX_PHOTO_BYTES = 15L * 1024 * 1024;
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of("image/jpeg", "image/png");
 
     private final QuoteService quoteService;
@@ -180,7 +180,7 @@ public class InspectionService {
                 throw new IllegalArgumentException("A foto " + (index + 1) + " não foi enviada.");
             }
             if (photo.getSize() > MAX_PHOTO_BYTES) {
-                throw new IllegalArgumentException("A foto " + (index + 1) + " ultrapassa o limite de 10 MB.");
+                throw new IllegalArgumentException("A foto " + (index + 1) + " ultrapassa o limite de 15 MB.");
             }
             String contentType = normalizedContentType(photo.getContentType());
             if (!ALLOWED_CONTENT_TYPES.contains(contentType)) {

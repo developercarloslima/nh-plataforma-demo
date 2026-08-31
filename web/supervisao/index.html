@@ -57,7 +57,7 @@
   <div class="card login-card">
     <span class="eyebrow" style="color:#070c40">ACESSO RESTRITO</span>
     <h1>Supervisão de Análise</h1>
-    <p>Entre com seu usuário de supervisão para acompanhar todas as vistorias enviadas à análise, cobrar pendências e decidir as que estiverem com Cadastro feito.</p>
+    <p>Entre com seu usuário de supervisão para acompanhar todas as vistorias enviadas à análise, assumir a etapa de cadastro quando necessário, cobrar pendências e tomar a decisão final.</p>
     <form id="login-form" class="form-grid">
       <label class="span-2">Usuário<input id="username" autocomplete="username" required></label>
       <label class="span-2">Senha<input id="password" type="password" autocomplete="current-password" required></label>
@@ -128,6 +128,17 @@
     </div>
     <input id="inspection-id" type="hidden">
     <div id="inspection-details" class="detail-grid"></div>
+    <section class="message" style="margin-top:16px">
+      <strong>Editar dados do associado e veículo</strong>
+      <p>A Supervisão pode corrigir nome, WhatsApp, modelo e ano do modelo. A cotação vinculada é sincronizada automaticamente.</p>
+      <div class="form-grid" style="margin-top:12px">
+        <label>Nome do associado<input id="edit-associate-name" maxlength="140"></label>
+        <label>WhatsApp<input id="edit-associate-whatsapp" maxlength="30" inputmode="tel" placeholder="(82) 99999-9999"></label>
+        <label>Modelo do veículo<input id="edit-vehicle-model" maxlength="120"></label>
+        <label>Ano do modelo<input id="edit-model-year" type="number" min="1950" max="2100"></label>
+      </div>
+      <div class="actions" style="margin-top:10px"><button id="save-editable-details" class="secondary" type="button">Salvar dados corrigidos</button></div>
+    </section>
     <div id="discount-validation-note" class="message" hidden style="margin-top:16px"></div>
     <section id="inspection-files-section" class="inspection-media-section" hidden>
       <div class="inspection-media-head">
@@ -142,6 +153,16 @@
         <small id="supervision-note-meta" class="helper">A observação ficará visível para o analista ao abrir esta vistoria.</small>
       </label>
       <div class="span-2 actions" style="margin-top:0"><button id="save-supervision-note" class="secondary" type="button">Salvar O.B.S. Supervisão</button></div>
+      <div id="supervision-registration-actions" class="span-2 message" hidden>
+        <strong>Etapa de cadastro</strong>
+        <p id="supervision-registration-helper">Se necessário, a Supervisão pode assumir a etapa do analista e registrar o cadastro como realizado.</p>
+        <label style="margin-top:10px">Observação do cadastro
+          <textarea id="supervision-registration-note" maxlength="1200" rows="3" placeholder="Opcional. Se houver arquivos pendentes, registre aqui o motivo da liberação excepcional."></textarea>
+        </label>
+        <div class="actions" style="margin-top:10px">
+          <button id="supervision-registration-complete" class="secondary" type="button">✓ Cadastro realizado</button>
+        </div>
+      </div>
       <div id="inspection-analyst-wrap" class="span-2" hidden>
         <label>Analista responsável<select id="inspection-analyst">
           <option value="">Selecione o analista</option>
@@ -219,7 +240,7 @@
 
 <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
-<script src="/supervisao/supervisao.js?v=20260820-webauthn-token-v3"></script>
+<script src="/supervisao/supervisao.js?v=20260831-editable-data-v1"></script>
 <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
 
   <div class="nh-dev-credit" aria-label="Crédito de desenvolvimento">

@@ -17,7 +17,7 @@ public class SiteDocumentService {
     public static final String REGULATION_KEY = "VEHICLE_PROTECTION_REGULATION";
     public static final String DEFAULT_REGULATION_FILE = "Regulamento-PPV-Novo-Horizonte-2026.pdf";
     private static final String DEFAULT_REGULATION_RESOURCE = "default-documents/regulamento-ppv-novo-horizonte-2026.pdf";
-    private static final long MAX_REGULATION_BYTES = 20L * 1024L * 1024L;
+    private static final long MAX_REGULATION_BYTES = 15L * 1024L * 1024L;
 
     private final JdbcTemplate jdbcTemplate;
     private final CatalogChangeAuditRepository auditRepository;
@@ -142,7 +142,7 @@ public class SiteDocumentService {
             throw new IllegalArgumentException("Selecione um arquivo PDF para o regulamento.");
         }
         if (file.getSize() > MAX_REGULATION_BYTES) {
-            throw new IllegalArgumentException("O regulamento deve ter no máximo 20 MB.");
+            throw new IllegalArgumentException("O regulamento deve ter no máximo 15 MB.");
         }
         String fileName = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().trim();
         if (!fileName.toLowerCase().endsWith(".pdf")) {

@@ -100,6 +100,41 @@ public class AdminActivityService {
     }
 
     @Transactional
+    public AdminQuoteResponse updateQuoteDetails(UUID id, UpdateAdminQuoteDetailsRequest request, String username) {
+        Quotation quotation = quotationRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Cotação não encontrada."));
+        InspectionRequest inspection = inspectionRepository.findByQuotation_Id(id).orElse(null);
+        if (inspection != null && inspection.getAcceptedAt() != null) {
+            throw new IllegalArgumentException("Os dados não podem ser alterados após o aceite digital WebAuthn do associado.");
+        }
+        String old = editableDataSummary(quotation.getCustomerName(), quotation.getWhatsapp(), quotation.getModel(), quotation.getManufactureYear());
+        quotation.updateNonPricingData(
+                request.customerName(), quotation.getCustomerCpf(), request.whatsapp(), quotation.getPlate(),
+                request.model(), request.modelYear(), quotation.isZeroKm(), quotation.getObservation()
+        );
+        if (inspection != null) {
+            inspection.updateEditableAssociateVehicleData(
+                    request.customerName(), request.whatsapp(), request.model(), request.modelYear()
+            );
+        }
+        quotationRepository.flush();
+        if (inspection != null) {
+            inspectionRepository.flush();
+            if (inspection.getStatus() == InspectionRequestStatus.APPROVED
+                    || inspection.getStatus() == InspectionRequestStatus.REJECTED) {
+                persistFinalInspectionDossier(inspection);
+            }
+        }
+        String updated = editableDataSummary(quotation.getCustomerName(), quotation.getWhatsapp(), quotation.getModel(), quotation.getManufactureYear());
+        auditRepository.save(CatalogChangeAudit.createText(
+                "QUOTE_EDITABLE_DATA", null, id.toString(),
+                "Dados cadastrais/veículo da cotação " + quotation.getQuoteNumber() + " atualizados",
+                old, updated, username
+        ));
+        return toQuote(quotation);
+    }
+
+    @Transactional
     public AdminQuoteResponse updateQuoteStatus(UUID id, UpdateQuoteStatusRequest request, String username) {
         Quotation quotation = quotationRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Cotação não encontrada."));
@@ -189,6 +224,55 @@ public class AdminActivityService {
     }
 
     @Transactional
+    public AdminInspectionResponse updateInspectionDetails(
+            UUID id, UpdateInspectionDetailsRequest request, String username, PortalRole actorRole
+    ) {
+        if (actorRole == PortalRole.ANALYST) {
+            portalUserService.assertAnalysisInspectionAccess(username, actorRole, id);
+        } else if (actorRole == PortalRole.SUPERVISION_ANALYSIS) {
+            portalUserService.assertSupervisionInspectionAccess(username, actorRole, id);
+        } else if (actorRole != PortalRole.ADMIN) {
+            throw new IllegalArgumentException("Este usuário não possui permissão para editar os dados da vistoria.");
+        }
+
+        InspectionRequest inspection = inspectionRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
+        if (inspection.getAcceptedAt() != null) {
+            throw new IllegalArgumentException("Os dados não podem ser alterados após o aceite digital WebAuthn do associado.");
+        }
+        String old = editableDataSummary(inspection.getAssociateName(), inspection.getWhatsapp(),
+                inspection.getVehicleModel(), inspection.getModelYear());
+
+        inspection.updateEditableAssociateVehicleData(
+                request.associateName(), request.whatsapp(), request.model(), request.modelYear()
+        );
+
+        Quotation quotation = inspection.getQuotation();
+        if (quotation != null) {
+            quotation.updateNonPricingData(
+                    request.associateName(), quotation.getCustomerCpf(), request.whatsapp(), quotation.getPlate(),
+                    request.model(), request.modelYear(), quotation.isZeroKm(), quotation.getObservation()
+            );
+            quotationRepository.flush();
+        }
+        inspectionRepository.flush();
+
+        if (inspection.getStatus() == InspectionRequestStatus.APPROVED
+                || inspection.getStatus() == InspectionRequestStatus.REJECTED) {
+            persistFinalInspectionDossier(inspection);
+        }
+
+        String updated = editableDataSummary(inspection.getAssociateName(), inspection.getWhatsapp(),
+                inspection.getVehicleModel(), inspection.getModelYear());
+        auditRepository.save(CatalogChangeAudit.createText(
+                "INSPECTION_EDITABLE_DATA", null, id.toString(),
+                "Dados cadastrais/veículo da vistoria de " + inspection.getAssociateName() + " atualizados",
+                old, updated, username
+        ));
+        return toInspection(inspection, actorRole != PortalRole.ADMIN);
+    }
+
+    @Transactional
     public AdminInspectionResponse updateSupervisionNote(
             UUID id, String note, String username, PortalRole actorRole
     ) {
@@ -221,7 +305,9 @@ public class AdminActivityService {
 
     @Transactional
     public AdminInspectionResponse markRegistrationCompleted(UUID id, String note, String username, PortalRole actorRole) {
-        if (actorRole != PortalRole.ANALYST && actorRole != PortalRole.ADMIN) {
+        if (actorRole != PortalRole.ANALYST
+                && actorRole != PortalRole.ADMIN
+                && actorRole != PortalRole.SUPERVISION_ANALYSIS) {
             throw new IllegalArgumentException("Este usuário não possui permissão para concluir o cadastro da vistoria.");
         }
         InspectionRequest inspection = inspectionRepository.findById(id)
@@ -231,6 +317,13 @@ public class AdminActivityService {
         if (actorRole == PortalRole.ADMIN) {
             reviewerName = ADMIN_RESPONSIBLE_NAME;
             inspection.markRegistrationCompletedByAdministrator(reviewerName, note);
+        } else if (actorRole == PortalRole.SUPERVISION_ANALYSIS) {
+            portalUserService.assertSupervisionInspectionAccess(username, actorRole, id);
+            UUID supervisorId = portalUserService.linkedSupervisorId(username)
+                    .orElseThrow(() -> new IllegalArgumentException("Este usuário de supervisão não está vinculado a um colaborador."));
+            Consultant supervisor = consultantService.findActiveSupervisor(supervisorId);
+            reviewerName = supervisor.getName();
+            inspection.markRegistrationCompletedBySupervisor(reviewerName, note);
         } else {
             UUID analystId = portalUserService.linkedAnalystId(username)
                     .orElseThrow(() -> new IllegalArgumentException("Este usuário de análise não está vinculado a um analista específico."));
@@ -239,9 +332,12 @@ public class AdminActivityService {
             inspection.markRegistrationCompleted(analyst, note);
         }
         inspectionRepository.flush();
+        String source = actorRole == PortalRole.SUPERVISION_ANALYSIS
+                ? "Cadastro assumido pela Supervisão por " + reviewerName
+                : "Cadastro concluído por " + reviewerName + " e enviado à Supervisão de Análise";
         auditRepository.save(CatalogChangeAudit.createText(
                 "INSPECTION_REGISTRATION", null, id.toString(),
-                "Cadastro concluído por " + reviewerName + " e enviado à Supervisão de Análise",
+                source,
                 old, inspectionAnalysisSummary(inspection) + "; etapa=SUPERVISION_QUEUE", username
         ));
         return toInspection(inspection, true);
@@ -568,7 +664,7 @@ public class AdminActivityService {
         return new AdminInspectionResponse(
                 item.getId(), item.getRequestType().name(), item.getVehicleType().name(), item.getAssociateName(),
                 revealCpf ? formatCpf(item.getCpf()) : maskCpf(item.getCpf()),
-                item.getWhatsapp(), item.getPlate(), item.getResidenceAddress(), item.getContractedPlan(),
+                item.getWhatsapp(), item.getPlate(), item.getVehicleModel(), item.getModelYear(), item.getResidenceAddress(), item.getContractedPlan(),
                 item.getQuotation() == null ? null : item.getQuotation().getBillingDueDay(),
                 item.getQuotation() == null ? null : item.getQuotation().getFirstBillingDueDate(),
                 item.getQuotation() == null ? 0 : item.getQuotation().getDiscountPercent(),
@@ -679,6 +775,13 @@ public class AdminActivityService {
 
     private String plateLabel(String plate, boolean zeroKm) {
         return plate == null || plate.isBlank() ? (zeroKm ? "Veículo 0 km — sem placa" : "Sem placa") : plate;
+    }
+
+    private String editableDataSummary(String name, String whatsapp, String model, Integer modelYear) {
+        return "nome=" + value(name)
+                + "; whatsapp=" + value(whatsapp)
+                + "; modelo=" + value(model)
+                + "; anoModelo=" + (modelYear == null ? "—" : modelYear);
     }
 
     private String value(String value) { return value == null || value.isBlank() ? "—" : value; }

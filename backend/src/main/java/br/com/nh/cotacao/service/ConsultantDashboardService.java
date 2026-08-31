@@ -144,6 +144,9 @@ public class ConsultantDashboardService {
                     quotation.getWhatsapp(),
                     quotation.getPlate()
             );
+            inspection.updateEditableAssociateVehicleData(
+                    quotation.getCustomerName(), quotation.getWhatsapp(), quotation.getModel(), quotation.getManufactureYear()
+            );
         }
 
         Map<String, String> immutableAfter = immutableQuoteSnapshot(quotation);

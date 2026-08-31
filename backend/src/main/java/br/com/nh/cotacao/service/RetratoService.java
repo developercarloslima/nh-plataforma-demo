@@ -15,10 +15,11 @@ import java.util.*;
 @Service
 public class RetratoService {
     private static final String DEFAULT_PUBLIC_WEB_URL = "https://aforma-demo.vercel.app";
-    private static final long MAX_PHOTO_BYTES = 12L * 1024 * 1024;
-    private static final long MAX_VIDEO_BYTES = 10L * 1024 * 1024;
-    private static final long MAX_SIGNATURE_BYTES = 3L * 1024 * 1024;
-    private static final long MAX_DOCUMENT_BYTES = 30L * 1024 * 1024;
+    private static final long MAX_UPLOAD_BYTES = 15L * 1024 * 1024;
+    private static final long MAX_PHOTO_BYTES = MAX_UPLOAD_BYTES;
+    private static final long MAX_VIDEO_BYTES = MAX_UPLOAD_BYTES;
+    private static final long MAX_SIGNATURE_BYTES = MAX_UPLOAD_BYTES;
+    private static final long MAX_DOCUMENT_BYTES = MAX_UPLOAD_BYTES;
     private static final Set<String> PHOTO_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
     private static final Set<String> VIDEO_TYPES = Set.of("video/mp4", "video/quicktime", "video/webm", "video/3gpp");
     private static final Set<String> DOCUMENT_TYPES = Set.of(
@@ -398,12 +399,12 @@ public class RetratoService {
     }
 
     private void validatePhoto(MultipartFile file) {
-        if (file.getSize() > MAX_PHOTO_BYTES) throw new IllegalArgumentException("Cada foto deve possuir no máximo 12 MB.");
+        if (file.getSize() > MAX_PHOTO_BYTES) throw new IllegalArgumentException("Cada foto deve possuir no máximo 15 MB.");
         if (!PHOTO_TYPES.contains(cleanType(file.getContentType()))) throw new IllegalArgumentException("Envie fotos JPG, PNG ou WebP.");
     }
 
     private void validateVideo(MultipartFile file) {
-        if (file.getSize() > MAX_VIDEO_BYTES) throw new IllegalArgumentException("O vídeo deve possuir no máximo 10 MB.");
+        if (file.getSize() > MAX_VIDEO_BYTES) throw new IllegalArgumentException("O vídeo deve possuir no máximo 15 MB.");
         if (!VIDEO_TYPES.contains(cleanType(file.getContentType()))) throw new IllegalArgumentException("Envie o vídeo em MP4, MOV, WebM ou 3GP.");
     }
 
@@ -415,7 +416,7 @@ public class RetratoService {
 
     private void validateSignature(MultipartFile file) {
         if (file.getSize() > MAX_SIGNATURE_BYTES) {
-            throw new IllegalArgumentException("A assinatura deve possuir no máximo 3 MB.");
+            throw new IllegalArgumentException("A assinatura deve possuir no máximo 15 MB.");
         }
         if (!PHOTO_TYPES.contains(cleanType(file.getContentType()))) {
             throw new IllegalArgumentException("A assinatura deve ser enviada como imagem PNG, JPG ou WebP.");
@@ -424,7 +425,7 @@ public class RetratoService {
 
     private void validateDocument(MultipartFile file, String label) {
         if (file.getSize() > MAX_DOCUMENT_BYTES) {
-            throw new IllegalArgumentException(label + " deve possuir no máximo 30 MB.");
+            throw new IllegalArgumentException(label + " deve possuir no máximo 15 MB.");
         }
         if (!DOCUMENT_TYPES.contains(cleanType(file.getContentType()))) {
             throw new IllegalArgumentException("Envie " + label + " em PDF, DOC, DOCX, ODT, RTF, TXT, JPG, PNG ou WebP.");

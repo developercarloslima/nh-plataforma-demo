@@ -47,7 +47,7 @@ const allowedVideoTypes = new Set([
   'video/3gpp'
 ]);
 
-const VIDEO_MAX_BYTES = 10 * 1024 * 1024;
+const VIDEO_MAX_BYTES = 15 * 1024 * 1024;
 const VIDEO_MAX_DURATION_SECONDS = 90;
 const VIDEO_AUTO_STOP_SECONDS = 90;
 const VIDEO_TARGET_VIDEO_BITRATE = 480_000;
@@ -71,6 +71,7 @@ let captureMode = null;
 let selfieMirrorCorrection = false;
 let activeFacingMode = 'environment';
 let recordingTimer = null;
+let recordingHardStopTimer = null;
 let recordingElapsedMs = 0;
 let recordingActiveSince = null;
 let recordingStopRequested = false;
@@ -1198,7 +1199,7 @@ function startVideoRecording() {
   const options = {
     // 90 s a ~512 kbps totais gera cerca de 5,5 MB e deixa margem para navegadores
     // que variam o bitrate e para o overhead do contêiner. A resolução também é limitada
-    // na captura para manter o arquivo final abaixo de 10 MB em aparelhos diferentes.
+    // na captura para manter o arquivo final abaixo de 15 MB em aparelhos diferentes.
     videoBitsPerSecond: VIDEO_TARGET_VIDEO_BITRATE,
     audioBitsPerSecond: VIDEO_TARGET_AUDIO_BITRATE
   };
@@ -1350,7 +1351,7 @@ function finishVideoRecording() {
     recordedVideoBytes = 0;
     videoDurationSeconds = null;
     resetRecordingClock();
-    handleCameraError(new Error(`Este aparelho gerou um vídeo de ${formatBytes(blob.size)}, acima do limite de 10 MB. Grave novamente; o sistema usará a configuração compactada com duração máxima de 1min30s.`));
+    handleCameraError(new Error(`Este aparelho gerou um vídeo de ${formatBytes(blob.size)}, acima do limite de 15 MB. Grave novamente; o sistema usará a configuração compactada com duração máxima de 1min30s.`));
     return;
   }
 
@@ -1370,7 +1371,7 @@ function finishVideoRecording() {
 
   $('video-preview').src = videoPreviewUrl;
   $('video-preview').hidden = false;
-  $('video-status').textContent = `Vídeo gravado com duração válida (${Math.floor(measuredDurationSeconds)}s · ${formatBytes(blob.size)} de 10 MB).`;
+  $('video-status').textContent = `Vídeo gravado com duração válida (${Math.floor(measuredDurationSeconds)}s · ${formatBytes(blob.size)} de 15 MB).`;
   $('record-video').textContent = 'Gravar novamente';
   $('record-video').classList.add('captured');
 
@@ -1414,12 +1415,37 @@ function resetRecordingClock() {
 function startRecordingTimerLoop() {
   stopRecordingTimerLoop();
   recordingTimer = window.setInterval(updateRecordingTimer, 250);
+  scheduleRecordingHardStop();
+}
+
+function scheduleRecordingHardStop() {
+  if (recordingHardStopTimer) {
+    window.clearTimeout(recordingHardStopTimer);
+    recordingHardStopTimer = null;
+  }
+  if (!mediaRecorder || mediaRecorder.state !== 'recording') return;
+
+  const remainingMs = Math.max(0, (VIDEO_AUTO_STOP_SECONDS * 1000) - getRecordedDurationMilliseconds());
+  recordingHardStopTimer = window.setTimeout(() => {
+    recordingHardStopTimer = null;
+    if (mediaRecorder?.state === 'recording' && getRecordedDurationSeconds() >= VIDEO_AUTO_STOP_SECONDS - 0.1) {
+      recordingStopRequested = true;
+      $('recording-time').textContent = '01:30';
+      $('stop-recording').disabled = true;
+      $('stop-recording').textContent = 'Finalizando vídeo...';
+      try { mediaRecorder.stop(); } catch (_error) { /* o evento stop pode já estar em andamento */ }
+    }
+  }, remainingMs + 25);
 }
 
 function stopRecordingTimerLoop() {
   if (recordingTimer) {
     window.clearInterval(recordingTimer);
     recordingTimer = null;
+  }
+  if (recordingHardStopTimer) {
+    window.clearTimeout(recordingHardStopTimer);
+    recordingHardStopTimer = null;
   }
 }
 
@@ -2020,7 +2046,7 @@ $('upload-form').addEventListener('submit', async (event) => {
   }
 
   if (!serverHasAsset('VIDEO', orders.video) && videoFile?.size > VIDEO_MAX_BYTES) {
-    msg(`O vídeo deve possuir no máximo 10 MB. O arquivo atual tem ${formatBytes(videoFile.size)}.`);
+    msg(`O vídeo deve possuir no máximo 15 MB. O arquivo atual tem ${formatBytes(videoFile.size)}.`);
     $('record-video').focus();
     return;
   }
@@ -2182,7 +2208,7 @@ function showComplete(data) {
 }
 
 
-const DOCUMENT_MAX_BYTES = 30 * 1024 * 1024;
+const DOCUMENT_MAX_BYTES = 15 * 1024 * 1024;
 const FILE_MIME_BY_EXTENSION = {
   jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
   mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', '3gp': 'video/3gpp',
@@ -2220,7 +2246,7 @@ function validateDocumentFile(file, label) {
     throw new Error(`${label} está vazio.`);
   }
   if (file.size > DOCUMENT_MAX_BYTES) {
-    throw new Error(`${label} deve possuir no máximo 30 MB.`);
+    throw new Error(`${label} deve possuir no máximo 15 MB.`);
   }
   if (file.type === contentType) return file;
   return new File([file], file.name || 'documento', {

@@ -88,7 +88,7 @@ function analystPendingLabel(item) {
 
 function badge(status, item = null) {
   if (item?.analysisStage === 'SUPERVISION_QUEUE') {
-    return `<span class="badge ok">Cadastro feito</span>`;
+    return `<span class="badge ok">Cadastro realizado</span>`;
   }
   if (item?.analysisStage === 'ANALYST_PENDING') {
     return `<span class="badge warn">${esc(analystPendingLabel(item))}</span>`;
@@ -504,17 +504,28 @@ function configureStatusOptions(item) {
 
   const pendingAnalyst = item?.analysisStage === 'ANALYST_QUEUE' || item?.analysisStage === 'ANALYST_PENDING';
   const canDecide = item?.analysisStage === 'SUPERVISION_QUEUE';
+  $('supervision-registration-actions').hidden = !pendingAnalyst;
   $('supervision-decision-status-wrap').hidden = pendingAnalyst;
   $('supervision-decision-note-wrap').hidden = pendingAnalyst;
   $('save-supervision-decision').hidden = !canDecide;
   select.disabled = !canDecide;
   $('inspection-note').readOnly = !canDecide;
+
+  if (pendingAnalyst) {
+    const pending = inspectionPendingCount(item);
+    $('supervision-registration-helper').textContent = pending > 0
+      ? `Existem ${pending} ${pending === 1 ? 'pendência' : 'pendências'} de arquivo/documento. A Supervisão pode assumir a responsabilidade, registrar o cadastro como realizado e então decidir a vistoria.`
+      : 'O analista ainda não concluiu o cadastro. A Supervisão pode assumir esta etapa, registrar Cadastro realizado e liberar a decisão final.';
+    $('supervision-registration-note').value = item?.adminNote || '';
+  } else {
+    $('supervision-registration-note').value = '';
+  }
 }
 
 function supervisionStageLabel(item) {
   if (item?.status === 'APPROVED') return 'Aprovada';
   if (item?.status === 'REJECTED') return 'Rejeitada';
-  if (item?.analysisStage === 'SUPERVISION_QUEUE') return 'Cadastro feito · aguardando decisão da supervisão';
+  if (item?.analysisStage === 'SUPERVISION_QUEUE') return 'Cadastro realizado · aguardando decisão da supervisão';
   if (item?.analysisStage === 'ANALYST_PENDING') return `Pendência do analista · ${analystPendingLabel(item)}`;
   if (item?.analysisStage === 'ANALYST_QUEUE') return analystPendingLabel(item);
   return 'Em acompanhamento';
@@ -534,6 +545,12 @@ function openInspection(id) {
 
   $('inspection-id').value = item.id;
   $('dialog-title').textContent = `${item.plate || '0 km — sem placa'} — ${item.associateName}`;
+  $('edit-associate-name').value = item.associateName || '';
+  $('edit-associate-whatsapp').value = formatPhone(item.whatsapp) || '';
+  $('edit-vehicle-model').value = item.vehicleModel || '';
+  $('edit-model-year').value = item.modelYear || '';
+  const editableLocked = Boolean(item.digitalAcceptedAt);
+  ['edit-associate-name','edit-associate-whatsapp','edit-vehicle-model','edit-model-year','save-editable-details'].forEach(id => { const el = $(id); if (el) el.disabled = editableLocked; });
   $('inspection-note').value = item.adminNote || '';
   $('supervision-note').value = item.supervisionNote || '';
   $('supervision-note-meta').textContent = item.supervisionNoteUpdatedAt
@@ -561,9 +578,11 @@ function openInspection(id) {
     ['Associado', item.associateName],
     ['CPF', item.maskedCpf],
     ['WhatsApp', formatPhone(item.whatsapp) || '—'],
+    ['Modelo', item.vehicleModel || '—'],
+    ['Ano do modelo', item.modelYear || '—'],
     ['Consultor', item.consultantName],
     ['Analista responsável', item.assignedAnalystName || 'Não vinculado'],
-    ['Cadastro feito por', item.registrationCompletedByName || item.assignedAnalystName || '—'],
+    ['Cadastro feito por', item.registrationCompletedByName || '—'],
     ['Etapa', supervisionStageLabel(item)],
     ['Placa', item.plate || '0 km — sem placa'],
     ['Tipo', item.requestType === 'NEW_INSPECTION' ? 'Nova vistoria' : 'Atualização de boleto']
@@ -663,10 +682,10 @@ function renderInspectionFiles(item) {
         ? `<div class="inspection-media-preview"><div class="inspection-media-placeholder">▶ Vídeo disponível</div><video data-video-preview="${asset.id}" controls hidden></video></div>`
         : `<div class="inspection-media-preview"><div class="inspection-media-placeholder">${asset.type === 'REPORT' ? 'PDF' : 'DOCUMENTO'}</div></div>`;
     const canDelete = asset.available && ['PHOTO', 'VIDEO', 'SIGNATURE', 'VEHICLE_DOCUMENT', 'IDENTITY_DOCUMENT'].includes(asset.type);
-    const legacyLargeVideo = video && Number(asset.fileSize || 0) > 10 * 1024 * 1024;
+    const legacyLargeVideo = video && Number(asset.fileSize || 0) > 15 * 1024 * 1024;
     const downloadName = legacyLargeVideo ? compactedVideoFileName(asset.fileName) : asset.fileName;
     const compressionNote = legacyLargeVideo
-      ? '<small class="inspection-media-note">Original preservado · download em WebM compactado automaticamente para até 10 MB.</small>'
+      ? '<small class="inspection-media-note">Original preservado · download em WebM compactado automaticamente para até 15 MB.</small>'
       : '';
     const canRegenerateReport = asset.type === 'REPORT' && Boolean(item.completedAt);
     const actions = canRegenerateReport
@@ -854,6 +873,46 @@ function showNotificationButton(item) {
   }
 }
 
+$('supervision-registration-complete')?.addEventListener('click', async () => {
+  const id = $('inspection-id').value;
+  const item = inspections.find(value => value.id === id);
+  if (!item) return message('Vistoria não encontrada.');
+  if (!['ANALYST_QUEUE', 'ANALYST_PENDING'].includes(item.analysisStage)) {
+    return message('O cadastro desta vistoria já foi concluído ou ela já saiu da fila do analista.');
+  }
+
+  const pending = inspectionPendingCount(item);
+  const note = $('supervision-registration-note').value.trim();
+  const warning = pending > 0
+    ? `Esta vistoria ainda possui ${pending} ${pending === 1 ? 'pendência' : 'pendências'}. Ao continuar, a Supervisão assume a responsabilidade pela etapa de cadastro e libera a vistoria para decisão final.`
+    : 'A Supervisão assumirá a etapa de cadastro que ainda não foi concluída pelo analista e liberará a vistoria para decisão final.';
+  const confirmed = await confirmAnalysisAction('Registrar Cadastro realizado?', warning, 'Cadastro realizado');
+  if (!confirmed) return;
+
+  const button = $('supervision-registration-complete');
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Registrando...';
+  try {
+    await api(`/api/supervision/inspections/${encodeURIComponent(id)}/registration-complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note })
+    });
+    if ($('inspection-dialog').open) $('inspection-dialog').close();
+    activeAnalysisQueue = 'review';
+    await load();
+    const updated = inspections.find(value => value.id === id);
+    if (updated) openInspection(id);
+    message('Cadastro realizado pela Supervisão. A decisão final de aprovar ou rejeitar já está liberada.', 'success');
+  } catch (error) {
+    message(error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+});
+
 $('save-supervision-note').addEventListener('click', async () => {
   const id = $('inspection-id').value;
   if (!id) return;
@@ -881,6 +940,32 @@ $('save-supervision-note').addEventListener('click', async () => {
     button.disabled = false;
     button.textContent = original;
   }
+});
+
+$('save-editable-details').addEventListener('click', async () => {
+  const id = $('inspection-id').value;
+  if (!id) return;
+  const button = $('save-editable-details');
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Salvando...';
+  try {
+    const updated = await api(`/api/supervision/inspections/${encodeURIComponent(id)}/details`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        associateName: $('edit-associate-name').value.trim(),
+        whatsapp: $('edit-associate-whatsapp').value.trim(),
+        model: $('edit-vehicle-model').value.trim(),
+        modelYear: Number($('edit-model-year').value)
+      })
+    });
+    const index = inspections.findIndex(item => item.id === updated.id);
+    if (index >= 0) inspections[index] = updated;
+    render();
+    openInspection(updated.id);
+    message('Dados do associado e veículo atualizados. A cotação vinculada também foi sincronizada.', 'success');
+  } catch (error) { message(error.message); }
+  finally { button.disabled = false; button.textContent = original; }
 });
 
 $('inspection-form').addEventListener('submit', async event => {

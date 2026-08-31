@@ -126,6 +126,17 @@
     </div>
     <input id="inspection-id" type="hidden">
     <div id="inspection-details" class="detail-grid"></div>
+    <section class="message" style="margin-top:16px">
+      <strong>Editar dados do associado e veículo</strong>
+      <p>O analista pode corrigir nome, WhatsApp, modelo e ano do modelo. A cotação vinculada é sincronizada automaticamente.</p>
+      <div class="form-grid" style="margin-top:12px">
+        <label>Nome do associado<input id="edit-associate-name" maxlength="140"></label>
+        <label>WhatsApp<input id="edit-associate-whatsapp" maxlength="30" inputmode="tel" placeholder="(82) 99999-9999"></label>
+        <label>Modelo do veículo<input id="edit-vehicle-model" maxlength="120"></label>
+        <label>Ano do modelo<input id="edit-model-year" type="number" min="1950" max="2100"></label>
+      </div>
+      <div class="actions" style="margin-top:10px"><button id="save-editable-details" class="secondary" type="button">Salvar dados corrigidos</button></div>
+    </section>
     <div id="discount-validation-note" class="message" hidden style="margin-top:16px"></div>
     <section id="inspection-files-section" class="inspection-media-section" hidden>
       <div class="inspection-media-head">
@@ -205,7 +216,7 @@
 
 <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
-<script src="/analise/analise.js?v=20260819-analyst-status-v4"></script>
+<script src="/analise/analise.js?v=20260831-editable-data-v1"></script>
 <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
 
   <div class="nh-dev-credit" aria-label="Crédito de desenvolvimento">
