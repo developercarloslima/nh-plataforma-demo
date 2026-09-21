@@ -7,9 +7,11 @@ spring:
     password: ${DATABASE_PASSWORD:nh123}
   servlet:
     multipart:
-      max-file-size: 15MB
+      max-file-size: 450MB
       max-request-size: 450MB
-      file-size-threshold: 8MB
+      # Blocos retomáveis do Retrato NH ficam pequenos; grave multipart em disco cedo
+      # para não duplicar vários MB no heap durante instabilidades/retries do mobile.
+      file-size-threshold: 512KB
   jpa:
     open-in-view: false
     hibernate:

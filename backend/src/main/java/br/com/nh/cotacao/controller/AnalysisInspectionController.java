@@ -1,8 +1,11 @@
 package br.com.nh.cotacao.controller;
 
 import br.com.nh.cotacao.dto.AdminDtos.AdminInspectionResponse;
+import br.com.nh.cotacao.dto.AdminDtos.CommercialPricingPreviewRequest;
+import br.com.nh.cotacao.dto.AdminDtos.CommercialPricingPreviewResponse;
 import br.com.nh.cotacao.dto.AdminDtos.UpdateInspectionStatusRequest;
 import br.com.nh.cotacao.dto.AdminDtos.UpdateInspectionDetailsRequest;
+import br.com.nh.cotacao.dto.AdminDtos.UpdateInspectionContractValuesRequest;
 import br.com.nh.cotacao.dto.PortalDtos.ConsultantResponse;
 import br.com.nh.cotacao.security.PortalPrincipal;
 import br.com.nh.cotacao.service.AdminActivityService;
@@ -43,6 +46,26 @@ public class AnalysisInspectionController {
     ) {
         PortalPrincipal principal = (PortalPrincipal) authentication.getPrincipal();
         return service.updateInspectionDetails(id, request, principal.username(), principal.role());
+    }
+
+    @PatchMapping("/{id}/contract-values")
+    public AdminInspectionResponse updateContractValues(
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateInspectionContractValuesRequest request,
+            Authentication authentication
+    ) {
+        PortalPrincipal principal = (PortalPrincipal) authentication.getPrincipal();
+        return service.updateInspectionContractValues(id, request, principal.username(), principal.role());
+    }
+
+    @PostMapping("/{id}/contract-pricing-preview")
+    public CommercialPricingPreviewResponse previewContractPricing(
+            @PathVariable UUID id,
+            @Valid @RequestBody CommercialPricingPreviewRequest request,
+            Authentication authentication
+    ) {
+        PortalPrincipal principal = (PortalPrincipal) authentication.getPrincipal();
+        return service.previewInspectionContractPricing(id, request, principal.username(), principal.role());
     }
 
     @PostMapping("/{id}/registration-complete")

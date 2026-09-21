@@ -11,7 +11,7 @@
   <meta property="og:image" content="https://nhprotecao.com.br/assets/simbolo-fundo-azul.png" />
   <meta property="og:image:type" content="image/png" />
   <meta name="twitter:image" content="https://nhprotecao.com.br/assets/simbolo-fundo-azul.png" />
-<link rel="stylesheet" href="/shared/portal.css?v=20260820-responsive-portal-v461">
+<link rel="stylesheet" href="/shared/portal.css?v=20260920-dossier-live-acceptance-v25">
   <link rel="stylesheet" href="/shared/responsive.css?v=20260820-responsive-v461">
   <link rel="stylesheet" href="/shared/brand-system.css?v=20260807-modals-v5">
 
@@ -130,19 +130,74 @@
     <div id="inspection-details" class="detail-grid"></div>
     <section class="message" style="margin-top:16px">
       <strong>Editar dados do associado e veículo</strong>
-      <p>A Supervisão pode corrigir nome, WhatsApp, modelo e ano do modelo. A cotação vinculada é sincronizada automaticamente.</p>
+      <p>A Supervisão pode corrigir completamente a vistoria, inclusive depois de aprovada, enquanto o associado ainda não tiver realizado o aceite digital. Depois do aceite digital, o dossiê fica bloqueado.</p>
+      <div id="supervision-digital-lock" class="commercial-lock-banner" hidden><strong>Vistoria bloqueada</strong><span>O associado já realizou o aceite digital. Dados, valores, benefícios, arquivos e decisão final não podem mais ser alterados.</span></div>
       <div class="form-grid" style="margin-top:12px">
         <label>Nome do associado<input id="edit-associate-name" maxlength="140"></label>
+        <label>CPF<input id="edit-associate-cpf" maxlength="14" inputmode="numeric" placeholder="000.000.000-00"></label>
         <label>WhatsApp<input id="edit-associate-whatsapp" maxlength="30" inputmode="tel" placeholder="(82) 99999-9999"></label>
+        <label>Placa<input id="edit-associate-plate" maxlength="10" placeholder="ABC1D23"></label>
+        <label>Veículo 0 km<select id="edit-zero-km"><option value="false">Não</option><option value="true">Sim</option></select></label>
         <label>Modelo do veículo<input id="edit-vehicle-model" maxlength="120"></label>
         <label>Ano do modelo<input id="edit-model-year" type="number" min="1950" max="2100"></label>
+        <label class="span-2">Endereço residencial<textarea id="edit-residence-address" maxlength="600" rows="3"></textarea></label>
       </div>
       <div class="actions" style="margin-top:10px"><button id="save-editable-details" class="secondary" type="button">Salvar dados corrigidos</button></div>
+      <div id="supervision-contract-values-section" class="message commercial-editor">
+        <strong>Valores do contrato</strong>
+        <p id="supervision-contract-values-helper">A Supervisão pode corrigir FIPE, desconto, mensalidade, benefícios e adicionais inclusive em vistorias aprovadas, enquanto o associado ainda não tiver realizado o aceite digital.</p>
+        <p style="margin-top:10px"><strong>Plano da cotação:</strong> <span id="supervision-contract-plan">—</span></p>
+            <div class="commercial-stage-heading">
+              <span>ETAPA 1</span>
+              <div><strong>Base do plano e condições do cálculo</strong><small>O valor-base vem da tabela cadastrada para o plano, tipo do veículo e FIPE. Rastreador/taxas só entram quando a regra atual exigir.</small></div>
+            </div>
+        <div class="form-grid" style="margin-top:10px">
+          <label>Valor FIPE do veículo<input id="supervision-contract-fipe" data-money inputmode="decimal" placeholder="Ex.: 65.000,00"></label>
+          <label>Valor mensal final (automático)<input id="supervision-contract-monthly" data-money inputmode="decimal" readonly aria-readonly="true"><small class="helper">Calculado na hora: valor-base cadastrado para o plano/FIPE + rastreador ou taxa aplicável + serviços adicionais selecionados − desconto.</small></label>
+          <label>Desconto aplicado
+            <select id="supervision-contract-discount">
+              <option value="0">Sem desconto</option><option value="5">5%</option><option value="10">10%</option><option value="15">15%</option><option value="30">30%</option>
+            </select>
+          </label>
+          <label>Perfurado no vigia traseiro
+            <select id="supervision-contract-branding">
+              <option value="NOT_APPLICABLE">Não se aplica</option>
+              <option value="NH_AND_OTHER_COMPANY">Novo Horizonte + outra empresa</option>
+              <option value="NH_ONLY">Somente Novo Horizonte</option>
+            </select>
+          </label>
+        </div>
+        <div class="commercial-preview" aria-live="polite">
+          <div class="commercial-preview-item"><span>Mensalidade base do plano</span><strong id="supervision-preview-base">R$ 0,00</strong></div>
+          <div class="commercial-preview-item"><span id="supervision-preview-mandatory-label">Rastreador / taxa mensal aplicável</span><strong id="supervision-preview-mandatory">R$ 0,00</strong></div>
+          <div class="commercial-preview-item"><span>Adicionais selecionados</span><strong id="supervision-preview-optionals">R$ 0,00</strong></div>
+          <div class="commercial-preview-item"><span>Subtotal mensal</span><strong id="supervision-preview-subtotal">R$ 0,00</strong></div>
+          <div class="commercial-preview-item"><span>Taxa única (fora da mensalidade)</span><strong id="supervision-preview-one-time">R$ 0,00</strong></div>
+          <div class="commercial-preview-item commercial-preview-discount"><span id="supervision-preview-discount-label">Desconto</span><strong id="supervision-preview-discount">R$ 0,00</strong></div>
+          <div class="commercial-preview-item commercial-preview-total"><span>Valor final previsto</span><strong id="supervision-preview-final">R$ 0,00</strong><small id="supervision-preview-final-note">Calculado automaticamente com desconto e adicionais.</small></div>
+            </div>
+        <div class="commercial-benefits-section">
+          <div class="commercial-stage-heading commercial-stage-two">
+              <span>ETAPA 2</span>
+              <div><strong>Serviços adicionais e benefícios</strong><small>Esta lista vem do cadastro atual do plano. Ao adicionar ou remover um serviço, a prévia é recalculada na hora com o valor cadastrado.</small></div>
+            </div>
+          <div id="supervision-contract-benefits" class="commercial-benefits-grid"></div>
+        </div>
+        <div class="actions" style="margin-top:10px"><button id="supervision-save-contract-values" class="secondary" type="button">Salvar revisão comercial</button></div>
+        <div id="supervision-contract-change-pending" class="message success" hidden style="margin-top:12px">
+          <strong>Novo valor aguardando confirmação do associado</strong>
+          <p id="supervision-contract-change-pending-text">Envie o link para o cliente conferir o novo valor e decidir sobre os adicionais já contratados.</p>
+          <div class="actions">
+            <a id="supervision-send-contract-change-link" class="secondary" target="_blank" rel="noopener">Enviar link para aceite</a>
+            <button id="supervision-copy-contract-change-link" class="outline" type="button">Copiar link</button>
+          </div>
+        </div>
+      </div>
     </section>
     <div id="discount-validation-note" class="message" hidden style="margin-top:16px"></div>
     <section id="inspection-files-section" class="inspection-media-section" hidden>
       <div class="inspection-media-head">
-        <div><h3>Arquivos enviados</h3><p id="inspection-files-retention">Disponíveis por 40 dias.</p></div>
+        <div><h3>Arquivos enviados</h3><p id="inspection-files-retention">Arquivos confirmados disponíveis durante a retenção operacional de 40 dias.</p></div>
         <button id="download-all-files" class="secondary" type="button">Baixar todos (.zip)</button>
       </div>
       <div id="inspection-files-grid" class="inspection-media-grid"></div>
@@ -159,8 +214,9 @@
         <label style="margin-top:10px">Observação do cadastro
           <textarea id="supervision-registration-note" maxlength="1200" rows="3" placeholder="Opcional. Se houver arquivos pendentes, registre aqui o motivo da liberação excepcional."></textarea>
         </label>
-        <div class="actions" style="margin-top:10px">
-          <button id="supervision-registration-complete" class="secondary" type="button">✓ Cadastro realizado</button>
+        <div class="actions registration-actions-panel" style="margin-top:10px">
+          <button id="supervision-registration-not-complete" class="outline" type="button">Cadastro não realizado · Reabrir cadastro</button>
+          <button id="supervision-registration-complete" class="secondary" type="button">✓ Cadastro realizado · Liberar decisão</button>
         </div>
       </div>
       <div id="inspection-analyst-wrap" class="span-2" hidden>
@@ -188,7 +244,7 @@
       <strong>Aceite digital WebAuthn pendente</strong>
       <p>Envie o token/link seguro ao associado para ele abrir no próprio celular e confirmar o PPV com biometria, PIN ou bloqueio seguro do aparelho.</p>
       <div class="actions">
-        <button id="send-webauthn-token" class="secondary" type="button">Enviar token WebAuthn</button>
+        <button id="send-webauthn-token" class="secondary" type="button">Enviar link para aceite</button>
         <button id="copy-webauthn-link" class="outline" type="button">Copiar link do aceite</button>
       </div>
     </div>
@@ -240,7 +296,8 @@
 
 <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
-<script src="/supervisao/supervisao.js?v=20260831-editable-data-v1"></script>
+<script src="/shared/money-input.js?v=20260805-brl-mask"></script>
+<script src="/supervisao/supervisao.js?v=20260920-dossier-live-acceptance-v25"></script>
 <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
 
   <div class="nh-dev-credit" aria-label="Crédito de desenvolvimento">

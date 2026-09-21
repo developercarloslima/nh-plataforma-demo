@@ -11,7 +11,7 @@
   <meta property="og:image" content="https://nhprotecao.com.br/assets/simbolo-fundo-azul.png" />
   <meta property="og:image:type" content="image/png" />
   <meta name="twitter:image" content="https://nhprotecao.com.br/assets/simbolo-fundo-azul.png" />
-<link rel="stylesheet" href="/shared/portal.css?v=20260820-responsive-portal-v461">
+<link rel="stylesheet" href="/shared/portal.css?v=20260920-live-catalog-optionals-v21">
   <link rel="stylesheet" href="/shared/responsive.css?v=20260820-responsive-v461">
   <link rel="stylesheet" href="/shared/brand-system.css?v=20260807-modals-v5">
 
@@ -128,14 +128,68 @@
     <div id="inspection-details" class="detail-grid"></div>
     <section class="message" style="margin-top:16px">
       <strong>Editar dados do associado e veículo</strong>
-      <p>O analista pode corrigir nome, WhatsApp, modelo e ano do modelo. A cotação vinculada é sincronizada automaticamente.</p>
+      <p>O analista pode corrigir os dados abaixo enquanto a vistoria ainda não estiver com status <strong>Cadastro feito</strong>. A cotação vinculada é sincronizada automaticamente.</p>
       <div class="form-grid" style="margin-top:12px">
         <label>Nome do associado<input id="edit-associate-name" maxlength="140"></label>
+        <label>CPF<input id="edit-associate-cpf" maxlength="14" inputmode="numeric" placeholder="000.000.000-00"></label>
         <label>WhatsApp<input id="edit-associate-whatsapp" maxlength="30" inputmode="tel" placeholder="(82) 99999-9999"></label>
+        <label>Placa<input id="edit-associate-plate" maxlength="10" placeholder="ABC1D23"></label>
+        <label>Veículo 0 km<select id="edit-zero-km"><option value="false">Não</option><option value="true">Sim</option></select></label>
         <label>Modelo do veículo<input id="edit-vehicle-model" maxlength="120"></label>
         <label>Ano do modelo<input id="edit-model-year" type="number" min="1950" max="2100"></label>
+        <label class="span-2">Endereço residencial<textarea id="edit-residence-address" maxlength="600" rows="3"></textarea></label>
       </div>
       <div class="actions" style="margin-top:10px"><button id="save-editable-details" class="secondary" type="button">Salvar dados corrigidos</button></div>
+      <div id="contract-values-section" class="message commercial-editor">
+        <strong>Valores do contrato</strong>
+        <p id="contract-values-helper">FIPE e mensalidade podem ser corrigidas enquanto o cadastro estiver pendente ou marcado como não feito, inclusive em vistorias antigas. Os valores salvos passam a valer no PPV/PDF contratual e ficam registrados no histórico.</p>
+        <p style="margin-top:10px"><strong>Plano da cotação:</strong> <span id="edit-contract-plan">—</span></p>
+            <div class="commercial-stage-heading">
+              <span>ETAPA 1</span>
+              <div><strong>Base do plano e condições do cálculo</strong><small>O valor-base vem da tabela cadastrada para o plano, tipo do veículo e FIPE. Rastreador/taxas só entram quando a regra atual exigir.</small></div>
+            </div>
+        <div class="form-grid" style="margin-top:10px">
+          <label>Valor FIPE do veículo<input id="edit-contract-fipe" data-money inputmode="decimal" placeholder="Ex.: 65.000,00"></label>
+          <label>Valor mensal final (automático)<input id="edit-contract-monthly" data-money inputmode="decimal" readonly aria-readonly="true"><small class="helper">Calculado na hora: valor-base cadastrado para o plano/FIPE + rastreador ou taxa aplicável + serviços adicionais selecionados − desconto.</small></label>
+          <label>Desconto aplicado
+            <select id="edit-contract-discount">
+              <option value="0">Sem desconto</option><option value="5">5%</option><option value="10">10%</option><option value="15">15%</option><option value="30">30%</option>
+            </select>
+          </label>
+          <label>Perfurado no vigia traseiro
+            <select id="edit-contract-branding">
+              <option value="NOT_APPLICABLE">Não se aplica</option>
+              <option value="NH_AND_OTHER_COMPANY">Novo Horizonte + outra empresa</option>
+              <option value="NH_ONLY">Somente Novo Horizonte</option>
+            </select>
+          </label>
+        </div>
+        <div class="commercial-preview" aria-live="polite">
+          <div class="commercial-preview-item"><span>Mensalidade base do plano</span><strong id="analysis-preview-base">R$ 0,00</strong></div>
+          <div class="commercial-preview-item"><span id="analysis-preview-mandatory-label">Rastreador / taxa mensal aplicável</span><strong id="analysis-preview-mandatory">R$ 0,00</strong></div>
+          <div class="commercial-preview-item"><span>Adicionais selecionados</span><strong id="analysis-preview-optionals">R$ 0,00</strong></div>
+          <div class="commercial-preview-item"><span>Subtotal mensal</span><strong id="analysis-preview-subtotal">R$ 0,00</strong></div>
+          <div class="commercial-preview-item"><span>Taxa única (fora da mensalidade)</span><strong id="analysis-preview-one-time">R$ 0,00</strong></div>
+          <div class="commercial-preview-item commercial-preview-discount"><span id="analysis-preview-discount-label">Desconto</span><strong id="analysis-preview-discount">R$ 0,00</strong></div>
+          <div class="commercial-preview-item commercial-preview-total"><span>Valor final previsto</span><strong id="analysis-preview-final">R$ 0,00</strong><small id="analysis-preview-final-note">Calculado automaticamente com desconto e adicionais.</small></div>
+            </div>
+        <div class="commercial-benefits-section">
+          <div class="commercial-stage-heading commercial-stage-two">
+              <span>ETAPA 2</span>
+              <div><strong>Serviços adicionais e benefícios</strong><small>Esta lista vem do cadastro atual do plano. Ao adicionar ou remover um serviço, a prévia é recalculada na hora com o valor cadastrado.</small></div>
+            </div>
+          <div id="edit-contract-benefits" class="commercial-benefits-grid"></div>
+        </div>
+        <div class="actions" style="margin-top:10px"><button id="save-contract-values" class="secondary" type="button">Salvar revisão comercial</button></div>
+        <div id="contract-change-pending" class="message success" hidden style="margin-top:12px">
+          <strong>Novo valor aguardando confirmação do associado</strong>
+          <p id="contract-change-pending-text">Envie o link para o cliente conferir o novo valor e decidir sobre os adicionais já contratados.</p>
+          <div class="actions">
+            <a id="send-contract-change-link" class="secondary" target="_blank" rel="noopener">Enviar link para cliente confirmar o novo valor do plano</a>
+            <button id="copy-contract-change-link" class="outline" type="button">Copiar link</button>
+          </div>
+        </div>
+      </div>
     </section>
     <div id="discount-validation-note" class="message" hidden style="margin-top:16px"></div>
     <section id="inspection-files-section" class="inspection-media-section" hidden>
@@ -216,7 +270,8 @@
 
 <script src="/shared/config.js?v=20260804-current-origin"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
-<script src="/analise/analise.js?v=20260831-editable-data-v1"></script>
+<script src="/shared/money-input.js?v=20260805-brl-mask"></script>
+<script src="/analise/analise.js?v=20260920-live-catalog-optionals-v21"></script>
 <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
 
   <div class="nh-dev-credit" aria-label="Crédito de desenvolvimento">

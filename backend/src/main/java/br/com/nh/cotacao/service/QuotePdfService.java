@@ -22,9 +22,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 @Service
 public class QuotePdfService {
@@ -85,55 +82,98 @@ public class QuotePdfService {
     }
 
     private void addHeader(Document document, Quotation quotation) throws Exception {
-        PdfPTable banner = new PdfPTable(new float[]{1.05f, 4.35f, 1.70f});
+        PdfPTable banner = new PdfPTable(new float[]{1.0f, 4.55f, 1.65f});
         banner.setWidthPercentage(100);
-        banner.setSpacingAfter(18);
+        banner.setSpacingAfter(0);
 
         PdfPCell logoCell;
         try (InputStream logoStream = new ClassPathResource("favicon-nh.png").getInputStream()) {
             Image logo = Image.getInstance(logoStream.readAllBytes());
-            logo.scaleToFit(66, 66);
+            logo.scaleToFit(60, 60);
             logoCell = new PdfPCell(logo, false);
         }
         styleBannerCell(logoCell);
+        logoCell.setPaddingLeft(10);
+        logoCell.setPaddingRight(6);
+        logoCell.setPaddingTop(10);
+        logoCell.setPaddingBottom(10);
         logoCell.setHorizontalAlignment(Element.ALIGN_CENTER);
         logoCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
         banner.addCell(logoCell);
 
-        Paragraph title = new Paragraph();
-        title.setAlignment(Element.ALIGN_CENTER);
-        title.setLeading(28);
-        title.add(new Chunk("NOVO HORIZONTE\n", font(28, Font.BOLD, Color.WHITE)));
-        title.add(new Chunk("PROTEÇÃO VEICULAR\n", font(11, Font.BOLD, YELLOW)));
-        title.add(new Chunk("COTAÇÃO COMERCIAL", font(10.5f, Font.NORMAL, Color.WHITE)));
-        PdfPCell titleCell = new PdfPCell(title);
-        styleBannerCell(titleCell);
-        titleCell.setHorizontalAlignment(Element.ALIGN_CENTER);
-        titleCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
-        banner.addCell(titleCell);
+        PdfPCell brandCell = new PdfPCell();
+        styleBannerCell(brandCell);
+        brandCell.setPaddingLeft(4);
+        brandCell.setPaddingRight(4);
+        brandCell.setPaddingTop(8);
+        brandCell.setPaddingBottom(8);
+        brandCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+
+        Paragraph brandName = new Paragraph("NOVO HORIZONTE", font(31, Font.BOLD, Color.WHITE));
+        brandName.setAlignment(Element.ALIGN_CENTER);
+        brandName.setLeading(31);
+        brandName.setSpacingAfter(0);
+        brandCell.addElement(brandName);
+
+        Paragraph brandSubtitle = new Paragraph("PROTEÇÃO VEICULAR", font(15, Font.BOLD, YELLOW));
+        brandSubtitle.setAlignment(Element.ALIGN_CENTER);
+        brandSubtitle.setLeading(15.5f);
+        brandSubtitle.setSpacingBefore(0);
+        brandSubtitle.setSpacingAfter(1);
+        brandCell.addElement(brandSubtitle);
+
+        Paragraph cnpj = new Paragraph("CNPJ 38.078.339/0001-83", font(8.7f, Font.BOLD, new Color(231, 234, 246)));
+        cnpj.setAlignment(Element.ALIGN_CENTER);
+        cnpj.setLeading(9.2f);
+        cnpj.setSpacingBefore(0);
+        cnpj.setSpacingAfter(0);
+        brandCell.addElement(cnpj);
+
+        banner.addCell(brandCell);
 
         Paragraph identifier = new Paragraph();
-        identifier.setAlignment(Element.ALIGN_RIGHT);
-        identifier.setLeading(14);
-        identifier.add(new Chunk("Nº DA COTAÇÃO\n", font(7, Font.BOLD, YELLOW)));
-        identifier.add(new Chunk(quotation.getQuoteNumber() + "\n", font(9, Font.BOLD, Color.WHITE)));
-        identifier.add(new Chunk("VÁLIDA ATÉ\n", font(7, Font.BOLD, YELLOW)));
-        identifier.add(new Chunk(quotation.getValidUntil().format(DATE_TIME), font(7.5f, Font.BOLD, Color.WHITE)));
+        identifier.setAlignment(Element.ALIGN_LEFT);
+        identifier.setLeading(10.5f);
+        identifier.add(new Chunk("COTAÇÃO Nº\n", font(7, Font.BOLD, YELLOW)));
+        identifier.add(new Chunk(quotation.getQuoteNumber() + "\n", font(9.6f, Font.BOLD, Color.WHITE)));
+        identifier.add(new Chunk("VALIDADE\n", font(7, Font.BOLD, YELLOW)));
+        identifier.add(new Chunk(quotation.getValidUntil().format(DATE_TIME), font(7.4f, Font.BOLD, Color.WHITE)));
+
         PdfPCell identifierCell = new PdfPCell(identifier);
         styleBannerCell(identifierCell);
-        identifierCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        identifierCell.setPaddingLeft(12);
+        identifierCell.setPaddingRight(8);
+        identifierCell.setPaddingTop(8);
+        identifierCell.setPaddingBottom(10);
+        identifierCell.setBorderWidthLeft(1.2f);
+        identifierCell.setBorderColorLeft(NAVY_LIGHT);
+        identifierCell.setVerticalAlignment(Element.ALIGN_BOTTOM);
         banner.addCell(identifierCell);
 
         document.add(banner);
 
-        PdfPTable intro = new PdfPTable(new float[]{4.5f, 1.5f});
+        PdfPTable accent = new PdfPTable(1);
+        accent.setWidthPercentage(100);
+        PdfPCell accentCell = new PdfPCell();
+        accentCell.setFixedHeight(4f);
+        accentCell.setBackgroundColor(YELLOW);
+        accentCell.setBorder(Rectangle.NO_BORDER);
+        accent.addCell(accentCell);
+        accent.setSpacingAfter(12);
+        document.add(accent);
+
+        PdfPTable intro = new PdfPTable(new float[]{4.55f, 1.45f});
         intro.setWidthPercentage(100);
-        PdfPCell introText = new PdfPCell(new Phrase(
-                "Proposta personalizada de proteção veicular",
-                font(15, Font.BOLD, NAVY)
-        ));
+        intro.setSpacingAfter(6);
+
+        PdfPCell introText = new PdfPCell();
         introText.setBorder(Rectangle.NO_BORDER);
-        introText.setPaddingBottom(5);
+        introText.setPadding(0);
+        Paragraph proposal = new Paragraph();
+        proposal.setLeading(17);
+        proposal.add(new Chunk("PROPOSTA PERSONALIZADA\n", font(7.5f, Font.BOLD, MUTED)));
+        proposal.add(new Chunk("Proteção veicular para o seu veículo", font(15.5f, Font.BOLD, NAVY)));
+        introText.addElement(proposal);
         intro.addCell(introText);
 
         PdfPCell status = new PdfPCell(new Phrase(statusLabel(quotation), font(8, Font.BOLD, NAVY)));
@@ -141,15 +181,17 @@ public class QuotePdfService {
         status.setVerticalAlignment(Element.ALIGN_MIDDLE);
         status.setBackgroundColor(YELLOW);
         status.setBorderColor(YELLOW);
-        status.setPadding(7);
+        status.setPadding(8);
         intro.addCell(status);
         document.add(intro);
 
         Paragraph subtitle = new Paragraph(
-                "Proposta válida por 5 dias a partir da emissão, sujeita às regras vigentes e à validação da vistoria.",
-                font(8.5f, Font.NORMAL, MUTED)
+                "Documento comercial emitido em " + quotation.getCreatedAt().format(DATE_TIME)
+                        + ". Validade de 5 dias, sujeita às regras vigentes e à validação da vistoria.",
+                font(8.2f, Font.NORMAL, MUTED)
         );
-        subtitle.setSpacingAfter(16);
+        subtitle.setLeading(12);
+        subtitle.setSpacingAfter(15);
         document.add(subtitle);
     }
 
@@ -275,17 +317,10 @@ public class QuotePdfService {
         table.addCell(headerCell("COBERTURA"));
         table.addCell(headerCell("CONDIÇÕES / LIMITES"));
 
-        Map<String, QuotationOptionalCoverage> selectedByCode = quotation.getSelectedOptionals().stream()
-                .collect(Collectors.toMap(
-                        QuotationOptionalCoverage::getCoverageCode,
-                        Function.identity()
-                ));
-
         int visibleIndex = 0;
         for (var item : quotation.getCoverageSnapshots()) {
-            boolean included = item.getCoverageStatus() == CoverageStatus.INCLUDED;
-            QuotationOptionalCoverage selectedOptional = selectedByCode.get(item.getCoverageCode());
-            if (!included && selectedOptional == null) continue;
+            boolean included = item.isFinalSelected() && item.getCoverageStatus() != CoverageStatus.OPTIONAL;
+            if (!item.isFinalSelected()) continue;
 
             Color rowColor = visibleIndex++ % 2 == 0 ? Color.WHITE : new Color(250, 251, 254);
             PdfPCell statusCell = statusCell(included ? "INCLUÍDO" : "CONTRATADO");

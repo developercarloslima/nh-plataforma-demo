@@ -29,7 +29,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -39,6 +42,9 @@ public class InspectionAssetStorageService {
     private static final int DIRECT_CHUNK_BYTES = 4 * 1024 * 1024;
     private static final long MAX_VIDEO_BYTES = 15L * 1024 * 1024;
     private static final Path VIDEO_DOWNLOAD_CACHE_DIR = Path.of(System.getProperty("java.io.tmpdir"), "nh-video-download-cache");
+    private static final Pattern FREEZE_DURATION_PATTERN = Pattern.compile("freeze_duration:\\s*([0-9]+(?:\\.[0-9]+)?)");
+    private static final Pattern FREEZE_START_PATTERN = Pattern.compile("freeze_start:\\s*([0-9]+(?:\\.[0-9]+)?)");
+    private static final Pattern FREEZE_END_PATTERN = Pattern.compile("freeze_end:\\s*([0-9]+(?:\\.[0-9]+)?)");
 
     private final InspectionAssetRepository assetRepository;
     private final JdbcTemplate jdbcTemplate;
@@ -211,7 +217,17 @@ public class InspectionAssetStorageService {
 
         BlobRow blob = rows.getFirst();
         if ("COMPLETE".equals(blob.status()) && blob.assetId() != null && contentExists(blob.assetId())) {
-            return new ChunkUploadStatus(true, List.of());
+            // Fotos/documentos confirmados não são reenviados. Vídeo é diferente:
+            // uma nova gravação possui outro uploadId e precisa poder substituir um
+            // arquivo anterior que tenha sido reprovado por congelamento.
+            // A normalização de vídeo pode regravar o blob em partes internas de 4 MB,
+            // portanto o totalChunks físico pode mudar. O uploadId identifica de forma
+            // suficiente a mesma gravação; uma nova gravação recebe outro uploadId.
+            boolean sameVideoUpload = blob.uploadId().equals(uploadId);
+            if (assetType != InspectionAssetType.VIDEO || sameVideoUpload) {
+                return new ChunkUploadStatus(true, List.of());
+            }
+            return new ChunkUploadStatus(false, List.of());
         }
         if (!blob.uploadId().equals(uploadId) || blob.totalChunks() != totalChunks) {
             return new ChunkUploadStatus(false, List.of());
@@ -251,8 +267,8 @@ public class InspectionAssetStorageService {
         if (request == null) throw new IllegalArgumentException("Vistoria não encontrada.");
         if (type == null) throw new IllegalArgumentException("Tipo do arquivo não informado.");
         if (totalSize <= 0) throw new IllegalArgumentException("O arquivo recebido está vazio.");
-        validateStorageLimit(type, totalSize);
-        if (totalChunks < 1 || totalChunks > 512) {
+        validateStorageLimit(type, contentType, totalSize);
+        if (totalChunks < 1 || totalChunks > 4096) {
             throw new IllegalArgumentException("Quantidade de partes do arquivo inválida.");
         }
         if (chunkIndex < 0 || chunkIndex >= totalChunks) {
@@ -267,7 +283,22 @@ public class InspectionAssetStorageService {
 
         Optional<InspectionAsset> currentAsset = findSlotAsset(request, type, sortOrder);
         if (currentAsset.isPresent() && isAvailable(currentAsset.get())) {
-            return new ChunkStoreResult(true, totalChunks, currentAsset.get());
+            boolean sameCompletedUpload = completedBlobMatches(
+                    request.getId(), type, sortOrder, uploadId, totalSize, totalChunks
+            );
+            if (type == InspectionAssetType.VIDEO && !sameCompletedUpload) {
+                // Uma nova gravação recebe outro uploadId. Permitimos substituir o
+                // vídeo anterior mesmo que o slot já estivesse completo; isso é
+                // essencial quando a validação de continuidade pede para regravar.
+                deleteBlobSlot(request.getId(), type, sortOrder);
+                jdbcTemplate.update("delete from inspection_asset_contents where asset_id = ?", currentAsset.get().getId());
+                currentAsset.get().markPurged(OffsetDateTime.now());
+                assetRepository.flush();
+                entityManager.flush();
+                removeUnavailableSlotAsset(request, type, sortOrder);
+            } else {
+                return new ChunkStoreResult(true, totalChunks, currentAsset.get());
+            }
         }
 
         // Se este slot foi rejeitado/excluído anteriormente, remova o metadado
@@ -326,6 +357,11 @@ public class InspectionAssetStorageService {
         InspectionAsset asset = assetRepository.findByIdAndInspectionRequest_Id(assetId, inspectionId)
                 .orElseThrow(() -> new IllegalArgumentException("Arquivo da vistoria não encontrado."));
         InspectionRequest request = asset.getInspectionRequest();
+        if (request.getAcceptedAt() != null) {
+            throw new IllegalArgumentException(
+                    "Esta vistoria já possui aceite digital do associado. Os arquivos não podem mais ser alterados."
+            );
+        }
         String fileName = asset.getFileName();
         boolean userSubmittedAsset = asset.getAssetType() != InspectionAssetType.REPORT;
 
@@ -460,9 +496,8 @@ public class InspectionAssetStorageService {
     }
 
     public boolean isAvailable(InspectionAsset asset) {
-        // O limite de 15 MB vale somente para NOVOS uploads.
-        // Vídeos legados maiores permanecem disponíveis até o fim da retenção e
-        // são compactados apenas no momento do download, sem destruir o original.
+        // A disponibilidade depende apenas da persistência do conteúdo. Vídeos não
+        // possuem mais limite de MB; fotos e documentos mantêm a proteção própria.
         return asset != null
                 && asset.getStorageKind() == InspectionAssetStorageKind.DATABASE
                 && asset.isAvailable()
@@ -470,9 +505,9 @@ public class InspectionAssetStorageService {
     }
 
     public boolean requiresVideoDownloadCompression(InspectionAsset asset) {
-        return asset != null
-                && asset.getAssetType() == InspectionAssetType.VIDEO
-                && asset.getFileSize() > MAX_VIDEO_BYTES;
+        // O vídeo deve ser preservado exatamente como foi gravado. Não aplicamos
+        // compactação automática nem teto de tamanho no download.
+        return false;
     }
 
     public String downloadFileName(InspectionAsset asset) {
@@ -598,6 +633,338 @@ public class InspectionAssetStorageService {
         return Double.parseDouble(result.split("\\R")[0].trim());
     }
 
+    /**
+     * O gravador nativo do iOS é aberto fora da página e o HTML não possui uma API
+     * capaz de encerrá-lo exatamente em 90 segundos. Para manter a estabilidade da
+     * câmera nativa sem aceitar vídeos maiores no dossiê, normalizamos o arquivo já
+     * recebido e preservamos somente os primeiros {@code maxDurationSeconds}.
+     *
+     * O corte é feito com stream copy, sem recompressão: a qualidade original da
+     * câmera é mantida e o servidor não gasta CPU recodificando um vídeo válido.
+     */
+    @Transactional
+    public boolean trimVideoToMaximumDuration(InspectionAsset asset, double maxDurationSeconds) {
+        if (asset == null || asset.getAssetType() != InspectionAssetType.VIDEO) {
+            throw new IllegalArgumentException("Vídeo da vistoria não encontrado.");
+        }
+        if (!Double.isFinite(maxDurationSeconds) || maxDurationSeconds <= 0) {
+            throw new IllegalArgumentException("Limite de duração do vídeo inválido.");
+        }
+        if (!isAvailable(asset)) {
+            throw new IllegalArgumentException("O vídeo da vistoria não está disponível no PostgreSQL.");
+        }
+
+        Path source = null;
+        Path trimmed = null;
+        try {
+            String extension = videoSourceExtension(asset.getContentType());
+            source = Files.createTempFile("nh-video-source-", extension);
+            trimmed = Files.createTempFile("nh-video-trimmed-", extension);
+
+            try (OutputStream output = Files.newOutputStream(source)) {
+                writeTo(asset.getId(), output);
+            }
+
+            double originalDuration = probeVideoDuration(source);
+            long originalSize = asset.getFileSize();
+            if (!Double.isFinite(originalDuration) || originalDuration <= 0) {
+                throw new IllegalArgumentException("Não foi possível identificar a duração do vídeo enviado.");
+            }
+            if (originalDuration <= maxDurationSeconds + 0.5d) {
+                return false;
+            }
+
+            trimVideoWithoutReencoding(source, trimmed, maxDurationSeconds, extension);
+            long trimmedSize = Files.size(trimmed);
+            if (trimmedSize <= 0) {
+                throw new IllegalStateException("O corte do vídeo gerou um arquivo vazio.");
+            }
+
+            double trimmedDuration = probeVideoDuration(trimmed);
+            if (!Double.isFinite(trimmedDuration) || trimmedDuration <= 0
+                    || trimmedDuration > maxDurationSeconds + 0.5d) {
+                throw new IllegalStateException("O vídeo não pôde ser limitado corretamente a 1 minuto e 30 segundos.");
+            }
+
+            replaceChunkedAssetContent(asset, trimmed, trimmedSize);
+            log.info(
+                    "Retrato NH: vídeo normalizado sem recompressão assetId={} originalDuration={} finalDuration={} originalBytes={} finalBytes={}",
+                    asset.getId(), originalDuration, trimmedDuration, originalSize, trimmedSize
+            );
+            return true;
+        } catch (IllegalArgumentException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            log.warn("Retrato NH: falha ao limitar vídeo assetId={}", asset.getId(), exception);
+            throw new IllegalArgumentException(
+                    "O vídeo foi gravado, mas não foi possível limitar o arquivo a 1 minuto e 30 segundos. Tente gravar novamente mais próximo desse tempo."
+            );
+        } finally {
+            if (source != null) try { Files.deleteIfExists(source); } catch (Exception ignored) {}
+            if (trimmed != null) try { Files.deleteIfExists(trimmed); } catch (Exception ignored) {}
+        }
+    }
+
+    private void trimVideoWithoutReencoding(Path source, Path destination, double maxDurationSeconds, String extension) throws Exception {
+        List<String> command = new ArrayList<>(List.of(
+                "ffmpeg", "-y", "-nostdin", "-hide_banner", "-loglevel", "error",
+                "-i", source.toAbsolutePath().toString(),
+                "-map", "0:v:0", "-map", "0:a?",
+                "-t", String.format(Locale.ROOT, "%.3f", maxDurationSeconds),
+                "-c", "copy"
+        ));
+        if (".mp4".equals(extension) || ".mov".equals(extension) || ".m4v".equals(extension)) {
+            command.add("-movflags");
+            command.add("+faststart");
+        }
+        command.add(destination.toAbsolutePath().toString());
+
+        Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+        if (!process.waitFor(45, TimeUnit.SECONDS)) {
+            process.destroyForcibly();
+            throw new IllegalStateException("ffmpeg excedeu o tempo para limitar o vídeo.");
+        }
+        String output;
+        try (InputStream input = process.getInputStream()) {
+            output = new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        }
+        if (process.exitValue() != 0 || !Files.exists(destination) || Files.size(destination) <= 0) {
+            throw new IllegalStateException("ffmpeg não conseguiu limitar o vídeo: " + output.trim());
+        }
+    }
+
+    private void replaceChunkedAssetContent(InspectionAsset asset, Path replacement, long replacementSize) throws IOException {
+        List<UUID> blobIds = jdbcTemplate.query(
+                "select id from inspection_asset_blobs where asset_id = ? and status = 'COMPLETE' for update",
+                (resultSet, rowNum) -> resultSet.getObject(1, UUID.class),
+                asset.getId()
+        );
+        if (blobIds.isEmpty()) {
+            throw new IllegalStateException("Conteúdo binário do vídeo não encontrado para substituição.");
+        }
+
+        UUID blobId = blobIds.getFirst();
+        int totalChunks = Math.toIntExact((replacementSize + DIRECT_CHUNK_BYTES - 1L) / DIRECT_CHUNK_BYTES);
+        if (totalChunks < 1 || totalChunks > 4096) {
+            throw new IllegalArgumentException("O vídeo resultante possui partes demais para armazenamento.");
+        }
+
+        jdbcTemplate.update("delete from inspection_asset_blob_chunks where blob_id = ?", blobId);
+        jdbcTemplate.update(
+                "update inspection_asset_blobs set total_size = ?, total_chunks = ?, updated_at = now() where id = ?",
+                replacementSize, totalChunks, blobId
+        );
+
+        try (InputStream input = Files.newInputStream(replacement)) {
+            long remaining = replacementSize;
+            int chunkIndex = 0;
+            while (remaining > 0) {
+                int requested = (int) Math.min(DIRECT_CHUNK_BYTES, remaining);
+                byte[] bytes = input.readNBytes(requested);
+                if (bytes.length != requested) {
+                    throw new IllegalArgumentException("O vídeo limitado ficou incompleto durante a persistência.");
+                }
+                insertOrReplaceChunk(blobId, chunkIndex, bytes);
+                remaining -= bytes.length;
+                chunkIndex++;
+            }
+            if (input.read() != -1) {
+                throw new IllegalArgumentException("O tamanho do vídeo limitado não corresponde ao arquivo gerado.");
+            }
+        }
+
+        BlobProgress progress = blobProgress(blobId);
+        if (!progress.complete(totalChunks, replacementSize)) {
+            throw new IllegalStateException("O vídeo limitado não foi integralmente persistido no PostgreSQL.");
+        }
+
+        asset.replaceStoredFileMetadata(asset.getFileName(), asset.getContentType(), replacementSize);
+        assetRepository.flush();
+        entityManager.flush();
+        if (!contentExists(asset.getId())) {
+            throw new IllegalStateException("O vídeo limitado não foi confirmado no PostgreSQL.");
+        }
+    }
+
+    /**
+     * Última barreira contra o defeito observado no WebKit/iPhone: em alguns casos
+     * o áudio continua até o fim do contêiner, mas a trilha de vídeo deixa de gerar
+     * quadros muitos segundos antes. O frontend tenta recuperar a câmera em tempo
+     * real; esta validação no servidor impede que um arquivo com cauda congelada seja
+     * aceito como vistoria concluída caso o navegador ainda falhe.
+     */
+    @Transactional(readOnly = true)
+    public void validateVideoContinuity(InspectionAsset asset) {
+        if (asset == null || asset.getAssetType() != InspectionAssetType.VIDEO) {
+            throw new IllegalArgumentException("Vídeo da vistoria não encontrado.");
+        }
+        if (!isAvailable(asset)) {
+            throw new IllegalArgumentException("O vídeo da vistoria não está disponível no PostgreSQL.");
+        }
+
+        Path source = null;
+        try {
+            source = Files.createTempFile("nh-video-integrity-", videoSourceExtension(asset.getContentType()));
+            try (OutputStream output = Files.newOutputStream(source)) {
+                writeTo(asset.getId(), output);
+            }
+
+            double containerDuration = probeVideoDuration(source);
+            double lastVideoTimestamp = probeLastVideoFrameTimestamp(source);
+            if (!Double.isFinite(containerDuration) || containerDuration <= 0
+                    || !Double.isFinite(lastVideoTimestamp) || lastVideoTimestamp < 0) {
+                throw new IllegalArgumentException(
+                        "O vídeo recebido não possui uma trilha de imagem válida. Grave novamente a vistoria."
+                );
+            }
+
+            if (containerDuration > 90.5d) {
+                throw new IllegalArgumentException(
+                        "O vídeo ultrapassou 1 minuto e 30 segundos. Grave novamente dentro do limite."
+                );
+            }
+
+            // Um quadro final normalmente fica poucos décimos antes da duração total.
+            // Margem de 4,5 s evita falso positivo em contêineres móveis, mas detecta
+            // o caso em que a trilha de vídeo termina e o áudio continua.
+            double missingTailSeconds = Math.max(0d, containerDuration - lastVideoTimestamp);
+            if (containerDuration >= 8d && missingTailSeconds > 4.5d) {
+                log.warn(
+                        "Retrato NH: vídeo rejeitado por congelamento assetId={} duration={} lastVideoFrame={} frozenTail={}",
+                        asset.getId(), containerDuration, lastVideoTimestamp, missingTailSeconds
+                );
+                throw new IllegalArgumentException(
+                        "O vídeo parou de receber imagens antes do fim da gravação (a câmera congelou enquanto o áudio continuou). Grave o vídeo novamente."
+                );
+            }
+
+            double longestVisualFreeze = probeLongestVisualFreeze(source, containerDuration);
+            // Uma pessoa pode manter o celular praticamente parado por alguns segundos
+            // ao mostrar chassi/odômetro. O limiar de 12 s evita rejeitar esse comportamento
+            // legítimo, mas continua barrando o congelamento prolongado observado no iPhone.
+            double visualFreezeRejectSeconds = 12d;
+            if (containerDuration >= 15d && longestVisualFreeze >= visualFreezeRejectSeconds) {
+                log.warn(
+                        "Retrato NH: vídeo rejeitado por quadro congelado assetId={} duration={} longestFreeze={} threshold={}",
+                        asset.getId(), containerDuration, longestVisualFreeze, visualFreezeRejectSeconds
+                );
+                throw new IllegalArgumentException(
+                        "O vídeo contém um trecho prolongado com a imagem congelada. Grave novamente a vistoria."
+                );
+            }
+
+            log.info(
+                    "Retrato NH: continuidade do vídeo validada assetId={} duration={} lastVideoFrame={} tailGap={} longestFreeze={}",
+                    asset.getId(), containerDuration, lastVideoTimestamp, missingTailSeconds, longestVisualFreeze
+            );
+        } catch (IllegalArgumentException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            log.warn("Retrato NH: falha ao validar continuidade do vídeo assetId={}", asset.getId(), exception);
+            throw new IllegalArgumentException(
+                    "Não foi possível validar a integridade das imagens do vídeo. Grave novamente antes de concluir a vistoria."
+            );
+        } finally {
+            if (source != null) try { Files.deleteIfExists(source); } catch (Exception ignored) {}
+        }
+    }
+
+    private double probeLastVideoFrameTimestamp(Path source) throws Exception {
+        Process process = new ProcessBuilder(
+                "ffprobe", "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "frame=best_effort_timestamp_time",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                source.toAbsolutePath().toString()
+        ).redirectErrorStream(true).start();
+
+        String result;
+        try (InputStream input = process.getInputStream()) {
+            result = new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim();
+        }
+
+        if (!process.waitFor(25, TimeUnit.SECONDS)) {
+            process.destroyForcibly();
+            throw new IllegalStateException("ffprobe excedeu o tempo de validação do vídeo.");
+        }
+        if (process.exitValue() != 0 || result.isBlank()) {
+            throw new IllegalStateException("ffprobe não encontrou quadros de vídeo válidos.");
+        }
+
+        String[] lines = result.split("\\R");
+        for (int index = lines.length - 1; index >= 0; index--) {
+            String value = lines[index].trim();
+            if (value.isBlank() || "N/A".equalsIgnoreCase(value)) continue;
+            try {
+                return Double.parseDouble(value);
+            } catch (NumberFormatException ignored) {
+                // Procura a última linha numérica válida.
+            }
+        }
+        throw new IllegalStateException("ffprobe não retornou timestamp de quadro de vídeo.");
+    }
+
+    private double probeLongestVisualFreeze(Path source, double containerDuration) throws Exception {
+        // A validação anterior só verificava se existiam timestamps até o fim. Quando
+        // o encoder repete o mesmo quadro congelado com timestamps novos, isso passa
+        // despercebido. O freezedetect compara o conteúdo visual dos quadros.
+        Process process = new ProcessBuilder(
+                "ffmpeg", "-nostdin", "-hide_banner", "-nostats", "-v", "info",
+                "-i", source.toAbsolutePath().toString(),
+                "-an",
+                "-vf", "scale=160:-2,fps=2,freezedetect=n=0.0001:d=4",
+                "-f", "null", "-"
+        ).redirectErrorStream(true).start();
+
+        if (!process.waitFor(45, TimeUnit.SECONDS)) {
+            process.destroyForcibly();
+            throw new IllegalStateException("ffmpeg excedeu o tempo de análise de congelamento do vídeo.");
+        }
+
+        String output;
+        try (InputStream input = process.getInputStream()) {
+            output = new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        }
+        if (process.exitValue() != 0) {
+            throw new IllegalStateException("ffmpeg não conseguiu analisar os quadros do vídeo.");
+        }
+
+        double longest = 0d;
+        double openFreezeStart = -1d;
+        for (String line : output.split("\\R")) {
+            Matcher startMatcher = FREEZE_START_PATTERN.matcher(line);
+            if (startMatcher.find()) {
+                try {
+                    openFreezeStart = Double.parseDouble(startMatcher.group(1));
+                } catch (NumberFormatException ignored) {
+                    openFreezeStart = -1d;
+                }
+            }
+
+            Matcher durationMatcher = FREEZE_DURATION_PATTERN.matcher(line);
+            if (durationMatcher.find()) {
+                try {
+                    longest = Math.max(longest, Double.parseDouble(durationMatcher.group(1)));
+                } catch (NumberFormatException ignored) {
+                    // Continua procurando outras ocorrências.
+                }
+            }
+
+            Matcher endMatcher = FREEZE_END_PATTERN.matcher(line);
+            if (endMatcher.find()) {
+                openFreezeStart = -1d;
+            }
+        }
+
+        // Se o último congelamento alcança o EOF, algumas versões do ffmpeg não
+        // emitem freeze_duration/freeze_end. Não podemos ignorar essa cauda só
+        // porque houve outro congelamento menor anteriormente no mesmo arquivo.
+        if (openFreezeStart >= 0d && containerDuration > openFreezeStart) {
+            longest = Math.max(longest, containerDuration - openFreezeStart);
+        }
+        return longest;
+    }
+
     private void transcodeVideo(Path source, Path destination, double durationSeconds, long targetBytes) throws Exception {
         // Reserva margem para container/metadata e áudio. O objetivo é ficar
         // confortavelmente abaixo de 15 MB em vez de encostar no limite.
@@ -640,13 +1007,19 @@ public class InspectionAssetStorageService {
             case "video/quicktime" -> ".mov";
             case "video/webm" -> ".webm";
             case "video/3gpp" -> ".3gp";
+            case "video/x-m4v" -> ".m4v";
             default -> ".mp4";
         };
     }
 
-    private void validateStorageLimit(InspectionAssetType type, long fileSize) {
+    private void validateStorageLimit(InspectionAssetType type, String contentType, long fileSize) {
+        String normalizedType = normalizeContentType(contentType);
+        boolean videoContent = normalizedType != null && normalizedType.startsWith("video/");
+        if (type == InspectionAssetType.VIDEO || videoContent) {
+            return;
+        }
         if (fileSize > MAX_VIDEO_BYTES) {
-            throw new IllegalArgumentException("Cada arquivo enviado deve possuir no máximo 15 MB.");
+            throw new IllegalArgumentException("Cada foto ou documento enviado deve possuir no máximo 15 MB.");
         }
     }
 
@@ -690,7 +1063,7 @@ public class InspectionAssetStorageService {
             InputStream input
     ) throws IOException {
         if (fileSize <= 0) throw new IllegalArgumentException("O arquivo recebido está vazio.");
-        validateStorageLimit(type, fileSize);
+        validateStorageLimit(type, contentType, fileSize);
         Optional<InspectionAsset> existing = findSlotAsset(request, type, sortOrder);
         if (existing.isPresent() && isAvailable(existing.get())) {
             return existing.get();
@@ -761,9 +1134,11 @@ public class InspectionAssetStorageService {
             int sortOrder
     ) {
         OffsetDateTime storedAt = OffsetDateTime.now();
-        OffsetDateTime expiresAt = type == InspectionAssetType.REPORT
-                ? null
-                : storedAt.plusDays(retentionDays);
+        // A existência de arquivo impede apenas o vencimento comercial da vistoria.
+        // A retenção física continua obrigatória: todos os arquivos são removidos ao
+        // completar o prazo operacional, independentemente do status da cotação/vistoria.
+        OffsetDateTime retentionBase = request.getCreatedAt() == null ? storedAt : request.getCreatedAt();
+        OffsetDateTime expiresAt = retentionBase.plusDays(retentionDays);
         InspectionAsset asset = InspectionAsset.createDatabase(
                 request,
                 type,
@@ -830,6 +1205,32 @@ public class InspectionAssetStorageService {
                 normalizeContentType(contentType), totalSize, totalChunks
         );
         return new BlobRow(id, uploadId, totalSize, totalChunks, "UPLOADING", null);
+    }
+
+    private boolean completedBlobMatches(
+            UUID inspectionId,
+            InspectionAssetType type,
+            int sortOrder,
+            String uploadId,
+            long totalSize,
+            int totalChunks
+    ) {
+        Integer matches = jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                  from inspection_asset_blobs
+                 where inspection_id = ?
+                   and asset_type = ?
+                   and sort_order = ?
+                   and upload_id = ?
+                   and total_size = ?
+                   and total_chunks = ?
+                   and status = 'COMPLETE'
+                """,
+                Integer.class,
+                inspectionId, type.name(), sortOrder, uploadId, totalSize, totalChunks
+        );
+        return matches != null && matches > 0;
     }
 
     private void deleteBlobSlot(UUID inspectionId, InspectionAssetType type, int sortOrder) {

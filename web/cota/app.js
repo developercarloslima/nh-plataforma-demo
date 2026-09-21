@@ -2,10 +2,111 @@ const pageParams = new URLSearchParams(window.location.search);
 const isSelfService = pageParams.get('origem') === 'site' || pageParams.get('modo') === 'cliente';
 const SESSION_KEY = isSelfService ? 'nh-cotacao-cliente-session-v1' : 'nh-cotacao-session-v7';
 const PORTAL_TOKEN_KEY = 'nhPortalToken';
+const PORTAL_ROLE_KEY = 'nhPortalRole';
+const PORTAL_LAST_ACTIVITY_KEY = 'nhPortalLastActivityAt';
 const CONSULTANT_KEY = 'nhSelectedConsultant';
-const portalToken = localStorage.getItem(PORTAL_TOKEN_KEY);
-const selectedConsultant = JSON.parse(localStorage.getItem(CONSULTANT_KEY) || 'null');
-if (!isSelfService && (!portalToken || !selectedConsultant?.id)) window.location.replace('/colaborador/');
+const PORTAL_INACTIVITY_LIMIT_MS = 20 * 60 * 1000;
+const PORTAL_ACTIVITY_WRITE_THROTTLE_MS = 15 * 1000;
+let portalActivityWriteAt = 0;
+let portalRedirectingToLogin = false;
+
+function currentPortalToken() {
+  return localStorage.getItem(PORTAL_TOKEN_KEY);
+}
+
+function parseSelectedConsultant() {
+  try {
+    return JSON.parse(localStorage.getItem(CONSULTANT_KEY) || 'null');
+  } catch (_) {
+    return null;
+  }
+}
+
+const selectedConsultant = parseSelectedConsultant();
+
+function portalTokenExpiresAtMs(value = currentPortalToken()) {
+  if (!value) return null;
+  const parts = String(value).split('.');
+  if (parts.length !== 5) return null;
+  const seconds = Number(parts[2]);
+  return Number.isFinite(seconds) ? seconds * 1000 : null;
+}
+
+function portalLastActivityAtMs() {
+  const value = Number(localStorage.getItem(PORTAL_LAST_ACTIVITY_KEY));
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function portalTokenExpired() {
+  const expiresAt = portalTokenExpiresAtMs();
+  return expiresAt !== null && Date.now() >= expiresAt;
+}
+
+function portalInactivityExpired() {
+  const lastActivity = portalLastActivityAtMs();
+  return lastActivity !== null && Date.now() - lastActivity >= PORTAL_INACTIVITY_LIMIT_MS;
+}
+
+function clearPortalSession() {
+  localStorage.removeItem(PORTAL_TOKEN_KEY);
+  localStorage.removeItem(PORTAL_ROLE_KEY);
+  localStorage.removeItem(CONSULTANT_KEY);
+  localStorage.removeItem(PORTAL_LAST_ACTIVITY_KEY);
+}
+
+function redirectToPortalLogin(message) {
+  if (isSelfService || portalRedirectingToLogin) return;
+  portalRedirectingToLogin = true;
+  try {
+    sessionStorage.setItem('nhPortalLoginMessage', message || 'Sua sessão expirou. Entre novamente.');
+  } catch (_) {}
+  clearPortalSession();
+  window.location.replace('/colaborador/');
+}
+
+function ensurePortalSession() {
+  if (isSelfService) return true;
+  const authToken = currentPortalToken();
+  if (!authToken || !selectedConsultant?.id) {
+    redirectToPortalLogin('Sua sessão foi encerrada. Entre novamente para continuar a cotação.');
+    return false;
+  }
+  if (portalTokenExpired()) {
+    redirectToPortalLogin('Sua sessão expirou. Entre novamente para continuar a cotação.');
+    return false;
+  }
+  if (portalInactivityExpired()) {
+    redirectToPortalLogin('Sessão encerrada após 20 minutos de inatividade. Entre novamente.');
+    return false;
+  }
+  return true;
+}
+
+function markPortalActivity(force = false) {
+  if (isSelfService || !currentPortalToken() || portalRedirectingToLogin) return;
+  const now = Date.now();
+  if (!force && now - portalActivityWriteAt < PORTAL_ACTIVITY_WRITE_THROTTLE_MS) return;
+  portalActivityWriteAt = now;
+  localStorage.setItem(PORTAL_LAST_ACTIVITY_KEY, String(now));
+}
+
+function installPortalSessionGuard() {
+  if (isSelfService) return;
+  ['pointerdown', 'keydown', 'touchstart', 'scroll'].forEach(eventName => {
+    window.addEventListener(eventName, () => {
+      if (ensurePortalSession()) markPortalActivity();
+    }, { passive: true });
+  });
+  window.addEventListener('storage', event => {
+    if (event.key === PORTAL_TOKEN_KEY && !event.newValue) {
+      redirectToPortalLogin('Sua sessão foi encerrada. Entre novamente.');
+    }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && ensurePortalSession()) markPortalActivity(true);
+  });
+  window.setInterval(() => ensurePortalSession(), 30 * 1000);
+}
 
 const state = {
   vehicleType: 'CAR',
@@ -28,6 +129,15 @@ const state = {
 const $ = (id) => document.getElementById(id);
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const BILLING_DUE_DAYS = new Set([5, 10, 15, 20, 25, 30]);
+
+if (!isSelfService) {
+  queueMicrotask(() => {
+    if (ensurePortalSession()) {
+      markPortalActivity(true);
+      installPortalSessionGuard();
+    }
+  });
+}
 
 function localDateOnly(date = new Date()) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -448,13 +558,44 @@ function clearError() {
 
 async function api(path, options = {}) {
   const headers = new Headers(options.headers || {});
-  if (!isSelfService && portalToken) headers.set('Authorization', `Bearer ${portalToken}`);
-  const response = await fetch(apiPath(path), { ...options, headers });
+  let authToken = null;
+
+  if (!isSelfService) {
+    if (!ensurePortalSession()) {
+      const error = new Error('Sua sessão expirou. Entre novamente para continuar.');
+      error.authExpired = true;
+      throw error;
+    }
+    authToken = currentPortalToken();
+    if (authToken) headers.set('Authorization', `Bearer ${authToken}`);
+    markPortalActivity();
+  }
+
+  let response;
+  try {
+    response = await fetch(apiPath(path), { ...options, headers, cache: options.cache || 'no-store' });
+  } catch (_) {
+    throw new Error('Não foi possível conectar ao servidor. Verifique sua internet e tente novamente.');
+  }
+
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    throw new Error(body?.message || 'Não foi possível concluir a solicitação.');
+
+    if (!isSelfService && (response.status === 401 || response.status === 403)) {
+      redirectToPortalLogin('Sua sessão expirou. Entre novamente para continuar a cotação.');
+      const error = new Error('Sua sessão expirou. Entre novamente para continuar.');
+      error.authExpired = true;
+      throw error;
+    }
+
+    if ([502, 503, 504].includes(response.status)) {
+      throw new Error('O servidor está temporariamente indisponível. Aguarde alguns segundos e tente novamente.');
+    }
+
+    throw new Error(body?.message || `Não foi possível concluir a solicitação (HTTP ${response.status}).`);
   }
-  return response.json();
+
+  return response.status === 204 ? null : response.json();
 }
 
 function formSnapshot() {

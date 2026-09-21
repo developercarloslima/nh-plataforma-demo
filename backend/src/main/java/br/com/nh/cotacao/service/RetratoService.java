@@ -17,11 +17,10 @@ public class RetratoService {
     private static final String DEFAULT_PUBLIC_WEB_URL = "https://aforma-demo.vercel.app";
     private static final long MAX_UPLOAD_BYTES = 15L * 1024 * 1024;
     private static final long MAX_PHOTO_BYTES = MAX_UPLOAD_BYTES;
-    private static final long MAX_VIDEO_BYTES = MAX_UPLOAD_BYTES;
     private static final long MAX_SIGNATURE_BYTES = MAX_UPLOAD_BYTES;
     private static final long MAX_DOCUMENT_BYTES = MAX_UPLOAD_BYTES;
     private static final Set<String> PHOTO_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
-    private static final Set<String> VIDEO_TYPES = Set.of("video/mp4", "video/quicktime", "video/webm", "video/3gpp");
+    private static final Set<String> VIDEO_TYPES = Set.of("video/mp4", "video/quicktime", "video/webm", "video/3gpp", "video/x-m4v");
     private static final Set<String> DOCUMENT_TYPES = Set.of(
             "application/pdf",
             "application/msword",
@@ -101,12 +100,15 @@ public class RetratoService {
             throw new IllegalArgumentException("Cotação não encontrada.");
         }
         var existing = repository.findByQuotation_Id(quotation.getId());
-        if (existing.isPresent()) return toResponse(existing.get());
+        if (existing.isPresent()) {
+            assertNotExpiredWithoutPreservedFiles(existing.get());
+            return toResponse(existing.get());
+        }
         if (quotation.getStatus() != QuoteStatus.ACCEPTED) {
             throw new IllegalArgumentException("A cotação precisa estar aceita para iniciar a nova vistoria.");
         }
         if (java.time.OffsetDateTime.now().isAfter(quotation.getValidUntil())) {
-            throw new IllegalArgumentException("Esta cotação expirou e não pode mais gerar uma nova vistoria.");
+            throw new IllegalArgumentException("Vistoria/cotação vencida, precisa ser refeita.");
         }
         return toResponse(repository.save(InspectionRequest.createForQuotation(randomToken(), quotation)));
     }
@@ -117,8 +119,17 @@ public class RetratoService {
     }
 
     @Transactional(readOnly = true)
+    public boolean hasPreservedFileForQuotation(UUID quotationId) {
+        return repository.findByQuotation_Id(quotationId)
+                .map(InspectionRequest::hasAnyPreservedFile)
+                .orElse(false);
+    }
+
+    @Transactional(readOnly = true)
     public InspectionResponse publicGet(String token) {
-        return toResponse(findByToken(token));
+        InspectionRequest request = findByToken(token);
+        assertNotExpiredWithoutPreservedFiles(request);
+        return toResponse(request);
     }
 
     @Transactional(readOnly = true)
@@ -148,9 +159,7 @@ public class RetratoService {
                 && request.getStatus() != InspectionRequestStatus.UNDER_REVIEW) {
             throw new IllegalArgumentException("Esta solicitação não está disponível para novos envios.");
         }
-        if (request.isExpired()) {
-            throw new IllegalArgumentException("Este link de vistoria expirou. Solicite um novo link ao consultor.");
-        }
+        assertNotExpiredWithoutPreservedFiles(request);
         if (video == null || video.isEmpty()) {
             throw new IllegalArgumentException("O vídeo da vistoria é obrigatório.");
         }
@@ -295,6 +304,16 @@ public class RetratoService {
         }
     }
 
+    private void assertNotExpiredWithoutPreservedFiles(InspectionRequest request) {
+        if (request == null || request.hasAnyPreservedFile()) return;
+        boolean quotationExpired = request.getQuotation() != null
+                && request.getQuotation().getValidUntil() != null
+                && java.time.OffsetDateTime.now().isAfter(request.getQuotation().getValidUntil());
+        if (quotationExpired || request.isExpired()) {
+            throw new IllegalArgumentException("Vistoria/cotação vencida, precisa ser refeita.");
+        }
+    }
+
     private InspectionRequest findByToken(String token) {
         return repository.findByPublicToken(token)
                 .orElseThrow(() -> new IllegalArgumentException("Link de vistoria inválido."));
@@ -404,8 +423,7 @@ public class RetratoService {
     }
 
     private void validateVideo(MultipartFile file) {
-        if (file.getSize() > MAX_VIDEO_BYTES) throw new IllegalArgumentException("O vídeo deve possuir no máximo 15 MB.");
-        if (!VIDEO_TYPES.contains(cleanType(file.getContentType()))) throw new IllegalArgumentException("Envie o vídeo em MP4, MOV, WebM ou 3GP.");
+        if (!VIDEO_TYPES.contains(cleanType(file.getContentType()))) throw new IllegalArgumentException("Envie o vídeo em MP4, MOV, M4V, WebM ou 3GP.");
     }
 
     private void validateVideoDuration(Double durationSeconds) {

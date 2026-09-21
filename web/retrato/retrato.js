@@ -14,7 +14,7 @@ const VEHICLE_PROFILES = {
       { label: 'Odômetro', guide: '/assets/inspection-guides/moto-07-odometro.webp' }
     ],
     videoGuide: '/assets/guia-vistoria-moto.png',
-    videoInstruction: 'Com o veículo ligado, inicie a gravação mostrando o chassi legível. Fale seu nome completo, o dia, o mês e o ano. Mostre os 4 lados da motocicleta detalhadamente, dando um giro de 360° em torno do veículo. Finalize mostrando o odômetro com o KM total. A gravação deve ter no máximo 1 minuto e 30 segundos e será encerrada automaticamente ao atingir esse tempo.'
+    videoInstruction: 'Com o veículo ligado, inicie a gravação mostrando o chassi legível. Fale seu nome completo, o dia, o mês e o ano. Mostre os 4 lados da motocicleta detalhadamente, dando um giro de 360° em torno do veículo. Finalize mostrando o odômetro com o KM total. O vídeo final da vistoria terá no máximo 1 minuto e 30 segundos.'
   },
   FOUR_WHEELS_OR_MORE: {
     title: 'Carro, utilitário ou veículo com 4 rodas ou mais',
@@ -36,7 +36,7 @@ const VEHICLE_PROFILES = {
       { label: 'Foto do chassi', guide: '/assets/inspection-guides/carro-15-chassi.webp' }
     ],
     videoGuide: '/assets/guia-vistoria-carro.png',
-    videoInstruction: 'Com o veículo ligado, inicie a gravação mostrando o chassi legível. Fale seu nome completo, o dia, o mês e o ano. Mostre os 4 lados do veículo detalhadamente, dando um giro de 360° em torno do veículo. Finalize abrindo a porta do motorista e mostrando o odômetro com o KM total. A gravação deve ter no máximo 1 minuto e 30 segundos e será encerrada automaticamente ao atingir esse tempo.'
+    videoInstruction: 'Com o veículo ligado, inicie a gravação mostrando o chassi legível. Fale seu nome completo, o dia, o mês e o ano. Mostre os 4 lados do veículo detalhadamente, dando um giro de 360° em torno do veículo. Finalize abrindo a porta do motorista e mostrando o odômetro com o KM total. O vídeo final da vistoria terá no máximo 1 minuto e 30 segundos.'
   }
 };
 
@@ -44,14 +44,39 @@ const allowedVideoTypes = new Set([
   'video/mp4',
   'video/quicktime',
   'video/webm',
-  'video/3gpp'
+  'video/3gpp',
+  'video/x-m4v'
 ]);
 
-const VIDEO_MAX_BYTES = 15 * 1024 * 1024;
 const VIDEO_MAX_DURATION_SECONDS = 90;
 const VIDEO_AUTO_STOP_SECONDS = 90;
-const VIDEO_TARGET_VIDEO_BITRATE = 480_000;
+// Mantemos o perfil atual de qualidade. O vídeo não possui limite mínimo/máximo de MB;
+// a única trava de gravação é a duração operacional de 90 segundos.
+const VIDEO_TARGET_VIDEO_BITRATE = 1_280_000;
 const VIDEO_TARGET_AUDIO_BITRATE = 32_000;
+const RECORDING_START_GRACE_MS = 4000;
+const RECORDING_MUTE_CONFIRM_MS = 2500;
+const RECORDING_FRAME_START_GRACE_MS = 7000;
+const RECORDING_FRAME_STALL_MS = 3500;
+const IS_IOS_WEBKIT = /iP(?:hone|ad|od)/i.test(navigator.userAgent || '')
+  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+// V15: em iPhone/iPad não usamos MediaRecorder/WebRTC para a gravação final.
+// O WebKit já apresentou falhas em que o áudio continua e a trilha de vídeo
+// para de receber quadros. O capture nativo usa o gravador do próprio iOS.
+const USE_NATIVE_IOS_VIDEO_CAPTURE = IS_IOS_WEBKIT;
+// V17: em celulares abrimos a câmera nativa também para as fotos. Além de ocupar
+// a tela inteira do aparelho (igual ao gravador nativo do vídeo), isso entrega a
+// resolução original da câmera e deixa flash/foco/exposição sob controle do sistema.
+const IS_ANDROID = /Android/i.test(navigator.userAgent || '');
+const USE_NATIVE_MOBILE_PHOTO_CAPTURE = IS_IOS_WEBKIT || IS_ANDROID;
+const PHOTO_MAX_BYTES = 15 * 1024 * 1024;
+
+// V11: no iOS o MediaRecorder ligado diretamente à track da câmera pode manter o
+// áudio por 90 s e parar de produzir quadros de vídeo no meio da gravação. Para
+// desacoplar o encoder dessa track, gravamos um canvas alimentado pela prévia.
+const IOS_RECORD_CANVAS_WIDTH = 960;
+const IOS_RECORD_CANVAS_HEIGHT = 540;
+const IOS_RECORD_CANVAS_FPS = 10;
 
 let request = null;
 let inspectionProfile = VEHICLE_PROFILES.FOUR_WHEELS_OR_MORE;
@@ -67,6 +92,7 @@ let recordedChunks = [];
 let recordedVideoBytes = 0;
 let videoDurationSeconds = null;
 let currentPhotoIndex = null;
+let pendingNativePhotoIndex = null;
 let captureMode = null;
 let selfieMirrorCorrection = false;
 let activeFacingMode = 'environment';
@@ -79,8 +105,38 @@ let recordingInterrupted = false;
 let recordingMustRestart = false;
 let recordingInterruptionReason = '';
 let recordingWakeLock = null;
+let recordingStartInProgress = false;
+let recordingStartedAt = 0;
+let recordingMuteTimer = null;
+let recordingFrameWatchdogTimer = null;
+let recordingFrameCallbackId = null;
+let recordingLastVideoFrameAt = 0;
+let recordingLastPreviewTime = -1;
+let recordingLastFrameMediaTime = -1;
+let recordingLastPresentedFrames = -1;
+let recordingLastDecodedFrames = -1;
+let recordingCameraRecoveryInProgress = false;
+let recordingCameraRecoveryCount = 0;
+let recordingOutputStream = null;
+let recordingOutputOwnedTracks = [];
+let recordingCanvas = null;
+let recordingCanvasContext = null;
+let recordingCanvasTrack = null;
+let recordingCanvasTimer = null;
+let recordingCanvasFrameCount = 0;
+let recordingCanvasLastDrawAt = 0;
 let torchSupported = false;
 let torchEnabled = false;
+let torchMode = 'auto';
+let torchMonitorTimer = null;
+let torchMonitorBusy = false;
+let torchDarkSamples = 0;
+let torchBrightSamples = 0;
+const TORCH_AUTO_DARK_THRESHOLD = 72;
+const TORCH_AUTO_BRIGHT_THRESHOLD = 108;
+const TORCH_AUTO_INTERVAL_MS = 650;
+const TORCH_AUTO_DARK_SAMPLES = 2;
+const TORCH_AUTO_BRIGHT_SAMPLES = 3;
 let discardRecording = false;
 let signatureHasInk = false;
 let vehicleDocumentFile = null;
@@ -92,25 +148,41 @@ let signatureLastPoint = null;
 const DRAFT_DB_NAME = 'nh-retrato-drafts';
 const DRAFT_STORE_NAME = 'inspection-drafts';
 const DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+// Arquivos de vídeo nativos do iPhone podem ter dezenas/centenas de MB. Não
+// duplicamos vídeos grandes no IndexedDB: eles permanecem no File original
+// enquanto a página estiver aberta e são enviados em blocos de 1 MB.
+const DRAFT_MAX_VIDEO_BYTES = 24 * 1024 * 1024;
 let draftDatabasePromise = null;
 let draftSaveTimer = null;
 let restoredSignatureBlob = null;
 let hasRestoredDraft = false;
 let draftSaveQueue = Promise.resolve();
+const draftBinaryCache = new WeakMap();
 
-const UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024;
-const UPLOAD_MAX_ATTEMPTS = 4;
-const UPLOAD_RETRY_BASE_MS = 1200;
+const UPLOAD_CHUNK_BYTES = 1 * 1024 * 1024;
+const UPLOAD_MAX_ATTEMPTS = 6;
+const UPLOAD_RETRY_BASE_MS = 2000;
 
 function friendlyNetworkMessage(error, fallback) {
   const raw = String(error?.message || '').trim();
   if (!navigator.onLine) {
     return 'A internet está indisponível. Seus arquivos continuam salvos neste aparelho para tentar novamente.';
   }
+  if ([502, 503, 504].includes(Number(error?.status))) {
+    return 'O servidor ficou temporariamente indisponível durante o envio. As partes já confirmadas continuam salvas. Aguarde alguns segundos e toque em “Continuar envio”.';
+  }
   if (!raw || /load failed|failed to fetch|networkerror|network request failed/i.test(raw)) {
     return fallback;
   }
   return raw;
+}
+
+function retryDelayMilliseconds(error, attempt) {
+  const status = Number(error?.status || 0);
+  if ([502, 503, 504].includes(status) || error?.name === 'AbortError') {
+    return Math.min(30000, 4000 * attempt);
+  }
+  return UPLOAD_RETRY_BASE_MS * attempt;
 }
 
 function openDraftDatabase() {
@@ -152,27 +224,110 @@ async function runDraftTransaction(mode, operation) {
   });
 }
 
-function serializedFile(file) {
+function fileReaderArrayBuffer(blob) {
+  return new Promise((resolve, reject) => {
+    if (typeof FileReader === 'undefined') {
+      reject(new Error('FileReader indisponível.'));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error || new Error('Falha ao ler o arquivo local.'));
+    reader.onabort = () => reject(new Error('A leitura do arquivo foi interrompida.'));
+    reader.readAsArrayBuffer(blob);
+  });
+}
+
+function validateLocalBuffer(buffer, expectedSize) {
+  if (!(buffer instanceof ArrayBuffer)) return null;
+  if (Number(expectedSize) > 0 && buffer.byteLength !== Number(expectedSize)) return null;
+  if (Number(expectedSize) > 0 && buffer.byteLength <= 0) return null;
+  return buffer;
+}
+
+async function readBlobArrayBufferReliable(blob) {
+  if (!blob) throw new Error('Arquivo local indisponível.');
+  const expectedSize = Number(blob.size || 0);
+  const cached = draftBinaryCache.get(blob);
+  const validCached = validateLocalBuffer(cached, expectedSize);
+  if (validCached) return validCached;
+
+  const readers = [];
+  if (typeof blob.arrayBuffer === 'function') {
+    readers.push(async () => blob.arrayBuffer());
+  }
+  readers.push(async () => fileReaderArrayBuffer(blob));
+  readers.push(async () => {
+    const objectUrl = URL.createObjectURL(blob);
+    try {
+      const response = await fetch(objectUrl, { cache: 'no-store' });
+      if (!response.ok) throw new Error('Falha ao abrir a cópia local.');
+      return await response.arrayBuffer();
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  });
+
+  let lastError = null;
+  for (const read of readers) {
+    try {
+      const buffer = validateLocalBuffer(await read(), expectedSize);
+      if (buffer) {
+        draftBinaryCache.set(blob, buffer);
+        return buffer;
+      }
+      lastError = new Error('A leitura local retornou uma quantidade incompleta de bytes.');
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error('Não foi possível ler o arquivo local.');
+}
+
+async function serializedFile(file) {
   if (!file) return null;
-  return {
-    blob: file,
+  const base = {
     name: file.name || 'arquivo',
     type: file.type || 'application/octet-stream',
-    lastModified: file.lastModified || Date.now()
+    lastModified: file.lastModified || Date.now(),
+    size: Number(file.size || 0)
   };
+
+  // Não copie vídeos grandes inteiros para RAM/IndexedDB. Isso era especialmente
+  // perigoso no iPhone quando o vídeo passou a não possuir limite de MB.
+  if (/^video\//i.test(base.type) && base.size > DRAFT_MAX_VIDEO_BYTES) {
+    return { ...base, volatileOnly: true };
+  }
+
+  try {
+    // Para arquivos pequenos mantemos bytes persistentes, evitando o problema do
+    // WebKit em que alguns Blobs restaurados perdem o backing stream.
+    const bytes = await readBlobArrayBufferReliable(file);
+    return { ...base, bytes };
+  } catch (_) {
+    return { ...base, blob: file };
+  }
 }
 
 function restoredFile(entry, fallbackName, fallbackType) {
-  if (!entry?.blob) return null;
-  const type = entry.type || entry.blob.type || fallbackType;
+  if (!entry?.bytes && !entry?.blob) return null;
+  const source = entry.bytes || entry.blob;
+  const type = entry.type || entry.blob?.type || fallbackType;
   try {
-    return new File([entry.blob], entry.name || fallbackName, {
+    const file = new File([source], entry.name || fallbackName, {
       type,
       lastModified: entry.lastModified || Date.now()
     });
+    if (entry.bytes instanceof ArrayBuffer) {
+      draftBinaryCache.set(file, entry.bytes);
+    }
+    return file;
   } catch (_) {
-    const blob = entry.blob;
+    const blob = entry.blob || new Blob([entry.bytes], { type });
     blob.name = entry.name || fallbackName;
+    if (entry.bytes instanceof ArrayBuffer) {
+      draftBinaryCache.set(blob, entry.bytes);
+    }
     return blob;
   }
 }
@@ -245,16 +400,24 @@ async function persistDraftSnapshot(reason = '') {
 
   try {
     const signatureBlob = signatureHasInk ? await exportSignatureBlob() : null;
+    const [photos, video, vehicleDocument, identityDocumentFront, identityDocumentBack] = await Promise.all([
+      Promise.all(photoFiles.map(serializedFile)),
+      serializedFile(videoFile),
+      serializedFile(vehicleDocumentFile),
+      serializedFile(identityDocumentFrontFile),
+      serializedFile(identityDocumentBackFile)
+    ]);
     const snapshot = {
       token,
       requestType: request.requestType,
       vehicleType: request.vehicleType,
       labels: [...labels],
-      photos: photoFiles.map(serializedFile),
-      video: serializedFile(videoFile),
-      vehicleDocument: serializedFile(vehicleDocumentFile),
-      identityDocumentFront: serializedFile(identityDocumentFrontFile),
-      identityDocumentBack: serializedFile(identityDocumentBackFile),
+      photos,
+      video,
+      videoDurationSeconds: Number.isFinite(videoDurationSeconds) && videoDurationSeconds > 0 ? videoDurationSeconds : null,
+      vehicleDocument,
+      identityDocumentFront,
+      identityDocumentBack,
       residenceAddress: $('residence-address').value.trim(),
       signature: signatureBlob,
       updatedAt: Date.now()
@@ -300,9 +463,10 @@ async function restoreDraftFromCache() {
     'image/jpeg'
   ));
   videoFile = restoredFile(draft.video, 'video-vistoria.webm', 'video/webm');
-  if (videoFile && videoFile.size > VIDEO_MAX_BYTES) {
-    videoFile = null;
-  }
+  const restoredVideoDuration = Number(draft.videoDurationSeconds);
+  videoDurationSeconds = Number.isFinite(restoredVideoDuration) && restoredVideoDuration > 0
+    ? restoredVideoDuration
+    : null;
   vehicleDocumentFile = restoredFile(draft.vehicleDocument, 'crlv-veiculo.pdf', 'application/pdf');
   identityDocumentFrontFile = restoredFile(draft.identityDocumentFront || draft.identityDocument, 'rg-cnh-frente.pdf', 'application/pdf');
   identityDocumentBackFile = restoredFile(draft.identityDocumentBack, 'rg-cnh-verso.pdf', 'application/pdf');
@@ -356,7 +520,9 @@ async function applyRestoredDraftToUi() {
     videoPreviewUrl = URL.createObjectURL(videoFile);
     $('video-preview').src = videoPreviewUrl;
     $('video-preview').hidden = false;
-    $('video-status').textContent = `Vídeo recuperado do rascunho (${formatBytes(videoFile.size)}).`;
+    $('video-status').textContent = Number.isFinite(videoDurationSeconds)
+      ? `Vídeo recuperado do rascunho (${Math.floor(videoDurationSeconds)}s · ${formatBytes(videoFile.size)}).`
+      : `Vídeo recuperado do rascunho (${formatBytes(videoFile.size)}).`;
     $('record-video').textContent = 'Gravar novamente';
     $('record-video').classList.add('captured');
   }
@@ -820,10 +986,14 @@ async function load() {
       $('start').textContent = 'Refazer somente as pendências →';
     }
   } catch (error) {
-    msg(friendlyNetworkMessage(
+    const errorMessage = friendlyNetworkMessage(
       error,
       'Não foi possível carregar os dados da vistoria agora. Verifique a internet e toque em “Tentar carregar novamente”.'
-    ));
+    );
+    if (/vistoria\/cotação vencida|precisa ser refeita/i.test(errorMessage)) {
+      window.alert('Vistoria/cotação vencida, precisa ser refeita.');
+    }
+    msg(errorMessage);
     $('connection-actions').hidden = false;
   }
 }
@@ -935,7 +1105,9 @@ function showPhotoGuide(index) {
   $('capture-guide-instruction').textContent = normalizedLabel.includes('selfie')
     ? 'Enquadre o associado e o veículo como no exemplo. Quando houver placa, ela precisa ficar legível. Para veículo 0 km sem placa, mostre claramente a dianteira.'
     : 'Observe o ângulo, a distância e a área do veículo mostrada no exemplo. Tire a foto com boa iluminação e sem cortar a parte solicitada.' + rearWindowCondition;
-  $('capture-guide-continue').textContent = 'Entendi, abrir câmera';
+  $('capture-guide-continue').textContent = USE_NATIVE_MOBILE_PHOTO_CAPTURE
+    ? 'Entendi, abrir câmera em tela cheia'
+    : 'Entendi, abrir câmera';
   showGuidePage();
 }
 
@@ -949,8 +1121,12 @@ function showVideoGuide() {
   $('capture-guide-image').src = inspectionProfile.videoGuide;
   $('capture-guide-image').alt = `Guia de vídeo para ${inspectionProfile.title.toLowerCase()}`;
   $('capture-guide-image').hidden = false;
-  $('capture-guide-instruction').textContent = inspectionProfile.videoInstruction;
-  $('capture-guide-continue').textContent = 'Entendi, abrir câmera para gravar';
+  $('capture-guide-instruction').textContent = USE_NATIVE_IOS_VIDEO_CAPTURE
+    ? `${inspectionProfile.videoInstruction} No iPhone/iPad, o sistema abrirá o gravador nativo para evitar congelamentos. A página não consegue interromper a câmera nativa exatamente em 1:30; se você gravar além desse tempo, o servidor preservará automaticamente somente os primeiros 1 minuto e 30 segundos.`
+    : `${inspectionProfile.videoInstruction} Neste navegador, a gravação será encerrada automaticamente ao atingir 1 minuto e 30 segundos.`;
+  $('capture-guide-continue').textContent = USE_NATIVE_IOS_VIDEO_CAPTURE
+    ? 'Entendi, abrir gravador do iPhone'
+    : 'Entendi, abrir câmera para gravar';
   showGuidePage();
 }
 
@@ -980,9 +1156,154 @@ $('capture-guide-continue').addEventListener('click', async () => {
 
   if (!action) return;
   if (action.type === 'photo') {
-    await openPhotoCamera(action.index);
+    if (USE_NATIVE_MOBILE_PHOTO_CAPTURE) {
+      // O clique continua sendo um gesto direto do usuário, permitindo que iOS/Android
+      // abram a câmera nativa realmente em tela cheia.
+      openNativeMobilePhotoCapture(action.index);
+    } else {
+      await openPhotoCamera(action.index);
+    }
+  } else if (USE_NATIVE_IOS_VIDEO_CAPTURE) {
+    // Este click ainda está dentro do gesto direto do usuário, requisito do iOS
+    // para abrir o gravador nativo. Assim evitamos MediaRecorder/canvas no WebKit.
+    openNativeIosVideoCapture();
   } else {
     await openVideoCamera();
+  }
+});
+
+function openNativeMobilePhotoCapture(index) {
+  clearMessage();
+  const input = $('native-photo-input');
+  const photo = inspectionProfile.photos[index];
+  if (!input || !photo) {
+    handleCameraError(new Error('A câmera nativa não está disponível nesta página.'));
+    return;
+  }
+
+  pendingNativePhotoIndex = index;
+  input.value = '';
+  input.setAttribute('accept', 'image/*');
+  input.setAttribute('capture', photo.facingMode === 'user' ? 'user' : 'environment');
+  input.click();
+}
+
+async function reencodeNativePhotoAsJpeg(file, index) {
+  const { image, objectUrl } = await loadImageFromBlob(file);
+  try {
+    const sourceWidth = image.naturalWidth || image.width;
+    const sourceHeight = image.naturalHeight || image.height;
+    if (!sourceWidth || !sourceHeight) {
+      throw new Error('A foto capturada não possui dimensões válidas.');
+    }
+
+    // Mantém bastante detalhe para chassi/placa, mas evita fotos de 30–50 MB
+    // produzidas por alguns aparelhos em resolução total.
+    const maxDimension = 3072;
+    const scale = Math.min(1, maxDimension / Math.max(sourceWidth, sourceHeight));
+    const width = Math.max(1, Math.round(sourceWidth * scale));
+    const height = Math.max(1, Math.round(sourceHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Não foi possível preparar a foto capturada.');
+    context.drawImage(image, 0, 0, width, height);
+
+    let blob = null;
+    for (const quality of [0.95, 0.92, 0.88, 0.84]) {
+      blob = await new Promise((resolve, reject) => {
+        canvas.toBlob(
+          value => value ? resolve(value) : reject(new Error('Não foi possível converter a foto para JPG.')),
+          'image/jpeg',
+          quality
+        );
+      });
+      if (blob.size <= PHOTO_MAX_BYTES) break;
+    }
+
+    if (!blob || blob.size > PHOTO_MAX_BYTES) {
+      throw new Error('A foto ficou maior que 15 MB mesmo após a otimização. Tire a foto novamente.');
+    }
+
+    const name = `${String(index + 1).padStart(2, '0')}-${slugify(labels[index])}.jpg`;
+    return new File([blob], name, {
+      type: 'image/jpeg',
+      lastModified: Date.now()
+    });
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function normalizeNativePhotoFile(file, index) {
+  if (!file || !Number.isFinite(Number(file.size)) || Number(file.size) <= 0) {
+    throw new Error('A câmera não retornou uma foto válida.');
+  }
+
+  const originalType = String(file.type || '').toLowerCase().split(';', 1)[0].trim();
+  const supportedTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+  const currentLabel = labels[index] || `foto-${index + 1}`;
+
+  // Se a câmera já devolveu um formato aceito pelo backend e dentro de 15 MB,
+  // preservamos o arquivo original para não perder nenhum detalhe por recompressão.
+  if (supportedTypes.has(originalType) && file.size <= PHOTO_MAX_BYTES) {
+    const extension = originalType === 'image/png' ? 'png' : (originalType === 'image/webp' ? 'webp' : 'jpg');
+    return new File([file], `${String(index + 1).padStart(2, '0')}-${slugify(currentLabel)}.${extension}`, {
+      type: originalType,
+      lastModified: file.lastModified || Date.now()
+    });
+  }
+
+  // HEIC/HEIF ou uma imagem muito grande é convertida no próprio aparelho para
+  // JPEG de alta qualidade, mantendo resolução suficiente para detalhes de vistoria.
+  return reencodeNativePhotoAsJpeg(file, index);
+}
+
+async function acceptNativeMobilePhoto(file, index) {
+  const normalizedFile = await normalizeNativePhotoFile(file, index);
+  photoFiles[index] = normalizedFile;
+
+  if (photoPreviewUrls[index]) URL.revokeObjectURL(photoPreviewUrls[index]);
+  photoPreviewUrls[index] = URL.createObjectURL(normalizedFile);
+
+  const image = $(`photo-preview-${index}`);
+  if (image) {
+    image.src = photoPreviewUrls[index];
+    image.hidden = false;
+  }
+
+  const status = $(`photo-status-${index}`);
+  if (status) {
+    status.textContent = `Foto registrada em tela cheia (${formatBytes(normalizedFile.size)}).`;
+  }
+
+  const button = document.querySelector(`[data-photo-index="${index}"]`);
+  if (button) {
+    button.textContent = 'Refazer foto';
+    button.classList.add('captured');
+  }
+
+  updateCaptureSummary();
+  scheduleDraftSave(0, `Foto ${index + 1} salva neste aparelho.`);
+}
+
+$('native-photo-input')?.addEventListener('change', async (event) => {
+  const index = pendingNativePhotoIndex;
+  const file = event.target?.files?.[0] || null;
+  pendingNativePhotoIndex = null;
+  if (!file || index === null || index < 0 || index >= labels.length) {
+    event.target.value = '';
+    return;
+  }
+
+  try {
+    await acceptNativeMobilePhoto(file, index);
+  } catch (error) {
+    msg(error?.message || 'Não foi possível usar a foto capturada.');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } finally {
+    event.target.value = '';
   }
 });
 
@@ -1007,13 +1328,94 @@ async function openPhotoCamera(index) {
     $('start-recording').hidden = true;
     $('stop-recording').hidden = true;
     $('resume-recording').hidden = true;
-    $('toggle-flash').hidden = true;
+    configureTorchControl();
     $('recording-paused-banner').hidden = true;
     $('recording-indicator').hidden = true;
   } catch (error) {
     handleCameraError(error);
   }
 }
+
+function openNativeIosVideoCapture() {
+  clearMessage();
+  const input = $('ios-native-video-input');
+  if (!input) {
+    handleCameraError(new Error('O gravador nativo do iPhone não está disponível nesta página.'));
+    return;
+  }
+  input.value = '';
+  input.click();
+}
+
+async function acceptNativeIosVideo(file) {
+  if (!file) return;
+  const originalType = String(file.type || '').split(';')[0].toLowerCase();
+  const extension = String(file.name || '').split('.').pop().toLowerCase();
+  const inferredType = ({ mov: 'video/quicktime', mp4: 'video/mp4', m4v: 'video/x-m4v', webm: 'video/webm', '3gp': 'video/3gpp' })[extension] || '';
+  const normalizedType = originalType || inferredType;
+  if (!normalizedType || !normalizedType.startsWith('video/')) {
+    throw new Error('O iPhone não informou um formato de vídeo compatível. Grave novamente usando a câmera do aparelho.');
+  }
+  if (!allowedVideoTypes.has(normalizedType)) {
+    throw new Error('O vídeo deve estar em MP4, MOV, M4V, WebM ou 3GP.');
+  }
+  if (normalizedType !== originalType) {
+    file = new File([file], file.name || `video-vistoria.${extension || 'mov'}`, {
+      type: normalizedType,
+      lastModified: file.lastModified || Date.now()
+    });
+  }
+
+  let duration = null;
+  try {
+    const measured = await readVideoDurationSeconds(file);
+    duration = Number.isFinite(measured) && measured > 0 ? measured : null;
+  } catch (error) {
+    // A câmera nativa do iOS pode devolver MOV/HEVC cuja metadata não fica
+    // imediatamente legível pelo elemento <video>. O backend usa ffprobe como
+    // fonte definitiva, então não descartamos uma gravação válida só por isso.
+    console.warn('Não foi possível ler a duração do vídeo nativo no navegador; o servidor fará a validação.', error);
+  }
+
+  videoDurationSeconds = duration;
+  videoFile = file;
+  if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
+  videoPreviewUrl = URL.createObjectURL(file);
+  const preview = $('video-preview');
+  preview.src = videoPreviewUrl;
+  preview.hidden = false;
+  const durationText = Number.isFinite(duration)
+    ? `${Math.floor(duration)}s · ${formatBytes(file.size)}`
+    : formatBytes(file.size);
+  const trimNotice = Number.isFinite(duration) && duration > VIDEO_MAX_DURATION_SECONDS + 0.5
+    ? ' O gravador nativo passou de 1:30; no envio serão preservados automaticamente somente os primeiros 1min30s.'
+    : '';
+  $('video-status').textContent = `Vídeo gravado pela câmera nativa do iPhone (${durationText}).${trimNotice}`;
+  $('record-video').textContent = 'Gravar novamente';
+  $('record-video').classList.add('captured');
+  updateCaptureSummary();
+
+  if (file.size > DRAFT_MAX_VIDEO_BYTES) {
+    updateDraftPanel('Vídeo pronto. Como ele é grande, mantenha esta página aberta até concluir o envio; as fotos e documentos continuam salvos no rascunho.', 'warning');
+  } else {
+    scheduleDraftSave(0, 'Vídeo salvo neste aparelho para continuar o envio.');
+  }
+}
+
+$('ios-native-video-input')?.addEventListener('change', async (event) => {
+  const file = event.target?.files?.[0] || null;
+  if (!file) return;
+  try {
+    await acceptNativeIosVideo(file);
+  } catch (error) {
+    videoFile = null;
+    videoDurationSeconds = null;
+    msg(error?.message || 'Não foi possível usar o vídeo gravado.');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } finally {
+    event.target.value = '';
+  }
+});
 
 async function openVideoCamera() {
   currentPhotoIndex = null;
@@ -1042,6 +1444,25 @@ async function openVideoCamera() {
   }
 }
 
+function buildCameraVideoConstraints(audio, facingMode = 'environment') {
+  return audio
+    ? {
+        // A câmera continua em 960x540 para manter chassi/placa legíveis. No iOS a
+        // gravação final usa um canvas estável e o watchdog pode reabrir somente a
+        // track de vídeo caso o WebKit pare de entregar quadros.
+        facingMode: { ideal: facingMode },
+        width: IS_IOS_WEBKIT ? { ideal: 960, max: 960 } : { ideal: 960, max: 1280 },
+        height: IS_IOS_WEBKIT ? { ideal: 540, max: 540 } : { ideal: 540, max: 720 },
+        aspectRatio: { ideal: 16 / 9 },
+        frameRate: IS_IOS_WEBKIT ? { ideal: 12, max: 15 } : { ideal: 15, max: 18 }
+      }
+    : {
+        facingMode: { ideal: facingMode },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      };
+}
+
 async function openCamera({ audio, facingMode = 'environment' }) {
   activeFacingMode = facingMode;
   if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
@@ -1050,27 +1471,19 @@ async function openCamera({ audio, facingMode = 'environment' }) {
 
   stopCameraStream();
 
-  const videoConstraints = audio
-    ? {
-        facingMode: { ideal: facingMode },
-        width: { ideal: 640, max: 640 },
-        height: { ideal: 360, max: 360 },
-        frameRate: { ideal: 20, max: 24 }
-      }
-    : {
-        facingMode: { ideal: facingMode },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 }
-      };
-
   const constraints = {
-    video: videoConstraints,
+    video: buildCameraVideoConstraints(audio, facingMode),
     audio: audio
       ? { echoCancellation: true, noiseSuppression: true, channelCount: { ideal: 1 } }
       : false
   };
 
   activeStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+  if (audio) {
+    await optimizeVideoTrackForInspection(activeStream?.getVideoTracks?.()[0]);
+  }
+
   const cameraPreview = $('camera-preview');
   cameraPreview.srcObject = activeStream;
   cameraPreview.muted = true;
@@ -1080,8 +1493,41 @@ async function openCamera({ audio, facingMode = 'environment' }) {
     attachVideoTrackInterruptionListeners();
   }
 
-  $('camera-modal').hidden = false;
+  const cameraModal = $('camera-modal');
+  cameraModal.classList.toggle('photo-fullscreen', captureMode === 'photo');
+  cameraModal.hidden = false;
   document.body.classList.add('camera-open');
+}
+
+async function optimizeVideoTrackForInspection(track) {
+  if (!track || typeof track.getCapabilities !== 'function' || typeof track.applyConstraints !== 'function') {
+    return;
+  }
+
+  try {
+    const capabilities = track.getCapabilities() || {};
+    const advanced = {};
+
+    // Em aparelhos que expõem esses recursos, mantemos foco e exposição contínuos.
+    // Isso melhora principalmente a leitura de chassi, placa e odômetro sem alterar
+    // bitrate nem tamanho do arquivo.
+    if (Array.isArray(capabilities.focusMode) && capabilities.focusMode.includes('continuous')) {
+      advanced.focusMode = 'continuous';
+    }
+    if (Array.isArray(capabilities.exposureMode) && capabilities.exposureMode.includes('continuous')) {
+      advanced.exposureMode = 'continuous';
+    }
+    if (Array.isArray(capabilities.whiteBalanceMode) && capabilities.whiteBalanceMode.includes('continuous')) {
+      advanced.whiteBalanceMode = 'continuous';
+    }
+
+    if (Object.keys(advanced).length) {
+      await track.applyConstraints({ advanced: [advanced] });
+    }
+  } catch (_error) {
+    // Alguns WebKit anunciam capabilities que não aceitam applyConstraints.
+    // Mantemos a gravação com os parâmetros originais nesses casos.
+  }
 }
 
 function handleCameraError(error) {
@@ -1123,6 +1569,8 @@ async function capturePhoto() {
   if (currentPhotoIndex === null || !activeStream) {
     return;
   }
+
+  await prepareTorchForCapture();
 
   const preview = $('camera-preview');
   const canvas = $('photo-canvas');
@@ -1181,12 +1629,228 @@ $('record-video').addEventListener('click', showVideoGuide);
 $('start-recording').addEventListener('click', startVideoRecording);
 $('stop-recording').addEventListener('click', stopVideoRecording);
 $('resume-recording').addEventListener('click', resumeVideoRecording);
-$('toggle-flash').addEventListener('click', toggleVideoFlash);
+$('toggle-flash').addEventListener('click', cycleCameraFlashMode);
 $('cancel-camera').addEventListener('click', cancelCameraCapture);
 $('close-camera').addEventListener('click', cancelCameraCapture);
 
-function startVideoRecording() {
-  if (!activeStream) {
+async function waitForVideoTrackReadyForRecording(track) {
+  if (!track || track.readyState !== 'live') {
+    throw new Error('A câmera não está disponível para iniciar a gravação.');
+  }
+
+  // applyConstraints() do flash e a própria negociação da câmera podem deixar a
+  // track temporariamente muted no iPhone. Iniciar o MediaRecorder nesse exato
+  // momento é uma das causas de gravação que começa e encerra logo em seguida.
+  if (!IS_IOS_WEBKIT) return;
+
+  await wait(350);
+  if (!track.muted) return;
+
+  await Promise.race([
+    new Promise((resolve) => track.addEventListener('unmute', resolve, { once: true })),
+    wait(2200)
+  ]);
+
+  if (track.readyState !== 'live') {
+    throw new Error('A câmera foi encerrada antes do início da gravação. Abra a câmera novamente e tente de novo.');
+  }
+
+  // Se o WebKit ainda reportar muted, não derrubamos a gravação automaticamente.
+  // O evento ended e o próprio MediaRecorder continuam sendo as fontes confiáveis
+  // para detectar uma interrupção real.
+}
+
+
+function stopStableRecordingPipeline() {
+  if (recordingCanvasTimer) {
+    window.clearInterval(recordingCanvasTimer);
+    recordingCanvasTimer = null;
+  }
+
+  recordingOutputOwnedTracks.forEach((track) => {
+    try { track.stop(); } catch (_error) { /* track já pode estar encerrada */ }
+  });
+
+  recordingOutputOwnedTracks = [];
+  recordingOutputStream = null;
+  recordingCanvasTrack = null;
+  recordingCanvasContext = null;
+  recordingCanvas = null;
+  recordingCanvasFrameCount = 0;
+  recordingCanvasLastDrawAt = 0;
+}
+
+function drawPreviewIntoRecordingCanvas(preview) {
+  if (!recordingCanvas || !recordingCanvasContext || !preview) return false;
+  if (preview.readyState < 2 || !preview.videoWidth || !preview.videoHeight) return false;
+
+  const targetWidth = recordingCanvas.width;
+  const targetHeight = recordingCanvas.height;
+  const sourceWidth = preview.videoWidth;
+  const sourceHeight = preview.videoHeight;
+
+  const sourceAspect = sourceWidth / sourceHeight;
+  const targetAspect = targetWidth / targetHeight;
+
+  let sx = 0;
+  let sy = 0;
+  let sw = sourceWidth;
+  let sh = sourceHeight;
+
+  // Crop central "cover" sem deformar a imagem. Assim chassi/placa não ficam
+  // esticados quando a câmera entrega uma proporção levemente diferente de 16:9.
+  if (sourceAspect > targetAspect) {
+    sw = Math.round(sourceHeight * targetAspect);
+    sx = Math.max(0, Math.round((sourceWidth - sw) / 2));
+  } else if (sourceAspect < targetAspect) {
+    sh = Math.round(sourceWidth / targetAspect);
+    sy = Math.max(0, Math.round((sourceHeight - sh) / 2));
+  }
+
+  recordingCanvasContext.drawImage(
+    preview,
+    sx, sy, sw, sh,
+    0, 0, targetWidth, targetHeight
+  );
+
+  recordingCanvasFrameCount += 1;
+  recordingCanvasLastDrawAt = performance.now();
+
+  // Alguns CanvasCaptureMediaStreamTrack aceitam requestFrame(). Quando disponível,
+  // pedimos explicitamente o quadro recém-desenhado para evitar o encoder "dormir".
+  try {
+    recordingCanvasTrack?.requestFrame?.();
+  } catch (_error) {
+    // captureStream(frameRate) já entrega os quadros nos WebKit sem requestFrame.
+  }
+
+  return true;
+}
+
+function drawRecordingRecoverySlate() {
+  if (!recordingCanvas || !recordingCanvasContext) return false;
+  const ctx = recordingCanvasContext;
+  const width = recordingCanvas.width;
+  const height = recordingCanvas.height;
+  const phase = Math.floor(Date.now() / 350) % 4;
+  const dots = '.'.repeat(phase);
+
+  ctx.save();
+  ctx.fillStyle = '#070c40';
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = '#f4f700';
+  ctx.font = '700 34px system-ui, -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`Recuperando câmera${dots}`, width / 2, (height / 2) - 14);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '500 21px system-ui, -apple-system, sans-serif';
+  ctx.fillText('A gravação continua automaticamente.', width / 2, (height / 2) + 34);
+  ctx.restore();
+
+  recordingCanvasFrameCount += 1;
+  recordingCanvasLastDrawAt = performance.now();
+  try { recordingCanvasTrack?.requestFrame?.(); } catch (_error) { /* captureStream já envia quadros */ }
+  return true;
+}
+
+function createStableRecordingStream() {
+  stopStableRecordingPipeline();
+
+  // Fora do iOS mantemos o caminho nativo. No iPhone/iPad usamos o canvas para
+  // impedir o bug em que o áudio continua e o vídeo para de gerar quadros.
+  if (!IS_IOS_WEBKIT) {
+    recordingOutputStream = activeStream;
+    return activeStream;
+  }
+
+  const preview = $('camera-preview');
+  const canvas = document.createElement('canvas');
+  if (typeof canvas.captureStream !== 'function') {
+    // Fallback iOS: grava somente a track de vídeo. Assim, se o encoder de vídeo
+    // falhar, não existe uma track de áudio mantendo artificialmente o arquivo até 90 s.
+    const videoOnlyTrack = activeStream?.getVideoTracks?.()[0];
+    recordingOutputStream = videoOnlyTrack ? new MediaStream([videoOnlyTrack]) : activeStream;
+    return recordingOutputStream;
+  }
+
+  canvas.width = IOS_RECORD_CANVAS_WIDTH;
+  canvas.height = IOS_RECORD_CANVAS_HEIGHT;
+
+  const context = canvas.getContext('2d', {
+    alpha: false,
+    desynchronized: true
+  });
+
+  if (!context) {
+    const videoOnlyTrack = activeStream?.getVideoTracks?.()[0];
+    recordingOutputStream = videoOnlyTrack ? new MediaStream([videoOnlyTrack]) : activeStream;
+    return recordingOutputStream;
+  }
+
+  recordingCanvas = canvas;
+  recordingCanvasContext = context;
+
+  // Desenha o primeiro quadro antes de criar o stream para o encoder não iniciar vazio.
+  drawPreviewIntoRecordingCanvas(preview);
+
+  const canvasStream = canvas.captureStream(IOS_RECORD_CANVAS_FPS);
+  const canvasVideoTrack = canvasStream.getVideoTracks()[0];
+  if (!canvasVideoTrack) {
+    stopStableRecordingPipeline();
+    const videoOnlyTrack = activeStream?.getVideoTracks?.()[0];
+    recordingOutputStream = videoOnlyTrack ? new MediaStream([videoOnlyTrack]) : activeStream;
+    return recordingOutputStream;
+  }
+
+  recordingCanvasTrack = canvasVideoTrack;
+  recordingOutputOwnedTracks.push(canvasVideoTrack);
+
+  const recorderTracks = [canvasVideoTrack];
+
+  // Mantém áudio, mas usa clone quando possível para que encerrar o stream de gravação
+  // não derrube a track original da câmera.
+  const sourceAudioTrack = activeStream?.getAudioTracks?.()[0];
+  if (sourceAudioTrack) {
+    let recorderAudioTrack = sourceAudioTrack;
+    try {
+      recorderAudioTrack = typeof sourceAudioTrack.clone === 'function'
+        ? sourceAudioTrack.clone()
+        : sourceAudioTrack;
+    } catch (_error) {
+      recorderAudioTrack = sourceAudioTrack;
+    }
+
+    recorderTracks.push(recorderAudioTrack);
+    if (recorderAudioTrack !== sourceAudioTrack) {
+      recordingOutputOwnedTracks.push(recorderAudioTrack);
+    }
+  }
+
+  recordingOutputStream = new MediaStream(recorderTracks);
+
+  const frameIntervalMs = Math.round(1000 / IOS_RECORD_CANVAS_FPS);
+  recordingCanvasTimer = window.setInterval(() => {
+    if (!mediaRecorder || mediaRecorder.state !== 'recording' || discardRecording || recordingStopRequested) {
+      return;
+    }
+
+    if (recordingCameraRecoveryInProgress) {
+      drawRecordingRecoverySlate();
+    } else {
+      drawPreviewIntoRecordingCanvas(preview);
+    }
+  }, frameIntervalMs);
+
+  return recordingOutputStream;
+}
+
+async function startVideoRecording() {
+  if (!activeStream || recordingStartInProgress) {
+    return;
+  }
+
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     return;
   }
 
@@ -1195,20 +1859,51 @@ function startVideoRecording() {
     return;
   }
 
-  const mimeType = selectRecordingMimeType();
-  const options = {
-    // 90 s a ~512 kbps totais gera cerca de 5,5 MB e deixa margem para navegadores
-    // que variam o bitrate e para o overhead do contêiner. A resolução também é limitada
-    // na captura para manter o arquivo final abaixo de 15 MB em aparelhos diferentes.
-    videoBitsPerSecond: VIDEO_TARGET_VIDEO_BITRATE,
-    audioBitsPerSecond: VIDEO_TARGET_AUDIO_BITRATE
-  };
+  const startButton = $('start-recording');
+  recordingStartInProgress = true;
+  startButton.disabled = true;
+  startButton.textContent = 'Iniciando gravação...';
 
-  if (mimeType) {
-    options.mimeType = mimeType;
-  }
+  // No iPhone, alterações de constraints/torch durante um MediaRecorder ativo podem
+  // provocar um mute transitório da track e encerrar/pausar a gravação. Ajustamos o
+  // flash antes do start e congelamos o monitor automático até o fim do vídeo.
+  stopTorchAutoMonitor();
 
   try {
+    await prepareTorchForCapture();
+
+    const videoTrack = activeStream?.getVideoTracks?.()[0];
+    if (!videoTrack || videoTrack.readyState !== 'live') {
+      throw new Error('A câmera foi interrompida antes do início da gravação. Abra a câmera novamente e tente de novo.');
+    }
+
+    await waitForVideoTrackReadyForRecording(videoTrack);
+
+    // Fora do iOS, sinaliza ao encoder que detalhes são mais importantes que
+    // movimento. No WebKit/iPhone evitamos contentHint durante a abertura da
+    // câmera: ele pode reconfigurar a track e provocar mute/stop logo no início.
+    if (!IS_IOS_WEBKIT) {
+      try {
+        if ('contentHint' in videoTrack) {
+          videoTrack.contentHint = 'detail';
+        }
+      } catch (_error) {
+        // Navegadores que não aceitam a dica continuam com o perfil normal.
+      }
+    }
+
+    const mimeType = selectRecordingMimeType();
+    const options = {
+      // O bitrate é uma dica de qualidade ao encoder. Não existe mais limite de MB para vídeo;
+      // mantemos somente o encerramento automático em 90 segundos.
+      videoBitsPerSecond: VIDEO_TARGET_VIDEO_BITRATE,
+      audioBitsPerSecond: VIDEO_TARGET_AUDIO_BITRATE
+    };
+
+    if (mimeType) {
+      options.mimeType = mimeType;
+    }
+
     recordedChunks = [];
     recordedVideoBytes = 0;
     videoDurationSeconds = null;
@@ -1217,8 +1912,16 @@ function startVideoRecording() {
     recordingInterrupted = false;
     recordingMustRestart = false;
     recordingInterruptionReason = '';
+    recordingCameraRecoveryInProgress = false;
+    recordingCameraRecoveryCount = 0;
+    clearRecordingMuteTimer();
     resetRecordingClock();
-    mediaRecorder = new MediaRecorder(activeStream, options);
+    const recorderStream = createStableRecordingStream();
+    if (!recorderStream?.getVideoTracks?.().length) {
+      throw new Error('Não foi possível preparar o stream de vídeo para gravação.');
+    }
+
+    mediaRecorder = new MediaRecorder(recorderStream, options);
 
     mediaRecorder.addEventListener('dataavailable', (event) => {
       if (event.data && event.data.size > 0) {
@@ -1230,7 +1933,15 @@ function startVideoRecording() {
     mediaRecorder.addEventListener('pause', () => {
       pauseRecordingClock();
       if (!discardRecording && !recordingStopRequested) {
-        showRecordingInterrupted('A gravação foi pausada pelo aparelho. Toque em “Retomar gravação” para continuar.');
+        // Pause inesperado no WebKit é tratado como interrupção real. Em vez de
+        // concatenar/retomar um MP4 potencialmente corrompido, reiniciamos do zero.
+        recordingMustRestart = true;
+        showRecordingInterrupted('O aparelho interrompeu a gravação. Toque em “Retomar gravação”; o vídeo será reiniciado do início para garantir um arquivo íntegro.');
+        window.setTimeout(() => {
+          if (mediaRecorder?.state === 'paused' && !recordingStopRequested && !discardRecording) {
+            try { mediaRecorder.stop(); } catch (_error) { /* o stop pode já estar em andamento */ }
+          }
+        }, 0);
       }
     });
 
@@ -1238,15 +1949,31 @@ function startVideoRecording() {
       resumeRecordingClock();
       clearRecordingInterruptedUi();
       startRecordingTimerLoop();
+      startRecordingFrameWatchdog();
       void requestRecordingWakeLock();
+    });
+
+    mediaRecorder.addEventListener('error', (event) => {
+      if (discardRecording || recordingStopRequested) return;
+      recordingMustRestart = true;
+      const detail = event?.error?.message || 'A gravação foi interrompida pelo navegador.';
+      showRecordingInterrupted(`${detail} Toque em “Retomar gravação” para reiniciar o vídeo do início.`);
     });
 
     const recorderInstance = mediaRecorder;
     mediaRecorder.addEventListener('stop', () => handleVideoRecorderStopped(recorderInstance), { once: true });
-    mediaRecorder.start(1000);
+    // Em WebKit/iPhone, gravar MP4 com timeslice pode gerar um contêiner que
+    // o próprio elemento <video> não consegue reler depois. Como a duração é limitada a
+    // 90 s, usamos um único bloco final, emitido com segurança no stop.
+    mediaRecorder.start();
+    recordingStartedAt = Date.now();
+
+    if (mediaRecorder.state !== 'recording') {
+      throw new Error('O navegador não conseguiu manter a gravação ativa. Tente novamente.');
+    }
 
     resumeRecordingClock();
-    $('start-recording').hidden = true;
+    startButton.hidden = true;
     $('resume-recording').hidden = true;
     $('stop-recording').hidden = false;
     $('stop-recording').disabled = false;
@@ -1254,11 +1981,22 @@ function startVideoRecording() {
     $('cancel-camera').textContent = 'Cancelar gravação';
     $('recording-paused-banner').hidden = true;
     $('recording-indicator').hidden = false;
+    const flashButton = $('toggle-flash');
+    if (flashButton) flashButton.disabled = true;
     updateRecordingTimer();
     startRecordingTimerLoop();
+    startRecordingFrameWatchdog();
     void requestRecordingWakeLock();
   } catch (error) {
+    recordingStartedAt = 0;
+    stopStableRecordingPipeline();
     handleCameraError(error);
+  } finally {
+    recordingStartInProgress = false;
+    if (!startButton.hidden) {
+      startButton.disabled = false;
+      startButton.textContent = 'Iniciar gravação';
+    }
   }
 }
 
@@ -1289,6 +2027,7 @@ function handleVideoRecorderStopped(stoppedRecorder) {
 
   pauseRecordingClock();
   stopRecordingTimerLoop();
+  stopRecordingFrameWatchdog();
   void releaseRecordingWakeLock();
 
   if (discardRecording || recordingStopRequested) {
@@ -1307,6 +2046,7 @@ function handleVideoRecorderStopped(stoppedRecorder) {
 
 function finishVideoRecording() {
   const measuredDurationSeconds = getRecordedDurationSeconds();
+  const renderedCanvasFrames = recordingCanvasFrameCount;
   stopRecordingTimerLoop();
   void releaseRecordingWakeLock();
 
@@ -1316,6 +2056,7 @@ function finishVideoRecording() {
     videoDurationSeconds = null;
     mediaRecorder = null;
     resetRecordingClock();
+    stopStableRecordingPipeline();
     closeCameraModal();
     return;
   }
@@ -1330,9 +2071,27 @@ function finishVideoRecording() {
     return;
   }
 
+  // No caminho estabilizado do iOS esperamos pelo menos alguns desenhos por segundo.
+  // Isso não mede o contêiner, mas evita aceitar gravação em que a thread de renderização
+  // deixou de alimentar o canvas durante uma parte relevante do procedimento.
+  if (IS_IOS_WEBKIT && measuredDurationSeconds >= 8) {
+    const minimumExpectedCanvasFrames = Math.max(20, Math.floor(measuredDurationSeconds * 4));
+    if (renderedCanvasFrames > 0 && renderedCanvasFrames < minimumExpectedCanvasFrames) {
+      mediaRecorder = null;
+      recordedChunks = [];
+      recordedVideoBytes = 0;
+      videoDurationSeconds = null;
+      resetRecordingClock();
+      stopStableRecordingPipeline();
+      handleCameraError(new Error('A câmera não conseguiu manter quadros suficientes durante a gravação. Grave novamente sem sair da tela.'));
+      return;
+    }
+  }
+
+  const chunkType = String(recordedChunks.find((chunk) => chunk?.type)?.type || '').split(';')[0];
   const recorderType = (mediaRecorder?.mimeType || '').split(';')[0];
   const selectedType = selectRecordingMimeType().split(';')[0];
-  const mimeType = recorderType || selectedType || 'video/webm';
+  const mimeType = chunkType || recorderType || selectedType || 'video/webm';
 
   if (!allowedVideoTypes.has(mimeType)) {
     mediaRecorder = null;
@@ -1344,17 +2103,16 @@ function finishVideoRecording() {
     return;
   }
 
-  const blob = new Blob(recordedChunks, { type: mimeType });
-  if (blob.size > VIDEO_MAX_BYTES) {
+  if (!recordedChunks.length) {
     mediaRecorder = null;
-    recordedChunks = [];
     recordedVideoBytes = 0;
     videoDurationSeconds = null;
     resetRecordingClock();
-    handleCameraError(new Error(`Este aparelho gerou um vídeo de ${formatBytes(blob.size)}, acima do limite de 15 MB. Grave novamente; o sistema usará a configuração compactada com duração máxima de 1min30s.`));
+    handleCameraError(new Error('A câmera não entregou os dados do vídeo. Grave novamente sem sair da tela durante a gravação.'));
     return;
   }
 
+  const blob = new Blob(recordedChunks, { type: mimeType });
   const extension = videoExtension(mimeType);
   const plate = slugify(request?.plate || 'veiculo');
 
@@ -1371,7 +2129,7 @@ function finishVideoRecording() {
 
   $('video-preview').src = videoPreviewUrl;
   $('video-preview').hidden = false;
-  $('video-status').textContent = `Vídeo gravado com duração válida (${Math.floor(measuredDurationSeconds)}s · ${formatBytes(blob.size)} de 15 MB).`;
+  $('video-status').textContent = `Vídeo gravado com duração válida (${Math.floor(measuredDurationSeconds)}s · ${formatBytes(blob.size)}).`;
   $('record-video').textContent = 'Gravar novamente';
   $('record-video').classList.add('captured');
 
@@ -1408,8 +2166,13 @@ function pauseRecordingClock() {
 
 function resetRecordingClock() {
   stopRecordingTimerLoop();
+  clearRecordingMuteTimer();
+  stopRecordingFrameWatchdog();
   recordingElapsedMs = 0;
   recordingActiveSince = null;
+  recordingStartedAt = 0;
+  recordingCameraRecoveryInProgress = false;
+  recordingCameraRecoveryCount = 0;
 }
 
 function startRecordingTimerLoop() {
@@ -1449,10 +2212,209 @@ function stopRecordingTimerLoop() {
   }
 }
 
+function stopRecordingFrameWatchdog() {
+  if (recordingFrameWatchdogTimer) {
+    window.clearInterval(recordingFrameWatchdogTimer);
+    recordingFrameWatchdogTimer = null;
+  }
+
+  const preview = $('camera-preview');
+  if (recordingFrameCallbackId !== null && typeof preview?.cancelVideoFrameCallback === 'function') {
+    try { preview.cancelVideoFrameCallback(recordingFrameCallbackId); } catch (_error) { /* callback já pode ter disparado */ }
+  }
+
+  recordingFrameCallbackId = null;
+  recordingLastVideoFrameAt = 0;
+  recordingLastPreviewTime = -1;
+  recordingLastFrameMediaTime = -1;
+  recordingLastPresentedFrames = -1;
+  recordingLastDecodedFrames = -1;
+}
+
+function decodedFrameCount(preview) {
+  if (!preview) return -1;
+  try {
+    const direct = Number(preview.webkitDecodedFrameCount);
+    if (Number.isFinite(direct) && direct >= 0) return direct;
+  } catch (_error) { /* propriedade não disponível */ }
+  try {
+    const quality = preview.getVideoPlaybackQuality?.();
+    const total = Number(quality?.totalVideoFrames);
+    if (Number.isFinite(total) && total >= 0) return total;
+  } catch (_error) { /* API não disponível */ }
+  return -1;
+}
+
+function armRecordingVideoFrameCallback(preview) {
+  if (!preview || typeof preview.requestVideoFrameCallback !== 'function') return;
+  if (!mediaRecorder || mediaRecorder.state !== 'recording') return;
+
+  recordingFrameCallbackId = preview.requestVideoFrameCallback((_now, metadata = {}) => {
+    recordingFrameCallbackId = null;
+
+    const mediaTime = Number(metadata.mediaTime);
+    const presentedFrames = Number(metadata.presentedFrames);
+    let progressed = false;
+
+    if (Number.isFinite(presentedFrames)) {
+      if (recordingLastPresentedFrames < 0 || presentedFrames > recordingLastPresentedFrames) {
+        progressed = true;
+      }
+      recordingLastPresentedFrames = Math.max(recordingLastPresentedFrames, presentedFrames);
+    }
+
+    if (Number.isFinite(mediaTime)) {
+      if (recordingLastFrameMediaTime < 0 || mediaTime > recordingLastFrameMediaTime + 0.001) {
+        progressed = true;
+      }
+      recordingLastFrameMediaTime = Math.max(recordingLastFrameMediaTime, mediaTime);
+    }
+
+    // Implementações antigas podem chamar o callback sem metadata. Nesse caso o
+    // próprio callback continua sendo a melhor indicação de um quadro novo.
+    if (!Number.isFinite(presentedFrames) && !Number.isFinite(mediaTime)) {
+      progressed = true;
+    }
+
+    if (progressed) {
+      recordingLastVideoFrameAt = performance.now();
+    }
+
+    if (mediaRecorder?.state === 'recording' && !discardRecording && !recordingStopRequested) {
+      armRecordingVideoFrameCallback(preview);
+    }
+  });
+}
+
+async function recoverFrozenCameraDuringRecording() {
+  if (recordingCameraRecoveryInProgress || captureMode !== 'video' || discardRecording || recordingStopRequested) return;
+  if (!mediaRecorder || mediaRecorder.state !== 'recording') return;
+
+  // Fora do WebKit não trocamos a track no meio da gravação, porque o fluxo nativo
+  // normalmente encerra corretamente quando a câmera falha.
+  if (!IS_IOS_WEBKIT) {
+    interruptVideoRecordingAndRequireRestart(
+      'A câmera deixou de fornecer imagens. Toque em “Retomar gravação” para reiniciar o vídeo sem trecho congelado.'
+    );
+    return;
+  }
+
+  recordingCameraRecoveryInProgress = true;
+  recordingCameraRecoveryCount += 1;
+  stopRecordingFrameWatchdog();
+  clearRecordingMuteTimer();
+  stopTorchAutoMonitor();
+  drawRecordingRecoverySlate();
+
+  const preview = $('camera-preview');
+  const oldStream = activeStream;
+  const oldVideoTrack = oldStream?.getVideoTracks?.()[0] || null;
+  const liveAudioTracks = (oldStream?.getAudioTracks?.() || []).filter(track => track.readyState === 'live');
+  let replacementStream = null;
+
+  try {
+    // O flag de recuperação impede o listener de "ended" de encerrar o recorder.
+    if (oldVideoTrack) {
+      try { oldVideoTrack.stop(); } catch (_error) { /* track já encerrada */ }
+    }
+
+    // Dá um pequeno intervalo para o WebKit liberar fisicamente a câmera antes de
+    // solicitar uma nova track. O MediaRecorder continua gravando o canvas/áudio.
+    await wait(180);
+
+    replacementStream = await navigator.mediaDevices.getUserMedia({
+      video: buildCameraVideoConstraints(true, activeFacingMode || 'environment'),
+      audio: false
+    });
+
+    const replacementTrack = replacementStream.getVideoTracks()[0];
+    if (!replacementTrack || replacementTrack.readyState !== 'live') {
+      throw new Error('O aparelho não devolveu uma nova imagem da câmera.');
+    }
+
+    await optimizeVideoTrackForInspection(replacementTrack);
+
+    const nextStream = new MediaStream([replacementTrack, ...liveAudioTracks]);
+    activeStream = nextStream;
+    preview.srcObject = nextStream;
+    preview.muted = true;
+    await preview.play();
+    await waitForVideoTrackReadyForRecording(replacementTrack);
+    attachVideoTrackInterruptionListeners();
+
+    recordingLastVideoFrameAt = performance.now();
+    recordingLastPreviewTime = Number.isFinite(preview.currentTime) ? preview.currentTime : -1;
+    recordingLastFrameMediaTime = -1;
+    recordingLastPresentedFrames = -1;
+    recordingLastDecodedFrames = decodedFrameCount(preview);
+    recordingCameraRecoveryInProgress = false;
+    startRecordingFrameWatchdog();
+
+    const status = $('flash-status');
+    if (status) {
+      status.hidden = false;
+      status.textContent = 'Câmera recuperada automaticamente. Continue a vistoria normalmente.';
+    }
+  } catch (error) {
+    replacementStream?.getTracks?.().forEach(track => {
+      try { track.stop(); } catch (_error) { /* já encerrada */ }
+    });
+    recordingCameraRecoveryInProgress = false;
+    interruptVideoRecordingAndRequireRestart(
+      `${error?.message || 'A câmera não conseguiu se recuperar automaticamente.'} Toque em “Retomar gravação” para reiniciar o vídeo sem salvar imagem congelada.`
+    );
+  }
+}
+
+function startRecordingFrameWatchdog() {
+  stopRecordingFrameWatchdog();
+
+  const preview = $('camera-preview');
+  if (!preview || !mediaRecorder || mediaRecorder.state !== 'recording') return;
+
+  recordingLastVideoFrameAt = performance.now();
+  recordingLastPreviewTime = Number.isFinite(preview.currentTime) ? preview.currentTime : -1;
+  recordingLastDecodedFrames = decodedFrameCount(preview);
+  armRecordingVideoFrameCallback(preview);
+
+  recordingFrameWatchdogTimer = window.setInterval(() => {
+    if (!mediaRecorder || mediaRecorder.state !== 'recording' || discardRecording || recordingStopRequested) return;
+    if (recordingCameraRecoveryInProgress || document.visibilityState === 'hidden') return;
+
+    const now = performance.now();
+    const sinceStart = recordingStartedAt ? Math.max(0, Date.now() - recordingStartedAt) : 0;
+    if (sinceStart < RECORDING_FRAME_START_GRACE_MS) return;
+
+    // Preferimos contadores reais de quadros decodificados. currentTime sozinho não é
+    // suficiente no WebKit: ele pode continuar avançando mesmo exibindo o mesmo quadro.
+    const decoded = decodedFrameCount(preview);
+    if (decoded >= 0) {
+      if (recordingLastDecodedFrames < 0 || decoded > recordingLastDecodedFrames) {
+        recordingLastDecodedFrames = decoded;
+        recordingLastVideoFrameAt = now;
+      }
+    } else if (typeof preview.requestVideoFrameCallback !== 'function') {
+      const currentPreviewTime = Number.isFinite(preview.currentTime) ? preview.currentTime : -1;
+      if (currentPreviewTime >= 0 && currentPreviewTime > recordingLastPreviewTime + 0.02) {
+        recordingLastPreviewTime = currentPreviewTime;
+        recordingLastVideoFrameAt = now;
+      }
+    }
+
+    if (!recordingLastVideoFrameAt || (now - recordingLastVideoFrameAt) < RECORDING_FRAME_STALL_MS) return;
+
+    // A gravação iOS usa o canvas, portanto podemos trocar somente a câmera por uma
+    // nova track sem parar o arquivo. Enquanto a câmera reabre, o canvas mostra uma
+    // tela animada de recuperação — nunca deixamos dezenas de segundos congelados.
+    void recoverFrozenCameraDuringRecording();
+  }, 500);
+}
+
 function showRecordingInterrupted(message) {
   recordingInterrupted = true;
   recordingInterruptionReason = message || 'A gravação foi pausada.';
   stopRecordingTimerLoop();
+  stopRecordingFrameWatchdog();
   $('recording-indicator').hidden = true;
   $('stop-recording').hidden = true;
   $('resume-recording').hidden = false;
@@ -1471,22 +2433,52 @@ function clearRecordingInterruptedUi() {
   $('stop-recording').hidden = false;
 }
 
-function pauseVideoRecordingForInterruption(reason) {
+function clearRecordingMuteTimer() {
+  if (recordingMuteTimer) {
+    window.clearTimeout(recordingMuteTimer);
+    recordingMuteTimer = null;
+  }
+}
+
+function interruptVideoRecordingAndRequireRestart(reason) {
   if (captureMode !== 'video' || discardRecording || recordingStopRequested || !mediaRecorder) {
     return;
   }
 
-  if (mediaRecorder.state === 'recording') {
-    pauseRecordingClock();
-    try {
-      mediaRecorder.requestData?.();
-      mediaRecorder.pause();
-    } catch (_error) {
-      showRecordingInterrupted(reason);
-    }
-  } else if (mediaRecorder.state === 'paused') {
-    showRecordingInterrupted(reason);
+  clearRecordingMuteTimer();
+  pauseRecordingClock();
+  recordingMustRestart = true;
+  showRecordingInterrupted(reason || 'A câmera foi interrompida. Toque em “Retomar gravação” para reiniciar o vídeo.');
+
+  // Não usamos MediaRecorder.pause() no iPhone. O pause/resume do WebKit pode
+  // deixar o MP4 vazio ou inválido. Encerramos o contêiner atual e descartamos esse
+  // trecho; ao retomar, uma gravação nova começa do zero.
+  if (mediaRecorder.state === 'recording' || mediaRecorder.state === 'paused') {
+    try { mediaRecorder.stop(); } catch (_error) { /* o stop pode já estar em andamento */ }
   }
+}
+
+function scheduleVideoTrackMuteCheck(track, reason) {
+  clearRecordingMuteTimer();
+  if (!track || !mediaRecorder || mediaRecorder.state !== 'recording') return;
+
+  const sinceStart = recordingStartedAt ? Math.max(0, Date.now() - recordingStartedAt) : RECORDING_START_GRACE_MS;
+  const startupGraceRemaining = Math.max(0, RECORDING_START_GRACE_MS - sinceStart);
+  const delay = Math.max(RECORDING_MUTE_CONFIRM_MS, startupGraceRemaining);
+
+  recordingMuteTimer = window.setTimeout(() => {
+    recordingMuteTimer = null;
+    const currentTrack = activeStream?.getVideoTracks?.()[0];
+    if (currentTrack !== track || !track.muted || track.readyState !== 'live') return;
+    if (!mediaRecorder || mediaRecorder.state !== 'recording' || discardRecording || recordingStopRequested) return;
+
+    interruptVideoRecordingAndRequireRestart(reason);
+  }, delay);
+}
+
+function pauseVideoRecordingForInterruption(reason) {
+  const track = activeStream?.getVideoTracks?.()[0];
+  scheduleVideoTrackMuteCheck(track, reason);
 }
 
 async function resumeVideoRecording() {
@@ -1562,28 +2554,56 @@ function attachVideoTrackInterruptionListeners() {
   if (!track) return;
 
   track.addEventListener('mute', () => {
-    if (captureMode === 'video' && mediaRecorder && !discardRecording) {
-      pauseVideoRecordingForInterruption('A câmera foi pausada pelo aparelho. Desbloqueie a tela e toque em “Retomar gravação”.');
+    if (captureMode !== 'video' || !mediaRecorder || discardRecording || recordingStopRequested) return;
+
+    // No iPhone/WebKit, `mute` isolado continua não sendo confiável. Em vez de
+    // parar imediatamente, o watchdog V9 confirma se novos frames realmente deixaram
+    // de chegar. Isso evita tanto o falso corte no início quanto o relógio avançando
+    // sobre uma imagem congelada.
+    if (IS_IOS_WEBKIT) {
+      clearRecordingMuteTimer();
+      return;
     }
+
+    pauseVideoRecordingForInterruption('A câmera permaneceu interrompida pelo aparelho. Toque em “Retomar gravação” para reiniciar o vídeo.');
+  });
+
+  track.addEventListener('unmute', () => {
+    // Um mute transitório não deve cortar uma gravação saudável.
+    clearRecordingMuteTimer();
   });
 
   track.addEventListener('ended', () => {
+    clearRecordingMuteTimer();
+    if (recordingCameraRecoveryInProgress) return;
     if (captureMode === 'video' && mediaRecorder && !discardRecording && !recordingStopRequested) {
       pauseRecordingClock();
       recordingMustRestart = true;
-      showRecordingInterrupted('A câmera foi encerrada pelo aparelho. Toque em “Retomar gravação” para reabrir a câmera.');
+      showRecordingInterrupted('A câmera foi encerrada pelo aparelho. Toque em “Retomar gravação” para reabrir a câmera e reiniciar o vídeo.');
+      if (mediaRecorder.state === 'recording' || mediaRecorder.state === 'paused') {
+        try { mediaRecorder.stop(); } catch (_error) { /* o stop pode já estar em andamento */ }
+      }
     }
   });
 }
 
 function configureTorchControl() {
+  stopTorchAutoMonitor();
+
   const button = $('toggle-flash');
+  const status = $('flash-status');
   const track = activeStream?.getVideoTracks?.()[0];
+
   torchEnabled = false;
   torchSupported = false;
+  torchMode = 'auto';
+  torchDarkSamples = 0;
+  torchBrightSamples = 0;
 
-  if (!button || captureMode !== 'video' || !track) {
+  const rearCameraCapture = activeFacingMode === 'environment' && ['photo', 'video'].includes(captureMode);
+  if (!button || !track || !rearCameraCapture) {
     if (button) button.hidden = true;
+    if (status) status.hidden = true;
     return;
   }
 
@@ -1596,35 +2616,195 @@ function configureTorchControl() {
 
   button.hidden = !torchSupported;
   button.disabled = false;
-  button.textContent = 'Ligar flash';
-  button.setAttribute('aria-pressed', 'false');
-  button.title = torchSupported
-    ? 'Liga ou desliga a lanterna da câmera traseira durante o vídeo.'
-    : 'O flash não está disponível neste aparelho ou navegador.';
+  if (status) status.hidden = !torchSupported;
+
+  if (!torchSupported) {
+    return;
+  }
+
+  updateTorchUi('Flash automático ativo. O sistema acende a luz quando detectar pouca iluminação.');
+  startTorchAutoMonitor();
 }
 
-async function toggleVideoFlash() {
-  if (!torchSupported) return;
+function updateTorchUi(statusMessage = '') {
+  const button = $('toggle-flash');
+  const status = $('flash-status');
+  if (!button || !torchSupported) return;
+
+  if (torchMode === 'auto') {
+    button.textContent = torchEnabled ? 'Flash: Automático · ligado' : 'Flash: Automático';
+    button.title = 'Modo automático: toque para manter o flash sempre ligado.';
+  } else if (torchMode === 'on') {
+    button.textContent = 'Flash: Ligado';
+    button.title = 'Flash ligado manualmente. Toque para desligar.';
+  } else {
+    button.textContent = 'Flash: Desligado';
+    button.title = 'Flash desligado manualmente. Toque para voltar ao automático.';
+  }
+
+  button.dataset.flashMode = torchMode;
+  button.setAttribute('aria-pressed', String(torchEnabled));
+
+  if (status) {
+    status.hidden = false;
+    status.dataset.flashState = torchEnabled ? 'on' : 'off';
+    status.textContent = statusMessage || (
+      torchMode === 'auto'
+        ? (torchEnabled ? 'Pouca luz detectada · flash ligado automaticamente.' : 'Flash automático monitorando a iluminação.')
+        : (torchEnabled ? 'Flash ligado manualmente.' : 'Flash desligado manualmente.')
+    );
+  }
+}
+
+async function setTorchState(nextState, { silent = false, reason = '' } = {}) {
+  if (!torchSupported || torchMonitorBusy) return false;
   const track = activeStream?.getVideoTracks?.()[0];
-  if (!track || track.readyState !== 'live') return;
+  if (!track || track.readyState !== 'live') return false;
+  if (torchEnabled === nextState) {
+    if (reason) updateTorchUi(reason);
+    return true;
+  }
 
   const button = $('toggle-flash');
-  const nextState = !torchEnabled;
-  button.disabled = true;
+  torchMonitorBusy = true;
+  if (button) button.disabled = true;
 
   try {
     await track.applyConstraints({ advanced: [{ torch: nextState }] });
     torchEnabled = nextState;
-    button.textContent = torchEnabled ? 'Desligar flash' : 'Ligar flash';
-    button.setAttribute('aria-pressed', String(torchEnabled));
+    updateTorchUi(reason);
+    return true;
   } catch (_error) {
     torchSupported = false;
     torchEnabled = false;
-    button.hidden = true;
-    msg('O flash não pôde ser ativado neste aparelho. A gravação pode continuar normalmente.', 'success');
+    stopTorchAutoMonitor();
+    if (button) button.hidden = true;
+    const status = $('flash-status');
+    if (status) status.hidden = true;
+    if (!silent) {
+      msg('O flash não pôde ser controlado neste aparelho ou navegador. A vistoria pode continuar normalmente.');
+    }
+    return false;
   } finally {
-    button.disabled = false;
+    torchMonitorBusy = false;
+    if (button) button.disabled = false;
   }
+}
+
+function sampleCameraBrightness() {
+  const preview = $('camera-preview');
+  if (!preview || preview.readyState < 2 || !preview.videoWidth || !preview.videoHeight) return null;
+
+  try {
+    const width = 48;
+    const height = Math.max(28, Math.round(width * preview.videoHeight / preview.videoWidth));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) return null;
+    context.drawImage(preview, 0, 0, width, height);
+    const pixels = context.getImageData(0, 0, width, height).data;
+
+    let luminance = 0;
+    let samples = 0;
+    for (let offset = 0; offset < pixels.length; offset += 16) {
+      const red = pixels[offset];
+      const green = pixels[offset + 1];
+      const blue = pixels[offset + 2];
+      luminance += (0.2126 * red) + (0.7152 * green) + (0.0722 * blue);
+      samples += 1;
+    }
+    return samples ? luminance / samples : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function evaluateAutomaticTorch({ immediate = false } = {}) {
+  if (!torchSupported || torchMode !== 'auto' || torchMonitorBusy || activeFacingMode !== 'environment') return;
+  const brightness = sampleCameraBrightness();
+  if (brightness === null) return;
+
+  if (brightness < TORCH_AUTO_DARK_THRESHOLD) {
+    torchDarkSamples += 1;
+    torchBrightSamples = 0;
+    if (!torchEnabled && (immediate || torchDarkSamples >= TORCH_AUTO_DARK_SAMPLES)) {
+      await setTorchState(true, {
+        silent: true,
+        reason: 'Pouca luz detectada · flash ligado automaticamente.'
+      });
+    } else if (!torchEnabled) {
+      updateTorchUi('Pouca luz detectada · preparando o flash automático.');
+    }
+    return;
+  }
+
+  if (brightness > TORCH_AUTO_BRIGHT_THRESHOLD) {
+    torchBrightSamples += 1;
+    torchDarkSamples = 0;
+    if (torchEnabled && (immediate ? brightness > TORCH_AUTO_BRIGHT_THRESHOLD + 12 : torchBrightSamples >= TORCH_AUTO_BRIGHT_SAMPLES)) {
+      await setTorchState(false, {
+        silent: true,
+        reason: 'Iluminação suficiente · flash automático em espera.'
+      });
+    } else if (!torchEnabled) {
+      updateTorchUi('Iluminação suficiente · flash automático em espera.');
+    }
+    return;
+  }
+
+  torchDarkSamples = 0;
+  torchBrightSamples = 0;
+}
+
+function startTorchAutoMonitor() {
+  stopTorchAutoMonitor();
+  if (!torchSupported || torchMode !== 'auto') return;
+  window.setTimeout(() => void evaluateAutomaticTorch({ immediate: true }), 250);
+  torchMonitorTimer = window.setInterval(() => {
+    void evaluateAutomaticTorch();
+  }, TORCH_AUTO_INTERVAL_MS);
+}
+
+function stopTorchAutoMonitor() {
+  if (torchMonitorTimer) {
+    window.clearInterval(torchMonitorTimer);
+    torchMonitorTimer = null;
+  }
+  torchDarkSamples = 0;
+  torchBrightSamples = 0;
+}
+
+async function prepareTorchForCapture() {
+  if (!torchSupported || torchMode !== 'auto') return;
+  await evaluateAutomaticTorch({ immediate: true });
+  if (torchEnabled) {
+    // Dá um pequeno tempo para o sensor ajustar exposição/foco depois de acender a luz.
+    await wait(220);
+  }
+}
+
+async function cycleCameraFlashMode() {
+  if (!torchSupported) return;
+
+  if (torchMode === 'auto') {
+    torchMode = 'on';
+    stopTorchAutoMonitor();
+    await setTorchState(true, { reason: 'Flash ligado manualmente.' });
+    return;
+  }
+
+  if (torchMode === 'on') {
+    torchMode = 'off';
+    stopTorchAutoMonitor();
+    await setTorchState(false, { reason: 'Flash desligado manualmente.' });
+    return;
+  }
+
+  torchMode = 'auto';
+  updateTorchUi('Flash automático ativo. O sistema acende a luz quando detectar pouca iluminação.');
+  startTorchAutoMonitor();
 }
 
 async function requestRecordingWakeLock() {
@@ -1659,13 +2839,23 @@ function selectRecordingMimeType() {
     return '';
   }
 
-  const candidates = [
-    'video/mp4;codecs=h264,aac',
-    'video/mp4',
-    'video/webm;codecs=vp9,opus',
-    'video/webm;codecs=vp8,opus',
-    'video/webm'
-  ];
+  const candidates = IS_IOS_WEBKIT
+    ? [
+        // No iOS, o tipo MP4 simples deixa o WebKit escolher o perfil H.264/AAC
+        // nativo. Evitamos forçar a variante com codecs, que já apresentou regressões
+        // de gravação/contêiner em versões do WebKit.
+        'video/mp4',
+        'video/mp4;codecs=h264,aac',
+        'video/webm;codecs=vp8,opus',
+        'video/webm'
+      ]
+    : [
+        'video/mp4;codecs=h264,aac',
+        'video/mp4',
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm'
+      ];
 
   return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || '';
 }
@@ -1690,12 +2880,16 @@ function updateRecordingTimer() {
 function closeCameraModal() {
   resetRecordingClock();
   void releaseRecordingWakeLock();
+  stopTorchAutoMonitor();
+  stopStableRecordingPipeline();
   stopCameraStream();
   $('camera-modal').hidden = true;
+  $('camera-modal').classList.remove('photo-fullscreen');
   $('capture-photo').hidden = true;
   $('start-recording').hidden = true;
   $('resume-recording').hidden = true;
   $('toggle-flash').hidden = true;
+  $('toggle-flash').disabled = false;
   $('stop-recording').hidden = true;
   $('stop-recording').disabled = false;
   $('stop-recording').textContent = 'Parar e usar vídeo';
@@ -1705,15 +2899,22 @@ function closeCameraModal() {
   $('camera-preview').srcObject = null;
   torchEnabled = false;
   torchSupported = false;
+  torchMode = 'auto';
+  torchMonitorBusy = false;
   recordingInterrupted = false;
   recordingMustRestart = false;
   recordingStopRequested = false;
+  recordingStartInProgress = false;
+  $('start-recording').disabled = false;
+  $('start-recording').textContent = 'Iniciar gravação';
   document.body.classList.remove('camera-open');
   captureMode = null;
   currentPhotoIndex = null;
 }
 
 function stopCameraStream() {
+  clearRecordingMuteTimer();
+  stopStableRecordingPipeline();
   if (activeStream) {
     activeStream.getTracks().forEach((track) => track.stop());
     activeStream = null;
@@ -1745,6 +2946,39 @@ function serverHasAsset(assetType, sortOrder) {
   return Array.isArray(request?.assets) && request.assets.some((asset) =>
     asset?.type === assetType && asset?.available === true && Number(asset?.sortOrder) === Number(sortOrder)
   );
+}
+
+function prepareVideoReplacementAfterValidationFailure(error) {
+  const text = String(error?.message || '');
+  if (!/v[ií]deo|quadros?|imagem congelada|integridade das imagens/i.test(text)) return false;
+
+  const orders = requiredAssetOrders();
+  if (Array.isArray(request?.assets)) {
+    request.assets = request.assets.map((asset) =>
+      asset?.type === 'VIDEO' && Number(asset?.sortOrder) === Number(orders.video)
+        ? { ...asset, available: false }
+        : asset
+    );
+  }
+
+  videoFile = null;
+  videoDurationSeconds = null;
+  if (videoPreviewUrl) {
+    URL.revokeObjectURL(videoPreviewUrl);
+    videoPreviewUrl = null;
+  }
+  const preview = $('video-preview');
+  if (preview) {
+    preview.removeAttribute('src');
+    preview.load();
+    preview.hidden = true;
+  }
+  $('video-capture-card').hidden = false;
+  $('video-status').textContent = 'O vídeo anterior não passou na validação das imagens. Grave um novo vídeo para substituir somente este item.';
+  $('record-video').textContent = 'Gravar vídeo novamente';
+  $('record-video').classList.remove('captured');
+  updateCaptureSummary();
+  return true;
 }
 
 function requiredAssetOrders() {
@@ -1842,38 +3076,171 @@ async function parseApiResponse(response) {
   return body;
 }
 
-async function uploadChunkWithRetry(asset, uploadId, chunkIndex, totalChunks, chunk) {
+function loadImageFromBlob(blob) {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(blob);
+    const image = new Image();
+    image.onload = () => resolve({ image, objectUrl });
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('A imagem salva não pôde ser decodificada.'));
+    };
+    image.src = objectUrl;
+  });
+}
+
+async function reencodeReadableImage(file, asset) {
+  const { image, objectUrl } = await loadImageFromBlob(file);
+  try {
+    const width = image.naturalWidth || image.width;
+    const height = image.naturalHeight || image.height;
+    if (!width || !height) throw new Error('A imagem recuperada não possui dimensões válidas.');
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Não foi possível reconstruir a imagem salva.');
+    context.drawImage(image, 0, 0, width, height);
+
+    const sourceType = String(file?.type || '').toLowerCase();
+    const outputType = sourceType === 'image/png' ? 'image/png' : 'image/jpeg';
+    const blob = await new Promise((resolve, reject) => {
+      canvas.toBlob(
+        value => value ? resolve(value) : reject(new Error('Não foi possível gerar uma nova cópia da imagem.')),
+        outputType,
+        outputType === 'image/jpeg' ? 0.94 : undefined
+      );
+    });
+    const originalName = file?.name || `${slugify(asset?.label || 'foto')}.jpg`;
+    const baseName = originalName.replace(/\.[^.]+$/, '') || 'imagem-recuperada';
+    const extension = outputType === 'image/png' ? 'png' : 'jpg';
+    const rebuilt = new File([blob], `${baseName}.${extension}`, {
+      type: outputType,
+      lastModified: Date.now()
+    });
+    const bytes = await readBlobArrayBufferReliable(rebuilt);
+    draftBinaryCache.set(rebuilt, bytes);
+    return rebuilt;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function replaceRecoveredAssetFile(asset, file) {
+  asset.file = file;
+  if (asset.assetType === 'PHOTO') {
+    const index = Number(asset.sortOrder) - 1;
+    if (index >= 0 && index < photoFiles.length) {
+      photoFiles[index] = file;
+      if (photoPreviewUrls[index]) URL.revokeObjectURL(photoPreviewUrls[index]);
+      photoPreviewUrls[index] = URL.createObjectURL(file);
+      const image = $(`photo-preview-${index}`);
+      if (image) {
+        image.src = photoPreviewUrls[index];
+        image.hidden = false;
+      }
+      const status = $(`photo-status-${index}`);
+      if (status) status.textContent = 'Foto antiga recuperada automaticamente neste aparelho.';
+    }
+  } else if (asset.assetType === 'VIDEO') {
+    videoFile = file;
+  } else if (asset.assetType === 'VEHICLE_DOCUMENT') {
+    vehicleDocumentFile = file;
+  } else if (asset.assetType === 'IDENTITY_DOCUMENT') {
+    const orders = requiredAssetOrders();
+    if (Number(asset.sortOrder) === Number(orders.identityFront)) identityDocumentFrontFile = file;
+    if (Number(asset.sortOrder) === Number(orders.identityBack)) identityDocumentBackFile = file;
+  }
+}
+
+async function prepareAssetForUpload(asset) {
+  const file = asset?.file;
+  if (!file || !Number.isFinite(Number(file.size)) || Number(file.size) <= 0) {
+    throw new Error(`${asset?.label || 'Arquivo'} está vazio ou indisponível.`);
+  }
+
+  // V15: nunca materializamos um vídeo inteiro em ArrayBuffer. Validamos apenas
+  // um pequeno trecho e cada parte de 1 MB será lida somente na hora do upload.
+  const probeBytes = Math.min(Number(file.size), 64 * 1024);
+  try {
+    const probe = file.slice(0, probeBytes);
+    const buffer = await readBlobArrayBufferReliable(probe);
+    if (buffer.byteLength !== probeBytes) throw new Error('Leitura local incompleta.');
+    return;
+  } catch (originalError) {
+    const isRecoverableImage = asset.assetType === 'PHOTO'
+      || /^image\//i.test(String(file?.type || ''));
+    if (!isRecoverableImage) {
+      console.error('Arquivo local não pôde ser lido para upload', {
+        assetType: asset.assetType,
+        sortOrder: asset.sortOrder,
+        size: file?.size,
+        error: originalError
+      });
+      throw new Error(
+        `${asset.label || 'Arquivo'} está salvo no aparelho, mas o navegador não consegue mais ler seus dados. `
+        + 'Selecione ou grave este arquivo novamente e tente continuar o envio.'
+      );
+    }
+
+    try {
+      const rebuilt = await reencodeReadableImage(file, asset);
+      replaceRecoveredAssetFile(asset, rebuilt);
+      const rebuiltProbe = rebuilt.slice(0, Math.min(rebuilt.size, 64 * 1024));
+      await readBlobArrayBufferReliable(rebuiltProbe);
+      updateDraftPanel(`${asset.label} foi recuperado automaticamente do rascunho antigo.`, 'ok');
+    } catch (recoveryError) {
+      console.error('Falha ao recuperar imagem de rascunho antigo', { originalError, recoveryError });
+      throw new Error(
+        `${asset.label || 'A imagem'} está no rascunho, mas o iPhone não permite mais acessar nem reconstruir os dados dessa cópia. `
+        + 'Selecione-a novamente ou refaça somente este item.'
+      );
+    }
+  }
+}
+
+async function uploadChunkWithRetry(asset, uploadId, chunkIndex, totalChunks, chunkBuffer) {
   let lastError = null;
 
   for (let attempt = 1; attempt <= UPLOAD_MAX_ATTEMPTS; attempt += 1) {
-    const form = new FormData();
-    form.append('assetType', asset.assetType);
-    form.append('sortOrder', String(asset.sortOrder));
-    form.append('label', asset.label);
-    form.append('uploadId', uploadId);
-    form.append('chunkIndex', String(chunkIndex));
-    form.append('totalChunks', String(totalChunks));
-    form.append('totalSize', String(asset.file.size));
-    form.append('contentType', asset.file.type || 'application/octet-stream');
+    const params = new URLSearchParams({
+      assetType: asset.assetType,
+      sortOrder: String(asset.sortOrder),
+      label: asset.label || '',
+      uploadId,
+      chunkIndex: String(chunkIndex),
+      totalChunks: String(totalChunks),
+      totalSize: String(asset.file.size),
+      chunkSize: String(chunkBuffer.byteLength),
+      contentType: asset.file.type || 'application/octet-stream'
+    });
     if (asset.assetType === 'VIDEO' && Number.isFinite(asset.durationSeconds)) {
-      form.append('videoDurationSeconds', String(asset.durationSeconds));
+      params.set('videoDurationSeconds', String(asset.durationSeconds));
     }
-    form.append('chunk', chunk, `parte-${chunkIndex + 1}.bin`);
 
+    const uploadPath = `/api/public/inspections/${encodeURIComponent(token)}/upload-chunk-raw?${params.toString()}`;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 5 * 60 * 1000);
     try {
       const response = await fetch(
-        window.NH_API?.backend(`/api/public/inspections/${encodeURIComponent(token)}/upload-chunk`)
-          || `/api/public/inspections/${encodeURIComponent(token)}/upload-chunk`,
-        { method: 'POST', body: form, signal: controller.signal }
+        window.NH_API?.backend(uploadPath) || uploadPath,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/octet-stream',
+            'Cache-Control': 'no-store'
+          },
+          body: chunkBuffer.slice(0),
+          signal: controller.signal
+        }
       );
       return await parseApiResponse(response);
     } catch (error) {
       lastError = error;
       const retryable = !error?.status || error.status >= 500 || error.name === 'AbortError';
       if (!retryable || attempt === UPLOAD_MAX_ATTEMPTS) break;
-      const delay = UPLOAD_RETRY_BASE_MS * attempt;
+      const delay = retryDelayMilliseconds(error, attempt);
       updateDraftPanel(
         `A conexão oscilou. Tentando novamente a parte ${chunkIndex + 1} de ${totalChunks} em instantes...`,
         'warning'
@@ -1910,16 +3277,22 @@ async function fetchChunkStatus(asset, uploadId, totalChunks) {
 }
 
 async function uploadAssetInChunks(asset, progressState) {
-  if (serverHasAsset(asset.assetType, asset.sortOrder)) {
+  const replacingStoredVideo = asset.assetType === 'VIDEO'
+    && Boolean(asset.file)
+    && serverHasAsset(asset.assetType, asset.sortOrder);
+
+  if (!replacingStoredVideo && serverHasAsset(asset.assetType, asset.sortOrder)) {
     progressState.sentBytes += asset.file.size;
     showUploadProgress(`${asset.label} já estava salvo`, progressState.sentBytes, progressState.totalBytes);
     return;
   }
 
+  await prepareAssetForUpload(asset);
+
   const totalChunks = Math.max(1, Math.ceil(asset.file.size / UPLOAD_CHUNK_BYTES));
   const uploadId = stableUploadId(asset.file, asset.assetType, asset.sortOrder);
   const status = await fetchChunkStatus(asset, uploadId, totalChunks);
-  if (status.complete || serverHasAsset(asset.assetType, asset.sortOrder)) {
+  if (status.complete || (!replacingStoredVideo && serverHasAsset(asset.assetType, asset.sortOrder))) {
     progressState.sentBytes += asset.file.size;
     showUploadProgress(`${asset.label} já estava salvo`, progressState.sentBytes, progressState.totalBytes);
     return;
@@ -1929,10 +3302,10 @@ async function uploadAssetInChunks(asset, progressState) {
   for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
     const start = chunkIndex * UPLOAD_CHUNK_BYTES;
     const end = Math.min(asset.file.size, start + UPLOAD_CHUNK_BYTES);
-    const chunk = asset.file.slice(start, end, 'application/octet-stream');
+    const expectedBytes = end - start;
 
     if (receivedChunks.has(chunkIndex)) {
-      progressState.sentBytes += chunk.size;
+      progressState.sentBytes += expectedBytes;
       showUploadProgress(
         `${asset.label}: parte ${chunkIndex + 1} já recebida`,
         progressState.sentBytes,
@@ -1947,12 +3320,20 @@ async function uploadAssetInChunks(asset, progressState) {
       progressState.totalBytes
     );
 
-    const body = await uploadChunkWithRetry(asset, uploadId, chunkIndex, totalChunks, chunk);
+    // Lê apenas a parte atual. Isso mantém o uso de memória praticamente constante
+    // mesmo quando o vídeo nativo possui centenas de MB.
+    const chunkBlob = asset.file.slice(start, end);
+    const chunkBuffer = await readBlobArrayBufferReliable(chunkBlob);
+    if (chunkBuffer.byteLength !== expectedBytes) {
+      throw new Error(`${asset.label}: a parte ${chunkIndex + 1} não pôde ser lida integralmente.`);
+    }
+
+    const body = await uploadChunkWithRetry(asset, uploadId, chunkIndex, totalChunks, chunkBuffer);
     if (body?.inspection) request = body.inspection;
     if (chunkIndex === totalChunks - 1 && body?.complete !== true) {
       throw new Error(`${asset.label} ainda não foi confirmado no banco de dados.`);
     }
-    progressState.sentBytes += chunk.size;
+    progressState.sentBytes += chunkBuffer.byteLength;
     showUploadProgress(asset.label, progressState.sentBytes, progressState.totalBytes);
   }
 
@@ -1987,7 +3368,7 @@ async function finalizeResumableUpload(residenceAddress) {
       if (completedDespiteFailure) return null;
       const retryable = !error?.status || error.status >= 500 || error.name === 'AbortError';
       if (!retryable || attempt === UPLOAD_MAX_ATTEMPTS) break;
-      await wait(UPLOAD_RETRY_BASE_MS * attempt);
+      await wait(retryDelayMilliseconds(error, attempt));
     } finally {
       window.clearTimeout(timeout);
     }
@@ -2045,21 +3426,37 @@ $('upload-form').addEventListener('submit', async (event) => {
     return;
   }
 
-  if (!serverHasAsset('VIDEO', orders.video) && videoFile?.size > VIDEO_MAX_BYTES) {
-    msg(`O vídeo deve possuir no máximo 15 MB. O arquivo atual tem ${formatBytes(videoFile.size)}.`);
-    $('record-video').focus();
-    return;
-  }
-
-  if (!serverHasAsset('VIDEO', orders.video) && videoFile) {
-    try {
-      videoDurationSeconds = await readVideoDurationSeconds(videoFile);
-    } catch (error) {
-      msg(error?.message || 'Não foi possível confirmar a duração do vídeo. Grave novamente.');
-      $('record-video').focus();
-      return;
+  if (videoFile) {
+    // Para vídeo recém-gravado, a duração já foi medida pelo relógio monotônico da
+    // própria gravação. Reabrir o MP4 apenas para ler metadata cria falso erro no
+    // Safari/iPhone, que em algumas versões não relê imediatamente o arquivo que acabou
+    // de produzir. Só fazemos a leitura do arquivo como fallback para rascunhos antigos.
+    if (!Number.isFinite(videoDurationSeconds) || videoDurationSeconds <= 0) {
+      try {
+        const measuredDuration = await readVideoDurationSeconds(videoFile);
+        videoDurationSeconds = Number.isFinite(measuredDuration) && measuredDuration > 0
+          ? measuredDuration
+          : null;
+      } catch (error) {
+        if (!USE_NATIVE_IOS_VIDEO_CAPTURE) {
+          msg(error?.message || 'Não foi possível confirmar a duração do vídeo. Grave novamente.');
+          $('record-video').focus();
+          return;
+        }
+        // No iPhone, ffprobe no backend é a fonte definitiva de duração.
+        videoDurationSeconds = null;
+      }
     }
-    if (videoDurationSeconds > VIDEO_MAX_DURATION_SECONDS + 0.5) {
+    if (USE_NATIVE_IOS_VIDEO_CAPTURE
+        && Number.isFinite(videoDurationSeconds)
+        && videoDurationSeconds > VIDEO_MAX_DURATION_SECONDS + 0.5) {
+      updateDraftPanel(
+        `O vídeo possui ${Math.floor(videoDurationSeconds)} segundos. O envio continuará normalmente e o servidor manterá apenas os primeiros 1min30s.`,
+        'warning'
+      );
+    } else if (!USE_NATIVE_IOS_VIDEO_CAPTURE
+        && Number.isFinite(videoDurationSeconds)
+        && videoDurationSeconds > VIDEO_MAX_DURATION_SECONDS + 0.5) {
       msg(`O vídeo deve ter no máximo 1 minuto e 30 segundos. O vídeo atual possui ${Math.floor(videoDurationSeconds)} segundos.`);
       $('record-video').focus();
       return;
@@ -2112,7 +3509,7 @@ $('upload-form').addEventListener('submit', async (event) => {
       });
     }
 
-    if (!serverHasAsset('VIDEO', orders.video) && videoFile) {
+    if (videoFile) {
       assets.push({
         assetType: 'VIDEO',
         sortOrder: orders.video,
@@ -2146,6 +3543,13 @@ $('upload-form').addEventListener('submit', async (event) => {
       }
     }
 
+    button.textContent = 'Preparando envio...';
+    showUploadProgress('Preparando envio seguro por partes', 0, 1);
+
+    // Não materializamos todos os arquivos antecipadamente. Cada arquivo/parte é
+    // validado imediatamente antes do envio para manter a memória estável no mobile.
+    await saveDraftNow('Fotos e documentos locais atualizados antes do envio.');
+
     const progressState = {
       totalBytes: assets.reduce((total, asset) => total + asset.file.size, 0),
       sentBytes: 0
@@ -2170,14 +3574,22 @@ $('upload-form').addEventListener('submit', async (event) => {
     const completedDespiteFailure = await checkIfServerCompleted();
     if (completedDespiteFailure) return;
 
-    await saveDraftNow('O envio foi interrompido. Os arquivos locais e as partes já confirmadas permanecem salvos.');
+    const videoNeedsReplacement = prepareVideoReplacementAfterValidationFailure(error);
+    await saveDraftNow(videoNeedsReplacement
+      ? 'O vídeo não passou na validação. Os demais itens permanecem salvos; grave somente um novo vídeo.'
+      : 'O envio foi interrompido. Os arquivos locais e as partes já confirmadas permanecem salvos.');
     msg(friendlyNetworkMessage(
       error,
       'A conexão interrompeu o envio. As partes já enviadas ficaram salvas no servidor e o restante continua neste aparelho. Toque em “Continuar envio”.'
     ));
     button.disabled = false;
     button.textContent = 'Continuar envio';
-    updateDraftPanel('As fotos já confirmadas não serão enviadas novamente. O sistema continuará do ponto em que parou.', 'warning');
+    updateDraftPanel(
+      videoNeedsReplacement
+        ? 'As fotos e documentos já confirmados permanecem salvos. Regrave somente o vídeo e toque em “Continuar envio”.'
+        : 'As fotos já confirmadas não serão enviadas novamente. O sistema continuará do ponto em que parou.',
+      'warning'
+    );
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 });
@@ -2200,7 +3612,7 @@ function showComplete(data) {
     $('report-link').hidden = true;
   }
 
-  $('whatsapp-notice').textContent = 'Todos os arquivos, documentos e o relatório foram armazenados com segurança e estão disponíveis para a equipe de análise por 40 dias.';
+  $('whatsapp-notice').textContent = 'Todos os arquivos, documentos e o relatório foram armazenados com segurança e permanecem disponíveis para a equipe de análise durante a retenção operacional de 40 dias.';
 
   $('title').textContent = 'Vistoria concluída';
   $('subtitle').textContent = `${data.associateName} · ${vehiclePlateLabel(data.plate)}`;
@@ -2420,10 +3832,11 @@ document.addEventListener('visibilitychange', () => {
       scheduleDraftSave(0, 'Rascunho atualizado neste aparelho.');
     }
 
-    // Não pausamos a gravação apenas porque a página ficou oculta. Em aparelhos/navegadores
-    // que permitem a câmera em segundo plano, o MediaRecorder pode continuar normalmente.
-    // Quando o sistema operacional realmente suspender a câmera, os eventos pause/mute/ended
-    // abaixo acionam a tela de “Retomar gravação”. O Wake Lock é a primeira linha de defesa.
+    // Nunca aceitamos continuar uma gravação web com a página oculta. Alguns sistemas
+    // mantêm o relógio/áudio ativos e suspendem apenas a câmera, criando vídeo congelado.
+    if (mediaRecorder?.state === 'recording' && captureMode === 'video') {
+      interruptVideoRecordingAndRequireRestart('A página saiu do primeiro plano e a câmera pode ter sido suspensa. Toque em “Retomar gravação” para reiniciar o vídeo do início.');
+    }
     return;
   }
 

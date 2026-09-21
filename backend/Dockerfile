@@ -7,8 +7,8 @@ RUN mvn -B -DskipTests package
 FROM eclipse-temurin:21-jre-jammy
 WORKDIR /app
 
-# ffmpeg/ffprobe são usados somente para gerar uma cópia compactada de
-# vídeos legados durante o download. O arquivo original permanece no banco.
+# ffprobe valida a continuidade real da trilha de vídeo antes de aceitar a vistoria.
+# ffmpeg permanece disponível para compatibilidade com ferramentas legadas de vídeo.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*

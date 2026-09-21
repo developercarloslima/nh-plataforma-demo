@@ -135,6 +135,9 @@ public class Quotation {
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
+    @Column(name = "updated_at", nullable = false)
+    private OffsetDateTime updatedAt;
+
     @Column(name = "valid_until", nullable = false)
     private OffsetDateTime validUntil;
 
@@ -166,6 +169,18 @@ public class Quotation {
     @OrderBy("sortOrder ASC")
     private Set<InspectionPhoto> inspectionPhotos = new LinkedHashSet<>();
 
+    @PrePersist
+    private void initializeTimestamps() {
+        OffsetDateTime now = OffsetDateTime.now();
+        if (createdAt == null) createdAt = now;
+        if (updatedAt == null) updatedAt = createdAt;
+    }
+
+    @PreUpdate
+    private void touchUpdatedAt() {
+        updatedAt = OffsetDateTime.now();
+    }
+
     protected Quotation() {
     }
 
@@ -190,8 +205,9 @@ public class Quotation {
             BigDecimal oneTimeFee,
             String mandatoryFeeDescription
     ) {
-        Integer legacyCc = "MOTORCYCLE_UP_TO_300".equals(categoryCode) ? 300
-                : ("MOTORCYCLE_OVER_300".equals(categoryCode) ? 301 : null);
+        Integer legacyCc = null;
+        if ("MOTORCYCLE_UP_TO_300".equals(categoryCode)) legacyCc = Integer.valueOf(300);
+        else if ("MOTORCYCLE_OVER_300".equals(categoryCode)) legacyCc = Integer.valueOf(301);
         return createForConsultant(
                 quoteNumber, consultant, customerName, customerCpf, whatsapp, plate, model, manufactureYear, zeroKm,
                 fipeValue, categoryCode, region, motorcycleOrigin, legacyCc, null, selectedPlanCode, selectedPlanName,
@@ -271,8 +287,9 @@ public class Quotation {
             BigDecimal oneTimeFee,
             String mandatoryFeeDescription
     ) {
-        Integer legacyCc = "MOTORCYCLE_UP_TO_300".equals(categoryCode) ? 300
-                : ("MOTORCYCLE_OVER_300".equals(categoryCode) ? 301 : null);
+        Integer legacyCc = null;
+        if ("MOTORCYCLE_UP_TO_300".equals(categoryCode)) legacyCc = Integer.valueOf(300);
+        else if ("MOTORCYCLE_OVER_300".equals(categoryCode)) legacyCc = Integer.valueOf(301);
         return createSelfService(
                 quoteNumber, consultant, customerName, customerCpf, whatsapp, plate, model, manufactureYear, zeroKm,
                 fipeValue, categoryCode, region, motorcycleOrigin, legacyCc, null, selectedPlanCode, selectedPlanName,
@@ -488,6 +505,10 @@ public class Quotation {
                 detail,
                 monthlyPrice
         ));
+        coverageSnapshots.stream()
+                .filter(item -> item.getCoverageCode().equalsIgnoreCase(coverageCode))
+                .findFirst()
+                .ifPresent(item -> item.setFinalSelected(true));
         preDiscountMonthlyValue = preDiscountMonthlyValue.add(monthlyPrice);
         recalculateDiscountedMonthlyValue();
     }
@@ -527,6 +548,7 @@ public class Quotation {
         this.discountPercent = percent;
         this.rearWindowBranding = branding;
         recalculateDiscountedMonthlyValue();
+        enforceAutomaticBenefitRules();
     }
 
     private void recalculateDiscountedMonthlyValue() {
@@ -596,6 +618,341 @@ public class Quotation {
         this.zeroKm = zeroKm;
         this.plate = normalizePlate(plate, zeroKm);
         this.observation = cleanObservation(observation);
+    }
+
+    public BigDecimal selectedOptionalMonthlyValue() {
+        return selectedOptionals.stream()
+                .map(QuotationOptionalCoverage::getMonthlyPrice)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Sincroniza os serviços adicionais escolhidos com o catálogo atual do plano.
+     * O código da cotação continua sendo o mesmo, porém nome/detalhe/preço do
+     * adicional passam a refletir o que está cadastrado no momento da correção.
+     */
+    public void synchronizeSelectedOptionalsFromCatalog(
+            java.util.List<PlanCoverage> catalogCoverages, Set<String> selectedBenefitCodes
+    ) {
+        Set<String> selected = selectedBenefitCodes == null ? Set.of() : selectedBenefitCodes.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(code -> code.trim().toUpperCase(Locale.ROOT))
+                .filter(code -> !code.isBlank())
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+
+        java.util.Map<String, PlanCoverage> currentOptionals = (catalogCoverages == null
+                ? java.util.List.<PlanCoverage>of() : catalogCoverages).stream()
+                .filter(item -> item != null && item.getCoverage() != null)
+                .filter(item -> item.getStatus() == CoverageStatus.OPTIONAL)
+                .filter(item -> item.getCoverage().getCode() != null)
+                .collect(java.util.stream.Collectors.toMap(
+                        item -> item.getCoverage().getCode().trim().toUpperCase(Locale.ROOT),
+                        java.util.function.Function.identity(),
+                        (left, right) -> left,
+                        java.util.LinkedHashMap::new
+                ));
+
+        selectedOptionals.removeIf(optional -> {
+            String code = optional.getCoverageCode() == null ? ""
+                    : optional.getCoverageCode().trim().toUpperCase(Locale.ROOT);
+            return !selected.contains(code) || !currentOptionals.containsKey(code);
+        });
+
+        for (String code : selected) {
+            PlanCoverage catalog = currentOptionals.get(code);
+            if (catalog == null) continue;
+            BigDecimal price = catalog.getMonthlyPrice();
+            if (price == null || price.signum() < 0) {
+                throw new IllegalArgumentException(
+                        "O serviço adicional " + catalog.getCoverage().getName() + " não possui valor mensal válido no catálogo."
+                );
+            }
+            QuotationOptionalCoverage existing = selectedOptionals.stream()
+                    .filter(optional -> optional.getCoverageCode() != null
+                            && optional.getCoverageCode().equalsIgnoreCase(code))
+                    .findFirst().orElse(null);
+            if (existing == null) {
+                selectedOptionals.add(QuotationOptionalCoverage.create(
+                        this, catalog.getCoverage().getCode(), catalog.getCoverage().getName(),
+                        catalog.getDetail(), price.setScale(2, RoundingMode.HALF_UP)
+                ));
+            } else {
+                existing.updateFromCatalog(
+                        catalog.getCoverage().getName(), catalog.getDetail(),
+                        price.setScale(2, RoundingMode.HALF_UP)
+                );
+            }
+        }
+    }
+
+    /**
+     * Participação efetiva dos adicionais na mensalidade já contratada.
+     * Como o desconto da cotação é aplicado sobre o total (inclusive adicionais),
+     * esta é a parcela que deve ser retirada caso o associado opte por não mantê-los.
+     */
+    public BigDecimal selectedOptionalContractMonthlyValue() {
+        BigDecimal raw = selectedOptionalMonthlyValue();
+        int percent = discountPercent == null ? 0 : discountPercent;
+        BigDecimal factor = BigDecimal.valueOf(100 - percent)
+                .divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
+        return raw.multiply(factor).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    public void updateFipeValue(BigDecimal requestedFipeValue) {
+        if (requestedFipeValue == null || requestedFipeValue.signum() <= 0) {
+            throw new IllegalArgumentException("Informe um valor FIPE válido.");
+        }
+        this.fipeValue = requestedFipeValue.setScale(2, RoundingMode.HALF_UP);
+        enforceAutomaticBenefitRules();
+    }
+
+    /**
+     * Correção manual dos valores que serão efetivamente usados no contrato.
+     * A mensalidade informada aqui é o total final contratado. Para manter o
+     * detalhamento do PDF consistente, preservamos o desconto já aceito e
+     * recalculamos o equivalente antes do desconto, a mensalidade-base e extras.
+     */
+    public void updateContractValues(BigDecimal requestedFipeValue, BigDecimal requestedMonthlyValue) {
+        if (requestedFipeValue == null || requestedFipeValue.signum() <= 0) {
+            throw new IllegalArgumentException("Informe um valor FIPE válido.");
+        }
+        if (requestedMonthlyValue == null || requestedMonthlyValue.signum() <= 0) {
+            throw new IllegalArgumentException("Informe uma mensalidade válida.");
+        }
+
+        BigDecimal fipe = requestedFipeValue.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal monthly = requestedMonthlyValue.setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal fixedExtras = mandatoryMonthlyFee == null ? BigDecimal.ZERO : mandatoryMonthlyFee;
+        for (QuotationOptionalCoverage optional : selectedOptionals) {
+            if (optional.getMonthlyPrice() != null) {
+                fixedExtras = fixedExtras.add(optional.getMonthlyPrice());
+            }
+        }
+        fixedExtras = fixedExtras.setScale(2, RoundingMode.HALF_UP);
+
+        // O desconto originalmente aceito faz parte do contrato. A correção manual
+        // informa o total FINAL; calculamos o equivalente antes do desconto para o
+        // detalhamento do PDF continuar matematicamente consistente.
+        int percent = discountPercent == null ? 0 : discountPercent;
+        BigDecimal factor = BigDecimal.valueOf(100 - percent)
+                .divide(BigDecimal.valueOf(100), 6, RoundingMode.HALF_UP);
+        if (factor.signum() <= 0) {
+            throw new IllegalArgumentException("O desconto atual da cotação é inválido para corrigir a mensalidade.");
+        }
+        BigDecimal preDiscountTarget = monthly.divide(factor, 2, RoundingMode.HALF_UP);
+        if (preDiscountTarget.compareTo(fixedExtras) < 0) {
+            BigDecimal minimumFinal = fixedExtras.multiply(factor).setScale(2, RoundingMode.HALF_UP);
+            throw new IllegalArgumentException(
+                    "A mensalidade final não pode ser menor que as taxas e adicionais já contratados após o desconto atual (R$ "
+                            + minimumFinal.toPlainString().replace('.', ',') + ")."
+            );
+        }
+
+        this.fipeValue = fipe;
+        this.preDiscountMonthlyValue = preDiscountTarget;
+        this.baseMonthlyValue = preDiscountTarget.subtract(fixedExtras).setScale(2, RoundingMode.HALF_UP);
+        // O valor informado pela equipe é a fonte de verdade do novo contrato.
+        // Mantemos o desconto/branding originais e o total final exatamente como confirmado.
+        this.monthlyValue = monthly;
+    }
+
+    /**
+     * Aplica a alteração já confirmada pelo associado. O valor proposto sempre
+     * representa o total com os adicionais originalmente contratados. Caso o
+     * associado opte por não mantê-los, eles são removidos e o respectivo valor
+     * mensal é descontado antes de consolidar o novo contrato.
+     */
+    public void applyConfirmedContractChange(
+            BigDecimal requestedFipeValue,
+            BigDecimal requestedMonthlyWithOptionals,
+            boolean keepOptionals
+    ) {
+        BigDecimal optionals = selectedOptionalContractMonthlyValue();
+        BigDecimal targetMonthly = requestedMonthlyWithOptionals;
+        if (!keepOptionals && optionals.signum() > 0) {
+            targetMonthly = requestedMonthlyWithOptionals.subtract(optionals);
+            selectedOptionals.clear();
+        }
+        updateContractValues(requestedFipeValue, targetMonthly);
+    }
+
+    public boolean usesFipeThirdPartyRule() {
+        return "CAR_NATIONAL".equalsIgnoreCase(categoryCode)
+                || "CAR_IMPORTED".equalsIgnoreCase(categoryCode)
+                || "UTILITY".equalsIgnoreCase(categoryCode);
+    }
+
+    public static boolean isDiscountExcludedBenefit(String code) {
+        if (code == null) return false;
+        String normalized = code.trim().toUpperCase(Locale.ROOT);
+        return "NATURAL_PHENOMENA".equals(normalized) || "SMALL_REPAIRS".equals(normalized);
+    }
+
+    public BigDecimal thirdPartyLimitForFipe(BigDecimal requestedFipe) {
+        if (!usesFipeThirdPartyRule() || requestedFipe == null) return null;
+        return requestedFipe.compareTo(new BigDecimal("51000.00")) >= 0
+                ? new BigDecimal("100000.00")
+                : new BigDecimal("50000.00");
+    }
+
+    public Set<String> finalSelectedCoverageCodes() {
+        Set<String> codes = new LinkedHashSet<>();
+        coverageSnapshots.stream()
+                .filter(QuotationCoverageSnapshot::isFinalSelected)
+                .map(QuotationCoverageSnapshot::getCoverageCode)
+                .filter(java.util.Objects::nonNull)
+                .map(code -> code.trim().toUpperCase(Locale.ROOT))
+                .forEach(codes::add);
+        selectedOptionals.stream()
+                .map(QuotationOptionalCoverage::getCoverageCode)
+                .filter(java.util.Objects::nonNull)
+                .map(code -> code.trim().toUpperCase(Locale.ROOT))
+                .forEach(codes::add);
+        return codes;
+    }
+
+    /**
+     * Reaplica as regras comerciais obrigatórias sem alterar o preço. Deve ser
+     * executado depois que os snapshots do catálogo existirem ou quando a FIPE/
+     * desconto forem alterados.
+     */
+    public void enforceAutomaticBenefitRules() {
+        Set<String> optionalCodes = selectedOptionals.stream()
+                .map(QuotationOptionalCoverage::getCoverageCode)
+                .filter(java.util.Objects::nonNull)
+                .map(code -> code.trim().toUpperCase(Locale.ROOT))
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        int percent = discountPercent == null ? 0 : discountPercent;
+
+        for (QuotationCoverageSnapshot snapshot : coverageSnapshots) {
+            String code = snapshot.getCoverageCode() == null
+                    ? "" : snapshot.getCoverageCode().trim().toUpperCase(Locale.ROOT);
+            if (snapshot.getCoverageStatus() == CoverageStatus.OPTIONAL) {
+                snapshot.setFinalSelected(optionalCodes.contains(code));
+            }
+            if (usesFipeThirdPartyRule() && "THIRD_PARTY_BASE".equals(code)) {
+                snapshot.setFinalSelected(true);
+                BigDecimal limit = thirdPartyLimitForFipe(fipeValue);
+                snapshot.updateFinalDetail(limit != null && limit.compareTo(new BigDecimal("100000.00")) >= 0
+                        ? "Cobertura de até R$ 100 mil"
+                        : "Cobertura de até R$ 50 mil");
+            } else if (usesFipeThirdPartyRule() && "THIRD_PARTY".equals(code)) {
+                snapshot.setFinalSelected(false);
+            } else if (percent > 0 && isDiscountExcludedBenefit(code)) {
+                snapshot.setFinalSelected(false);
+            }
+        }
+    }
+
+    /**
+     * Consolida a revisão comercial final do dossiê. A equipe autorizada pode
+     * corrigir os benefícios, mas regras automáticas não podem ser burladas:
+     * terceiros segue a FIPE para carros/utilitários e desconto remove fenômenos
+     * da natureza e pequenos reparos.
+     */
+    public void applyCommercialRevision(
+            BigDecimal requestedFipeValue,
+            BigDecimal requestedMonthlyValue,
+            Integer requestedDiscountPercent,
+            RearWindowBranding requestedBranding,
+            Set<String> requestedBenefitCodes
+    ) {
+        applyCommercialRevision(
+                requestedFipeValue, requestedMonthlyValue, requestedDiscountPercent, requestedBranding, requestedBenefitCodes,
+                baseMonthlyValue, mandatoryMonthlyFee, oneTimeFee, mandatoryFeeDescription, true
+        );
+    }
+
+    /**
+     * Consolida a revisão comercial usando a composição atual do catálogo.
+     * Quando não há ajuste manual, o total é reconstruído a partir de:
+     * plano-base + taxa mensal obrigatória vigente + adicionais selecionados - desconto.
+     * A mensalidade histórica não participa desse cálculo.
+     */
+    public void applyCommercialRevision(
+            BigDecimal requestedFipeValue,
+            BigDecimal requestedMonthlyValue,
+            Integer requestedDiscountPercent,
+            RearWindowBranding requestedBranding,
+            Set<String> requestedBenefitCodes,
+            BigDecimal catalogBaseMonthlyValue,
+            BigDecimal catalogMandatoryMonthlyFee,
+            BigDecimal catalogOneTimeFee,
+            String catalogMandatoryFeeDescription,
+            boolean manualMonthlyOverride
+    ) {
+        if (requestedFipeValue == null || requestedFipeValue.signum() <= 0) {
+            throw new IllegalArgumentException("Informe um valor FIPE válido.");
+        }
+        this.fipeValue = requestedFipeValue.setScale(2, RoundingMode.HALF_UP);
+
+        int percent = requestedDiscountPercent == null ? 0 : requestedDiscountPercent;
+        Set<String> selected = requestedBenefitCodes == null ? Set.of() : requestedBenefitCodes.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(code -> code.trim().toUpperCase(Locale.ROOT))
+                .filter(code -> !code.isBlank())
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+
+        applyDiscount(percent, requestedBranding);
+
+        for (QuotationCoverageSnapshot snapshot : coverageSnapshots) {
+            String code = snapshot.getCoverageCode() == null ? "" : snapshot.getCoverageCode().trim().toUpperCase(Locale.ROOT);
+            boolean finalSelected = selected.contains(code);
+
+            if (usesFipeThirdPartyRule() && "THIRD_PARTY_BASE".equals(code)) {
+                finalSelected = true;
+                BigDecimal limit = thirdPartyLimitForFipe(requestedFipeValue);
+                snapshot.updateFinalDetail(limit != null && limit.compareTo(new BigDecimal("100000.00")) >= 0
+                        ? "Cobertura de até R$ 100 mil"
+                        : "Cobertura de até R$ 50 mil");
+            } else if (usesFipeThirdPartyRule() && "THIRD_PARTY".equals(code)) {
+                finalSelected = false;
+            } else if (percent > 0 && isDiscountExcludedBenefit(code)) {
+                finalSelected = false;
+            }
+            snapshot.setFinalSelected(finalSelected);
+        }
+
+        selectedOptionals.removeIf(optional -> {
+            String code = optional.getCoverageCode() == null ? "" : optional.getCoverageCode().trim().toUpperCase(Locale.ROOT);
+            return coverageSnapshots.stream()
+                    .filter(snapshot -> snapshot.getCoverageCode().equalsIgnoreCase(code))
+                    .findFirst()
+                    .map(snapshot -> snapshot.getCoverageStatus() == CoverageStatus.OPTIONAL && !snapshot.isFinalSelected())
+                    .orElse(false);
+        });
+        for (QuotationCoverageSnapshot snapshot : coverageSnapshots) {
+            if (snapshot.getCoverageStatus() != CoverageStatus.OPTIONAL || !snapshot.isFinalSelected()) continue;
+            boolean exists = selectedOptionals.stream().anyMatch(optional -> optional.getCoverageCode().equalsIgnoreCase(snapshot.getCoverageCode()));
+            if (!exists) {
+                BigDecimal price = snapshot.getMonthlyPrice() == null ? BigDecimal.ZERO : snapshot.getMonthlyPrice();
+                selectedOptionals.add(QuotationOptionalCoverage.create(
+                        this, snapshot.getCoverageCode(), snapshot.getCoverageName(), snapshot.getDetail(), price
+                ));
+            }
+        }
+
+        this.mandatoryMonthlyFee = catalogMandatoryMonthlyFee == null
+                ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+                : catalogMandatoryMonthlyFee.setScale(2, RoundingMode.HALF_UP);
+        this.oneTimeFee = catalogOneTimeFee == null
+                ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+                : catalogOneTimeFee.setScale(2, RoundingMode.HALF_UP);
+        this.mandatoryFeeDescription = catalogMandatoryFeeDescription;
+
+        if (!manualMonthlyOverride && catalogBaseMonthlyValue != null && catalogBaseMonthlyValue.signum() >= 0) {
+            this.baseMonthlyValue = catalogBaseMonthlyValue.setScale(2, RoundingMode.HALF_UP);
+            this.preDiscountMonthlyValue = this.baseMonthlyValue
+                    .add(this.mandatoryMonthlyFee)
+                    .add(selectedOptionalMonthlyValue())
+                    .setScale(2, RoundingMode.HALF_UP);
+            recalculateDiscountedMonthlyValue();
+        } else {
+            updateContractValues(requestedFipeValue, requestedMonthlyValue);
+        }
     }
 
     public void updateObservation(String observation) {
@@ -706,6 +1063,7 @@ public class Quotation {
     public Set<QuotationCoverageSnapshot> getCoverageSnapshots() { return coverageSnapshots; }
     public QuoteStatus getStatus() { return status; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
+    public OffsetDateTime getUpdatedAt() { return updatedAt; }
     public OffsetDateTime getValidUntil() { return validUntil; }
     public OffsetDateTime getDecidedAt() { return decidedAt; }
     public String getAdminNote() { return adminNote; }

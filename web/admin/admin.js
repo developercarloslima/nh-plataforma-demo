@@ -26,6 +26,37 @@ const adminMediaObjectUrls = new Set();
 
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const date = value => value ? new Date(value).toLocaleString('pt-BR') : '—';
+const timestampMs = value => {
+  if (!value) return 0;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+function localDateBoundary(value, endOfDay = false) {
+  if (!value) return null;
+  const parts = String(value).split('-').map(Number);
+  if (parts.length !== 3 || parts.some(part => !Number.isFinite(part))) return null;
+  const [year, month, day] = parts;
+  return new Date(year, month - 1, day, endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0, endOfDay ? 999 : 0).getTime();
+}
+function matchesDateRange(value, fromValue, toValue) {
+  if (!fromValue && !toValue) return true;
+  const point = timestampMs(value);
+  if (!point) return false;
+  const from = localDateBoundary(fromValue, false);
+  const to = localDateBoundary(toValue, true);
+  if (from !== null && point < from) return false;
+  if (to !== null && point > to) return false;
+  return true;
+}
+function compareByDateField(a, b, field, direction = 'desc') {
+  const left = timestampMs(a?.[field] || a?.createdAt);
+  const right = timestampMs(b?.[field] || b?.createdAt);
+  const primary = direction === 'asc' ? left - right : right - left;
+  if (primary !== 0) return primary;
+  const createdLeft = timestampMs(a?.createdAt);
+  const createdRight = timestampMs(b?.createdAt);
+  return direction === 'asc' ? createdLeft - createdRight : createdRight - createdLeft;
+}
 const REGION_LABELS = Object.freeze({ NATIONAL: 'Nacional', NORTHEAST: 'Nordeste', CAPITAL: 'Capital' });
 const MOTORCYCLE_ORIGIN_LABELS = Object.freeze({ NORTHEAST: 'Demais cidades do Nordeste', CAPITAL: 'Capital' });
 const QUOTE_STATUS_LABELS = Object.freeze({
@@ -37,6 +68,249 @@ const INSPECTION_STATUS_LABELS = Object.freeze({
   UNDER_REVIEW: ['Em análise', 'warn'], COMPLETED: ['Material enviado', 'ok'],
   APPROVED: ['Aprovada', 'ok'], REJECTED: ['Rejeitada', 'off'], CANCELLED: ['Cancelada', 'off'], EXPIRED: ['Expirada', 'off']
 });
+function renderCommercialBenefits(containerId, item, locked = false) {
+  const container = $(containerId);
+  if (!container) return;
+  container.innerHTML = '';
+  const benefits = Array.isArray(item?.commercialBenefits) ? item.commercialBenefits : [];
+  if (!benefits.length) {
+    const empty = document.createElement('span');
+    empty.className = 'commercial-benefits-empty';
+    empty.textContent = 'Nenhum benefício cadastrado para este plano.';
+    container.appendChild(empty);
+    return;
+  }
+  benefits.forEach(benefit => {
+    const row = document.createElement('label');
+    row.className = 'commercial-benefit-row';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.className = 'commercial-benefit-input';
+    input.checked = benefit.selected === true;
+    input.dataset.benefitCode = benefit.code || '';
+    input.dataset.catalogStatus = benefit.catalogStatus || '';
+    input.dataset.monthlyPrice = String(Number(benefit.monthlyPrice || 0));
+    input.dataset.alwaysLocked = (benefit.locked && !['NATURAL_PHENOMENA','SMALL_REPAIRS'].includes(String(benefit.code || '').toUpperCase())) ? 'true' : 'false';
+    input.disabled = locked || input.dataset.alwaysLocked === 'true';
+    const text = document.createElement('span');
+    text.className = 'commercial-benefit-copy';
+    const title = document.createElement('strong');
+    title.textContent = benefit.name || benefit.code || 'Benefício';
+    text.appendChild(title);
+    const detail = document.createElement('small');
+    detail.className = 'commercial-benefit-detail';
+    const price = Number(benefit.monthlyPrice || 0);
+    detail.textContent = [benefit.detail, price > 0 ? `Adicional: ${brl.format(price)}/mês` : null, benefit.lockReason].filter(Boolean).join(' · ');
+    detail.dataset.baseDetail = [benefit.detail, price > 0 ? `Adicional: ${brl.format(price)}/mês` : null].filter(Boolean).join(' · ');
+    detail.dataset.benefitDetail = 'true';
+    text.appendChild(detail);
+    row.append(input, text);
+    container.appendChild(row);
+  });
+}
+
+function selectedCommercialBenefits(containerId) {
+  const container = $(containerId);
+  if (!container) return [];
+  return [...container.querySelectorAll('input[data-benefit-code]:checked')].map(input => input.dataset.benefitCode);
+}
+
+function refreshCommercialRules(config, locked = false) {
+  const discountEl = $(config.discountId);
+  const brandingEl = $(config.brandingId);
+  const fipeEl = $(config.fipeId);
+  const benefitsEl = $(config.benefitsId);
+  if (!discountEl || !brandingEl || !benefitsEl) return;
+  const discount = Number(discountEl.value || 0);
+  if (discount === 15) brandingEl.value = 'NH_AND_OTHER_COMPANY';
+  else if (discount === 30) brandingEl.value = 'NH_ONLY';
+  else brandingEl.value = 'NOT_APPLICABLE';
+  brandingEl.disabled = locked || ![15, 30].includes(discount);
+  const parse = window.NHMoney?.parse;
+  const fipe = typeof parse === 'function' ? parse(fipeEl?.value || '') : Number(String(fipeEl?.value || '').replace(/[^0-9,]/g, '').replace(',', '.'));
+  benefitsEl.querySelectorAll('input[data-benefit-code]').forEach(input => {
+    const code = String(input.dataset.benefitCode || '').toUpperCase();
+    const alwaysLocked = input.dataset.alwaysLocked === 'true';
+    if (code === 'THIRD_PARTY_BASE') { input.checked = true; input.disabled = true; }
+    else if (code === 'THIRD_PARTY') { input.checked = false; input.disabled = true; }
+    else if (discount > 0 && ['NATURAL_PHENOMENA','SMALL_REPAIRS'].includes(code)) { input.checked = false; input.disabled = true; }
+    else input.disabled = locked || alwaysLocked;
+    const row = input.closest('.commercial-benefit-row');
+    const detail = input.parentElement?.querySelector('[data-benefit-detail]');
+    if (code === 'THIRD_PARTY_BASE') {
+      if (detail && Number.isFinite(fipe)) {
+        detail.textContent = `Cobertura de até ${fipe >= 51000 ? 'R$ 100 mil' : 'R$ 50 mil'} · Limite obrigatório definido pela FIPE.`;
+      }
+    } else if (discount > 0 && ['NATURAL_PHENOMENA','SMALL_REPAIRS'].includes(code)) {
+      if (detail) detail.textContent = [detail.dataset.baseDetail, 'Removido automaticamente porque o plano possui desconto.'].filter(Boolean).join(' · ');
+    } else if (detail && detail.dataset.baseDetail) {
+      detail.textContent = detail.dataset.baseDetail;
+    }
+    row?.classList.toggle('is-selected', input.checked);
+    row?.classList.toggle('is-locked', input.disabled);
+  });
+}
+
+function setCommercialPreviewValue(id, value) {
+  const element = $(id);
+  if (element) element.textContent = brl.format(Number.isFinite(Number(value)) ? Number(value) : 0);
+}
+
+const commercialPricingTimers = new WeakMap();
+
+function parseCommercialMoneyInput(element) {
+  const parse = window.NHMoney?.parse;
+  if (!element) return NaN;
+  return typeof parse === 'function'
+    ? parse(element.value || '')
+    : Number(String(element.value || '').replace(/[^0-9,]/g, '').replace(',', '.'));
+}
+
+function markCommercialMonthlyAutomatic(config) {
+  const monthlyEl = $(config.monthlyId);
+  if (monthlyEl) monthlyEl.dataset.manualOverride = 'false';
+}
+
+async function requestCommercialPricingPreview(config, applyCalculatedValue = true) {
+  const inspectionId = $(config.inspectionIdId)?.value;
+  const benefitsEl = $(config.benefitsId);
+  const discountEl = $(config.discountId);
+  const fipeEl = $(config.fipeId);
+  const monthlyEl = $(config.monthlyId);
+  const finalNote = $(config.previewFinalNoteId);
+  if (!inspectionId || !benefitsEl || !discountEl || !fipeEl) return;
+
+  const fipeValue = parseCommercialMoneyInput(fipeEl);
+  if (!Number.isFinite(fipeValue) || fipeValue <= 0) {
+    if (finalNote) finalNote.textContent = 'Informe uma FIPE válida para recalcular a mensalidade.';
+    return;
+  }
+
+  const discountPercent = Number(discountEl.value || 0) || 0;
+  const benefitCodes = selectedCommercialBenefits(config.benefitsId);
+  const sequence = (Number(benefitsEl.dataset.pricingRequestSequence || 0) || 0) + 1;
+  benefitsEl.dataset.pricingRequestSequence = String(sequence);
+  if (finalNote) finalNote.textContent = 'Recalculando pela tabela atual do plano...';
+
+  try {
+    const pricing = await api(`${config.previewApiBase}/${encodeURIComponent(inspectionId)}/contract-pricing-preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fipeValue, discountPercent, benefitCodes })
+    });
+    if (Number(benefitsEl.dataset.pricingRequestSequence || 0) !== sequence) return;
+
+    const base = Number(pricing.planBaseMonthlyValue || 0);
+    const mandatory = Number(pricing.mandatoryMonthlyFee || 0);
+    const optionals = Number(pricing.optionalsMonthlyValue || 0);
+    const subtotal = Number(pricing.subtotalBeforeDiscount || 0);
+    const discountValue = Number(pricing.discountValue || 0);
+    const finalValue = Number(pricing.finalMonthlyValue || 0);
+    const oneTime = Number(pricing.oneTimeFee || 0);
+
+    setCommercialPreviewValue(config.previewBaseId, base);
+    setCommercialPreviewValue(config.previewMandatoryId, mandatory);
+    setCommercialPreviewValue(config.previewOptionalsId, optionals);
+    setCommercialPreviewValue(config.previewSubtotalId, subtotal);
+    setCommercialPreviewValue(config.previewOneTimeId, oneTime);
+    setCommercialPreviewValue(config.previewDiscountId, discountValue);
+    setCommercialPreviewValue(config.previewFinalId, finalValue);
+    benefitsEl.dataset.calculatedFinal = String(finalValue);
+
+    const mandatoryLabel = $(config.previewMandatoryLabelId);
+    if (mandatoryLabel) {
+      mandatoryLabel.textContent = mandatory > 0 ? 'Rastreador / taxa mensal aplicável' : 'Rastreador / taxa mensal (não aplicável)';
+      mandatoryLabel.title = pricing.mandatoryFeeDescription || '';
+    }
+
+    const discountLabel = $(config.previewDiscountLabelId);
+    if (discountLabel) discountLabel.textContent = discountPercent > 0 ? `Desconto (${discountPercent}%)` : 'Desconto';
+
+    const sourceText = pricing.catalogBased
+      ? 'Preço calculado agora pelo catálogo atual: base do plano por FIPE/tipo do veículo + rastreador/taxas aplicáveis + serviços adicionais selecionados - desconto. Valores antigos não são usados como base.'
+      : 'Preço reconstruído pelos componentes disponíveis da cotação.';
+    const feeText = mandatory > 0 && pricing.mandatoryFeeDescription
+      ? ` ${pricing.mandatoryFeeDescription}`
+      : (mandatory === 0 ? ' Nenhuma mensalidade de rastreador/taxa obrigatória foi adicionada.' : '');
+    if (finalNote) finalNote.textContent = sourceText + feeText;
+
+    if (applyCalculatedValue && monthlyEl && !monthlyEl.disabled) {
+      monthlyEl.value = window.NHMoney?.format(finalValue) || finalValue.toFixed(2).replace('.', ',');
+      monthlyEl.dataset.manualOverride = 'false';
+      window.NHMoney?.refresh(monthlyEl);
+    }
+    return pricing;
+  } catch (error) {
+    if (Number(benefitsEl.dataset.pricingRequestSequence || 0) !== sequence) return;
+    if (finalNote) finalNote.textContent = `Não foi possível recalcular pela tabela: ${error.message || 'erro inesperado'}`;
+    return null;
+  }
+}
+
+function scheduleCommercialPricingPreview(config, applyCalculatedValue = true, delay = 250) {
+  const benefitsEl = $(config.benefitsId);
+  if (!benefitsEl) return;
+  const previous = commercialPricingTimers.get(benefitsEl);
+  if (previous) window.clearTimeout(previous);
+  const timer = window.setTimeout(() => {
+    commercialPricingTimers.delete(benefitsEl);
+    requestCommercialPricingPreview(config, applyCalculatedValue);
+  }, delay);
+  commercialPricingTimers.set(benefitsEl, timer);
+}
+
+function initializeCommercialPricingPreview(config) {
+  markCommercialMonthlyAutomatic(config);
+  scheduleCommercialPricingPreview(config, true, 0);
+}
+
+function bindCommercialPricingPreview(config) {
+  const discountEl = $(config.discountId);
+  const fipeEl = $(config.fipeId);
+  const benefitsEl = $(config.benefitsId);
+  const monthlyEl = $(config.monthlyId);
+
+  discountEl?.addEventListener('change', () => {
+    refreshCommercialRules(config, discountEl.disabled);
+    markCommercialMonthlyAutomatic(config);
+    scheduleCommercialPricingPreview(config, true, 0);
+  });
+  fipeEl?.addEventListener('input', () => {
+    refreshCommercialRules(config, fipeEl.disabled);
+    markCommercialMonthlyAutomatic(config);
+    scheduleCommercialPricingPreview(config, true, 300);
+  });
+  benefitsEl?.addEventListener('change', event => {
+    if (!event.target?.matches?.('input[data-benefit-code]')) return;
+    refreshCommercialRules(config, false);
+    markCommercialMonthlyAutomatic(config);
+    scheduleCommercialPricingPreview(config, true, 0);
+  });
+}
+
+const ADMIN_COMMERCIAL_CONFIG = Object.freeze({
+  discountId: 'admin-contract-discount',
+  brandingId: 'admin-contract-branding',
+  fipeId: 'admin-contract-fipe',
+  benefitsId: 'admin-contract-benefits',
+  monthlyId: 'admin-contract-monthly',
+  inspectionIdId: 'inspection-analysis-id',
+  previewApiBase: '/api/admin/inspections',
+  previewBaseId: 'admin-preview-base',
+  previewMandatoryId: 'admin-preview-mandatory',
+  previewMandatoryLabelId: 'admin-preview-mandatory-label',
+  previewOptionalsId: 'admin-preview-optionals',
+  previewSubtotalId: 'admin-preview-subtotal',
+  previewOneTimeId: 'admin-preview-one-time',
+  previewDiscountId: 'admin-preview-discount',
+  previewFinalId: 'admin-preview-final',
+  previewFinalNoteId: 'admin-preview-final-note',
+  previewDiscountLabelId: 'admin-preview-discount-label'
+});
+
+
+
+
 const AUDIT_TYPE_LABELS = Object.freeze({
   PLAN: 'Plano', VEHICLE_CATEGORY: 'Categoria de veículo', PRICE_RANGE: 'Faixa de valor', PROMO_MOTORCYCLE_PRICE: 'Tabela promocional', PLAN_COVERAGE: 'Cobertura', OPTIONAL: 'Opcional',
   CONSULTANT: 'Consultor', PORTAL_USER: 'Usuário', QUOTE_STATUS: 'Cotação', QUOTE_DELETE: 'Exclusão de cotação', INSPECTION_STATUS: 'Retrato NH', INSPECTION_DELETE: 'Exclusão de vistoria', DATA_RETENTION: 'Retenção automática', COMMUNICATION: 'Comunicação', SITE_DOCUMENT: 'Arquivo do site', QUOTE_CONSULTANT: 'Responsável da cotação', PUBLIC_QUOTE_ASSIGNMENT: 'Distribuição de cotação do site'
@@ -181,10 +455,31 @@ async function adminSessionStillValid() {
   }
 }
 
+function normalizedCpf(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
 async function apiBlob(path) {
   const headers = new Headers();
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  const response = await fetch(window.NH_API?.backend(path) || path, { headers, cache: 'no-store' });
+
+  let response = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const requestPath = attempt === 0
+      ? path
+      : `${path}${path.includes('?') ? '&' : '?'}_nhRetry=${Date.now()}`;
+    try {
+      response = await fetch(window.NH_API?.backend(requestPath) || requestPath, { headers, cache: 'no-store' });
+      break;
+    } catch (networkError) {
+      if (attempt === 1) {
+        throw new Error('A conexão com o servidor foi interrompida durante o download. Tente novamente; o sistema preservou os arquivos da vistoria.');
+      }
+      await new Promise(resolve => window.setTimeout(resolve, 700));
+    }
+  }
+
+  if (!response) throw new Error('Não foi possível iniciar o download.');
   if (token && response.status === 401) {
     showLogin('Sua sessão administrativa expirou. Entre novamente.');
     const error = new Error('Sessão administrativa inválida.');
@@ -291,7 +586,7 @@ function statusBadge(text, kind = '') {
 }
 
 function quoteBadge(item) {
-  if (item.expired && ['CREATED', 'UNDER_REVIEW'].includes(item.status)) return statusBadge('Expirada', 'off');
+  if (item.expired) return statusBadge('Expirada', 'off');
   const [label, kind] = QUOTE_STATUS_LABELS[item.status] || [item.status, ''];
   return statusBadge(label, kind);
 }
@@ -801,14 +1096,24 @@ async function deleteAllAllowedInspections() {
 
 function renderQuotes() {
   const filter = $('quote-filter').value.trim().toLowerCase();
-  $('quotes-body').innerHTML = quotes
+  const dateField = $('quote-date-field')?.value || 'createdAt';
+  const dateFrom = $('quote-date-from')?.value || '';
+  const dateTo = $('quote-date-to')?.value || '';
+  const direction = $('quote-sort-direction')?.value || 'desc';
+
+  const visibleQuotes = quotes
     .filter(item => `${quoteConsultantLabel(item)} ${quoteOriginLabel(item.origin)} ${item.customerName} ${item.plate || ""} ${item.quoteNumber}`.toLowerCase().includes(filter))
+    .filter(item => matchesDateRange(item?.[dateField] || item?.createdAt, dateFrom, dateTo))
+    .slice()
+    .sort((a, b) => compareByDateField(a, b, dateField, direction));
+
+  $('quotes-body').innerHTML = visibleQuotes
     .map(item => `<tr>
       <td><strong>${esc(item.quoteNumber)}</strong></td><td><strong>${esc(quoteOriginLabel(item.origin))}</strong><small class="table-subtitle">${esc(quoteConsultantLabel(item))}</small></td><td>${esc(item.customerName)}</td>
       <td>${esc(item.plate || (item.zeroKm ? '0 km — sem placa' : '—'))}</td><td>${esc(item.selectedPlanName)}</td><td>${brl.format(item.monthlyValue)}</td>
-      <td>${date(item.validUntil)}</td><td>${quoteBadge(item)}</td>
+      <td>${date(item.createdAt)}</td><td>${date(item.updatedAt || item.createdAt)}</td><td>${date(item.validUntil)}</td><td>${quoteBadge(item)}</td>
       <td><div class="row-actions"><button class="secondary small-button" data-quote-analyze="${item.id}" type="button">Analisar</button><a class="button outline small-button" href="${esc(item.pdfUrl)}" target="_blank" rel="noopener">PDF</a><button class="danger small-button" data-quote-delete="${item.id}" type="button">Excluir</button></div></td>
-    </tr>`).join('') || emptyRow(9, 'Nenhuma cotação encontrada.');
+    </tr>`).join('') || emptyRow(11, 'Nenhuma cotação encontrada para os filtros selecionados.');
   document.querySelectorAll('[data-quote-analyze]').forEach(button => button.addEventListener('click', () => openQuoteAnalysis(button.dataset.quoteAnalyze)));
   document.querySelectorAll('[data-quote-delete]').forEach(button => button.addEventListener('click', () => deleteQuote(button.dataset.quoteDelete)));
 }
@@ -841,8 +1146,18 @@ function populateQuoteConsultantSelect(item) {
 
 function renderInspections() {
   const filter = $('inspection-filter').value.trim().toLowerCase();
-  $('inspections-body').innerHTML = inspections
+  const dateField = $('inspection-date-field')?.value || 'createdAt';
+  const dateFrom = $('inspection-date-from')?.value || '';
+  const dateTo = $('inspection-date-to')?.value || '';
+  const direction = $('inspection-sort-direction')?.value || 'desc';
+
+  const visibleInspections = inspections
     .filter(item => `${item.consultantName} ${item.reviewedByName || ''} ${item.associateName} ${item.plate || ""}`.toLowerCase().includes(filter))
+    .filter(item => matchesDateRange(item?.[dateField] || item?.createdAt, dateFrom, dateTo))
+    .slice()
+    .sort((a, b) => compareByDateField(a, b, dateField, direction));
+
+  $('inspections-body').innerHTML = visibleInspections
     .map(item => {
       const filesAvailable = hasInspectionFiles(item);
       const needsFiles = adminInspectionNeedsFiles(item);
@@ -859,10 +1174,10 @@ function renderInspections() {
       return `<tr>
         <td><strong>${esc(item.associateName)}</strong></td><td>${esc(item.consultantName)}</td><td>${esc(item.reviewedByName || '—')}</td><td>${esc(item.plate || '0 km — sem placa')}</td>
         <td>${item.requestType === 'NEW_INSPECTION' ? 'Nova vistoria' : 'Atualização de boleto'}</td><td>${item.assetCount}</td>
-        <td><div class="status-with-action">${inspectionWorkflowBadge(item)}${statusAction}</div></td><td>${date(item.createdAt)}</td>
+        <td><div class="status-with-action">${inspectionWorkflowBadge(item)}${statusAction}</div></td><td>${date(item.createdAt)}</td><td>${date(item.updatedAt || item.createdAt)}</td>
         <td><div class="row-actions">${pendingActions}<button class="secondary small-button" data-inspection-analyze="${item.id}" type="button">Analisar</button><button class="danger small-button" data-inspection-delete="${item.id}" type="button">Excluir</button></div></td>
       </tr>`;
-    }).join('') || emptyRow(9, 'Nenhuma atividade do Retrato NH encontrada.');
+    }).join('') || emptyRow(10, 'Nenhuma atividade do Retrato NH encontrada para os filtros selecionados.');
   document.querySelectorAll('[data-inspection-analyze]').forEach(button => button.addEventListener('click', () => openInspectionAnalysis(button.dataset.inspectionAnalyze)));
   document.querySelectorAll('[data-inspection-delete]').forEach(button => button.addEventListener('click', () => deleteInspection(button.dataset.inspectionDelete)));
 }
@@ -878,20 +1193,31 @@ function bindAnalyzeButtons() {
 function openQuoteAnalysis(id) {
   const item = quotes.find(value => value.id === id);
   if (!item) return;
+  if (item.expired) {
+    window.alert('Vistoria/cotação vencida, precisa ser refeita.');
+    return;
+  }
   $('quote-analysis-id').value = item.id;
   $('quote-dialog-title').textContent = item.quoteNumber;
   $('quote-analysis-status').value = item.status;
   $('quote-analysis-note').value = item.adminNote || '';
   $('quote-edit-name').value = item.customerName || '';
+  $('quote-edit-cpf').value = item.customerCpf || item.maskedCpf || '';
   $('quote-edit-whatsapp').value = formatPhone(item.whatsapp) || '';
+  $('quote-edit-plate').value = item.plate || '';
+  $('quote-edit-zero-km').value = item.zeroKm ? 'true' : 'false';
   $('quote-edit-model').value = item.model || '';
   $('quote-edit-model-year').value = item.manufactureYear || '';
+  $('quote-edit-observation').value = item.observation || '';
+  const quoteDetailsLocked = false; // Admin pode corrigir dados cadastrais em qualquer status; FIPE permanece fora da edição.
+  ['quote-edit-name','quote-edit-cpf','quote-edit-whatsapp','quote-edit-plate','quote-edit-zero-km','quote-edit-model','quote-edit-model-year','quote-edit-observation','quote-save-details']
+    .forEach(fieldId => { const el = $(fieldId); if (el) el.disabled = quoteDetailsLocked; });
   const consultantField = $('quote-analysis-consultant-field');
   consultantField.hidden = item.origin !== 'SELF_SERVICE';
   if (item.origin === 'SELF_SERVICE') populateQuoteConsultantSelect(item);
   const quoteDiscount = Number(item.discountPercent || 0);
   const quoteDetails = [
-    ['Cliente', item.customerName], ['Origem', quoteOriginLabel(item.origin)], ['Responsável', quoteConsultantLabel(item)], ['CPF', item.maskedCpf || '—'], ['WhatsApp', formatPhone(item.whatsapp) || '—'],
+    ['Cliente', item.customerName], ['Origem', quoteOriginLabel(item.origin)], ['Responsável', quoteConsultantLabel(item)], ['CPF', item.customerCpf || item.maskedCpf || '—'], ['WhatsApp', formatPhone(item.whatsapp) || '—'],
     ['Placa', item.plate], ['Modelo', item.model], ['Ano', item.manufactureYear], ['Veículo 0 km', item.zeroKm ? 'Sim' : 'Não'],
     ['Valor FIPE', brl.format(item.fipeValue)], ['Valor em caso de ressarcimento integral', `${Number(item.indemnityFipePercent || 100)}% da FIPE`], ['Leilão / remarcação de chassi', item.auctionOrChassisRemarked === true ? 'Sim' : (item.auctionOrChassisRemarked === false ? 'Não' : 'Não informado')], ['Abrangência', regionLabel(item.region)],
     ['Origem da moto', item.motorcycleOrigin ? motorcycleOriginLabel(item.motorcycleOrigin) : 'Não se aplica'],
@@ -945,7 +1271,7 @@ function syncAdminWebauthnBox(item) {
   const box = $('admin-webauthn-notification');
   const send = $('admin-send-webauthn-token');
   const copy = $('admin-copy-webauthn-link');
-  const pending = item?.status === 'APPROVED' && !item?.digitalAcceptedAt && Boolean(item?.publicUrl);
+  const pending = item?.status === 'APPROVED' && Boolean(item?.registrationCompletedAt) && !item?.contractChangePending && !item?.digitalAcceptedAt && Boolean(item?.publicUrl);
   box.hidden = !pending;
   if (pending) {
     send.dataset.inspectionId = item.id;
@@ -959,6 +1285,11 @@ function syncAdminWebauthnBox(item) {
 function openInspectionAnalysis(id) {
   const item = inspections.find(value => value.id === id);
   if (!item) return;
+  const approvedDossier = item.status === 'APPROVED';
+  if (item.expiredWithoutFiles && !approvedDossier) {
+    window.alert('Vistoria/cotação vencida, precisa ser refeita.');
+    return;
+  }
   const filesAvailable = hasInspectionFiles(item);
   const needsFiles = adminInspectionNeedsFiles(item);
   const pendingCount = adminInspectionPendingCount(item);
@@ -970,30 +1301,91 @@ function openInspectionAnalysis(id) {
   $('inspection-dialog-title').textContent = `${item.plate || '0 km — sem placa'} — ${item.associateName}`;
   $('inspection-analysis-note').value = item.adminNote || '';
   $('inspection-edit-name').value = item.associateName || '';
+  $('inspection-edit-cpf').value = item.cpf || item.maskedCpf || '';
   $('inspection-edit-whatsapp').value = formatPhone(item.whatsapp) || '';
+  $('inspection-edit-plate').value = item.plate || '';
+  $('inspection-edit-zero-km').value = item.zeroKm ? 'true' : 'false';
   $('inspection-edit-model').value = item.vehicleModel || '';
   $('inspection-edit-model-year').value = item.modelYear || '';
-  const inspectionEditableLocked = Boolean(item.digitalAcceptedAt);
-  ['inspection-edit-name','inspection-edit-whatsapp','inspection-edit-model','inspection-edit-model-year','inspection-save-details'].forEach(id => { const el = $(id); if (el) el.disabled = inspectionEditableLocked; });
+  $('inspection-edit-address').value = item.residenceAddress || '';
+  $('admin-contract-fipe').value = window.NHMoney?.format(item.pendingFipeValue ?? item.fipeValue) || (item.pendingFipeValue ?? item.fipeValue ?? '');
+  $('admin-contract-monthly').value = window.NHMoney?.format(item.pendingMonthlyValue ?? item.monthlyValue) || (item.pendingMonthlyValue ?? item.monthlyValue ?? '');
+  $('admin-contract-plan').textContent = item.selectedPlanName || item.contractedPlan || '—';
+  $('admin-contract-discount').value = String(item.pendingDiscountPercent ?? item.discountPercent ?? 0);
+  $('admin-contract-branding').value = item.pendingRearWindowBranding || item.rearWindowBranding || 'NOT_APPLICABLE';
+  window.NHMoney?.refresh($('admin-contract-fipe'));
+  window.NHMoney?.refresh($('admin-contract-monthly'));
+  const inspectionEditableLocked = Boolean(item.digitalAcceptedAt); // O aceite digital é a trava definitiva do dossiê.
+  const digitalLock = $('admin-digital-lock');
+  if (digitalLock) digitalLock.hidden = !inspectionEditableLocked;
+  ['inspection-edit-name','inspection-edit-cpf','inspection-edit-whatsapp','inspection-edit-plate','inspection-edit-zero-km','inspection-edit-model','inspection-edit-model-year','inspection-edit-address','inspection-save-details']
+    .forEach(id => { const el = $(id); if (el) el.disabled = inspectionEditableLocked; });
+  const contractLocked = Boolean(item.digitalAcceptedAt);
+  const hasContractValues = item.requestType === 'NEW_INSPECTION' && item.fipeValue != null && item.monthlyValue != null;
+  renderCommercialBenefits('admin-contract-benefits', item, contractLocked || !hasContractValues);
+  refreshCommercialRules(ADMIN_COMMERCIAL_CONFIG, contractLocked || !hasContractValues);
+  initializeCommercialPricingPreview(ADMIN_COMMERCIAL_CONFIG, item);
+  const contractSection = $('admin-contract-values-section');
+  if (contractSection) contractSection.hidden = item.requestType !== 'NEW_INSPECTION';
+  ['admin-contract-fipe','admin-contract-monthly','admin-contract-discount','admin-contract-branding','admin-save-contract-values']
+    .forEach(id => { const el = $(id); if (el) el.disabled = contractLocked || !hasContractValues; });
+  const contractHelper = $('admin-contract-values-helper');
+  if (contractHelper) contractHelper.textContent = contractLocked
+    ? 'O aceite digital do associado já foi concluído. O dossiê comercial está bloqueado para edição.'
+    : (hasContractValues
+        ? 'O Admin pode corrigir FIPE, desconto, mensalidade, benefícios e adicionais inclusive em vistoria aprovada, até o associado concluir o aceite digital.'
+        : 'Esta vistoria não possui valores de cotação vinculados para edição.');
+
+  const pendingContractBox = $('admin-contract-change-pending');
+  if (pendingContractBox) {
+    const canSendContractAcceptance = Boolean(item.contractChangePending && item.registrationCompletedAt);
+    pendingContractBox.hidden = !canSendContractAcceptance;
+    if (canSendContractAcceptance) {
+      $('admin-contract-change-pending-text').textContent = `FIPE proposta: ${brl.format(item.pendingFipeValue)} · mensalidade com os adicionais atuais: ${brl.format(item.pendingMonthlyValue)}. O contrato só será atualizado depois da confirmação do associado.`;
+      const sendLink = $('admin-send-contract-change-link');
+      sendLink.href = item.contractChangeWhatsappUrl || item.contractChangeConfirmationUrl || '#';
+      sendLink.hidden = !(item.contractChangeWhatsappUrl || item.contractChangeConfirmationUrl);
+      $('admin-copy-contract-change-link').dataset.url = item.contractChangeConfirmationUrl || '';
+    }
+  }
   $('admin-supervision-note').value = item.supervisionNote || '';
+  $('admin-supervision-note').disabled = inspectionEditableLocked;
+  $('admin-save-supervision-note').disabled = inspectionEditableLocked;
+  $('inspection-analysis-note').disabled = inspectionEditableLocked;
   $('admin-supervision-note-meta').textContent = item.supervisionNoteUpdatedAt
     ? `Última atualização: ${date(item.supervisionNoteUpdatedAt)}${item.supervisionNoteByName ? ` por ${item.supervisionNoteByName}` : ''}. Visível para o analista.`
     : 'A observação ficará visível para o analista responsável.';
 
   const statusSelect = $('inspection-analysis-status');
-  const readyForAnalysis = filesAvailable && Boolean(item.completedAt);
   const awaitingSupervision = item.analysisStage === 'SUPERVISION_QUEUE';
   const finished = item.analysisStage === 'FINISHED' || ['APPROVED', 'REJECTED', 'CANCELLED', 'EXPIRED'].includes(item.status);
+  // Para ADM, o estado do cadastro deve vir do registro explícito, não do status
+  // final da vistoria. Uma vistoria aprovada pode ter sido reaberta/corrigida e
+  // continuar precisando ser marcada novamente como Cadastro realizado.
+  const registrationCompleted = Boolean(item.registrationCompletedAt);
+  const registrationBlocked = Boolean(item.digitalAcceptedAt) || ['CANCELLED', 'EXPIRED'].includes(item.status);
   const operationalStatus = ['WAITING_FILES', 'UPLOADING_FILES', 'UNDER_REVIEW', 'CANCELLED', 'EXPIRED'].includes(item.status)
     ? item.status
     : (filesAvailable ? 'UNDER_REVIEW' : 'WAITING_FILES');
   statusSelect.value = operationalStatus;
   statusSelect.disabled = awaitingSupervision || finished;
   $('admin-save-analysis').hidden = awaitingSupervision || finished;
-  $('admin-registration-actions').hidden = awaitingSupervision || finished;
-  $('admin-registration-complete').disabled = finished || awaitingSupervision;
-  $('admin-registration-not-complete').disabled = !readyForAnalysis || needsFiles;
-  const canFinalDecision = awaitingSupervision;
+
+  // Admin pode alternar Cadastro realizado / não realizado em desktop e mobile
+  // até o aceite digital, inclusive se a vistoria já tiver sido aprovada.
+  $('admin-registration-actions').hidden = registrationBlocked;
+  const adminRegistrationNotComplete = $('admin-registration-not-complete');
+  const adminRegistrationComplete = $('admin-registration-complete');
+  // ADM pode acionar qualquer uma das duas opções até o aceite digital. O estado
+  // atual é destacado visualmente, mas não transforma a outra ação em indisponível.
+  adminRegistrationNotComplete.disabled = registrationBlocked;
+  adminRegistrationComplete.disabled = registrationBlocked;
+  adminRegistrationNotComplete.classList.toggle('is-current', !registrationCompleted);
+  adminRegistrationComplete.classList.toggle('is-current', registrationCompleted);
+  adminRegistrationNotComplete.setAttribute('aria-pressed', String(!registrationCompleted));
+  adminRegistrationComplete.setAttribute('aria-pressed', String(registrationCompleted));
+
+  const canFinalDecision = awaitingSupervision || (finished && ['APPROVED', 'REJECTED'].includes(item.status) && !item.digitalAcceptedAt);
   $('admin-inspection-decision-actions').hidden = !canFinalDecision;
   $('admin-inspection-approve').hidden = !canFinalDecision;
   $('admin-inspection-reject').hidden = !canFinalDecision;
@@ -1001,7 +1393,7 @@ function openInspectionAnalysis(id) {
 
   const inspectionDiscount = Number(item.discountPercent || 0);
   const inspectionDetails = [
-    ['Associado', item.associateName], ['CPF', item.maskedCpf], ['WhatsApp', formatPhone(item.whatsapp) || '—'],
+    ['Associado', item.associateName], ['CPF', item.cpf || item.maskedCpf || '—'], ['WhatsApp', formatPhone(item.whatsapp) || '—'],
     ['Consultor', item.consultantName], ['Placa', item.plate || '0 km — sem placa'],
     ['Modelo', item.vehicleModel || '—'], ['Ano do modelo', item.modelYear || '—'],
     ['Endereço residencial', item.residenceAddress || '—'],
@@ -1016,7 +1408,7 @@ function openInspectionAnalysis(id) {
     if (inspectionDiscount === 30) inspectionDetails.push(['Condição do vigia traseiro', 'Somente NH']);
   }
   inspectionDetails.push(
-    ['Arquivos disponíveis', item.assetCount], ['Situação dos arquivos', filesAvailable ? (needsFiles ? `${pendingCount} ${pendingCount === 1 ? 'item pendente' : 'itens pendentes'}; os demais continuam armazenados` : `Armazenados no sistema até ${date(item.filesExpireAt)}`) : (Number(item.expiredAssetCount || 0) > 0 ? 'Arquivos apagados após 40 dias' : 'Aguardando envio do associado')],
+    ['Arquivos disponíveis', item.assetCount], ['Situação dos arquivos', filesAvailable ? (needsFiles ? `${pendingCount} ${pendingCount === 1 ? 'item pendente' : 'itens pendentes'}; os demais continuam armazenados` : 'Disponíveis por até 40 dias') : (Number(item.expiredAssetCount || 0) > 0 ? 'Arquivo histórico indisponível' : 'Aguardando envio do associado')],
     ['Criada em', date(item.createdAt)], ['Expira em', date(item.expiresAt)],
     ['Concluída em', date(item.completedAt)], ['Última análise', date(item.reviewedAt)],
     ['Analista responsável', item.assignedAnalystName || 'Não vinculado'],
@@ -1058,8 +1450,8 @@ function renderAdminInspectionFiles(item) {
   }
 
   $('admin-inspection-files-retention').textContent = available.length
-    ? `Os arquivos ficam disponíveis até ${date(item.filesExpireAt)} e são apagados automaticamente após 40 dias.`
-    : 'O prazo de 40 dias terminou e os arquivos foram apagados automaticamente.';
+    ? 'Arquivos confirmados: disponíveis até o limite de retenção operacional de 40 dias.'
+    : 'Há arquivo histórico indisponível. Novos arquivos também seguem a retenção operacional de 40 dias.';
   const allButton = $('admin-download-all-files');
   allButton.hidden = available.length === 0;
   allButton.dataset.inspectionId = item.id;
@@ -1073,18 +1465,18 @@ function renderAdminInspectionFiles(item) {
       : video
         ? `<div class="inspection-media-preview"><div class="inspection-media-placeholder">▶ Vídeo disponível</div><video data-admin-video-preview="${asset.id}" controls hidden></video></div>`
         : `<div class="inspection-media-preview"><div class="inspection-media-placeholder">${asset.type === 'REPORT' ? 'PDF' : 'DOCUMENTO'}</div></div>`;
-    const canDelete = asset.available && ['PHOTO', 'VIDEO', 'SIGNATURE', 'VEHICLE_DOCUMENT', 'IDENTITY_DOCUMENT'].includes(asset.type);
+    const canDelete = asset.available && !item.digitalAcceptedAt && ['PHOTO', 'VIDEO', 'SIGNATURE', 'VEHICLE_DOCUMENT', 'IDENTITY_DOCUMENT'].includes(asset.type);
     const legacyLargeVideo = video && Number(asset.fileSize || 0) > 15 * 1024 * 1024;
     const downloadName = legacyLargeVideo ? compactedVideoFileName(asset.fileName) : asset.fileName;
     const compressionNote = legacyLargeVideo
-      ? '<small class="inspection-media-note">Original preservado · download em WebM compactado automaticamente para até 15 MB.</small>'
+      ? '<small class="inspection-media-note">Vídeo original preservado sem limite de MB.</small>'
       : '';
     const canRegenerateReport = asset.type === 'REPORT' && Boolean(item.completedAt);
     const actions = canRegenerateReport
       ? `<div class="inspection-media-actions"><button class="secondary" data-admin-download-report="${item.id}" type="button">Baixar relatório</button></div>`
       : asset.available
         ? `<div class="inspection-media-actions">${video ? `<button class="outline" data-admin-play-video="${asset.id}" type="button">Reproduzir</button>` : ''}<button class="secondary" data-admin-download-asset="${asset.id}" data-file-name="${esc(downloadName)}" type="button">${legacyLargeVideo ? 'Baixar WebM' : 'Baixar'}</button>${canDelete ? `<button class="danger" data-admin-delete-asset="${asset.id}" data-file-name="${esc(title)}" type="button">Excluir / solicitar novamente</button>` : ''}</div>`
-        : `<div class="inspection-media-expired">${adminInspectionNeedsFiles(item) && asset.type !== 'REPORT' ? 'Arquivo excluído / aguardando reenvio.' : 'Arquivo removido após 40 dias.'}</div>`;
+        : `<div class="inspection-media-expired">${adminInspectionNeedsFiles(item) && asset.type !== 'REPORT' ? 'Arquivo excluído / aguardando reenvio.' : 'Arquivo histórico indisponível.'}</div>`;
     return `<article class="inspection-media-card ${asset.available ? '' : 'expired'}">${preview}<div class="inspection-media-body"><strong>${esc(title)}</strong><small>${esc(asset.fileName)}</small><small>${formatBytes(asset.fileSize)} · ${esc(asset.contentType || 'arquivo')}</small>${compressionNote}${actions}</div></article>`;
   }).join('');
 
@@ -2073,16 +2465,20 @@ $('quote-save-details').addEventListener('click', async () => {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         customerName: $('quote-edit-name').value.trim(),
+        customerCpf: normalizedCpf($('quote-edit-cpf').value),
         whatsapp: $('quote-edit-whatsapp').value.trim(),
+        plate: $('quote-edit-plate').value.trim(),
+        zeroKm: $('quote-edit-zero-km').value === 'true',
         model: $('quote-edit-model').value.trim(),
-        modelYear: Number($('quote-edit-model-year').value)
+        modelYear: Number($('quote-edit-model-year').value),
+        observation: $('quote-edit-observation').value.trim()
       })
     });
     const index = quotes.findIndex(item => item.id === updated.id);
     if (index >= 0) quotes[index] = updated;
     renderQuotes();
     openQuoteAnalysis(updated.id);
-    message('Nome, WhatsApp, modelo e ano do modelo atualizados na cotação e na vistoria vinculada.', 'success');
+    message('Dados cadastrais atualizados na cotação e na vistoria vinculada. O valor FIPE foi preservado.', 'success');
   } catch (error) { message(error.message); }
   finally { button.disabled = false; button.textContent = original; }
 });
@@ -2099,18 +2495,80 @@ $('inspection-save-details').addEventListener('click', async () => {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         associateName: $('inspection-edit-name').value.trim(),
+        cpf: normalizedCpf($('inspection-edit-cpf').value),
         whatsapp: $('inspection-edit-whatsapp').value.trim(),
+        plate: $('inspection-edit-plate').value.trim(),
+        zeroKm: $('inspection-edit-zero-km').value === 'true',
         model: $('inspection-edit-model').value.trim(),
-        modelYear: Number($('inspection-edit-model-year').value)
+        modelYear: Number($('inspection-edit-model-year').value),
+        residenceAddress: $('inspection-edit-address').value.trim()
       })
     });
     const index = inspections.findIndex(item => item.id === updated.id);
     if (index >= 0) inspections[index] = updated;
     renderInspections();
     openInspectionAnalysis(updated.id);
-    message('Dados do associado/veículo atualizados. A cotação vinculada também foi sincronizada.', 'success');
+    message('Dados do associado/veículo atualizados. A cotação vinculada foi sincronizada sem alterar a FIPE.', 'success');
   } catch (error) { message(error.message); }
   finally { button.disabled = false; button.textContent = original; }
+});
+
+$('admin-save-contract-values')?.addEventListener('click', async () => {
+  const id = $('inspection-analysis-id').value;
+  if (!id) return;
+  const manualMonthlyOverride = false;
+  const preview = await requestCommercialPricingPreview(ADMIN_COMMERCIAL_CONFIG, true);
+  if (!preview) return message('Não foi possível recalcular o valor pela tabela atual do plano.');
+  let fipeValue;
+  let monthlyValue;
+  try {
+    fipeValue = parseMoney($('admin-contract-fipe').value);
+    monthlyValue = parseMoney($('admin-contract-monthly').value);
+  } catch (error) {
+    return message(error.message);
+  }
+  if (fipeValue <= 0) return message('Informe um valor FIPE válido.');
+  if (monthlyValue <= 0) return message('Informe uma mensalidade válida.');
+  const discountPercent = Number($('admin-contract-discount').value || 0);
+  const rearWindowBranding = $('admin-contract-branding').value || 'NOT_APPLICABLE';
+  const benefitCodes = selectedCommercialBenefits('admin-contract-benefits');
+  const currentItem = inspections.find(item => item.id === id);
+  const approvedBeforeDigitalAcceptance = currentItem?.status === 'APPROVED' && !currentItem?.digitalAcceptedAt;
+  const confirmationSuffix = approvedBeforeDigitalAcceptance
+    ? ' Como a vistoria está aprovada e ainda sem aceite digital, a revisão será aplicada agora e o dossiê final será regenerado para o novo aceite.'
+    : ' Se houver alteração contratual que exija confirmação, o sistema preparará o fluxo correspondente para o associado.';
+  const confirmed = window.confirm(`Confirma FIPE ${brl.format(fipeValue)} e mensalidade final ${brl.format(monthlyValue)}?${confirmationSuffix}`);
+  if (!confirmed) return;
+  const button = $('admin-save-contract-values');
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Salvando...';
+  try {
+    const updated = await api(`/api/admin/inspections/${encodeURIComponent(id)}/contract-values`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fipeValue, monthlyValue, discountPercent, rearWindowBranding, benefitCodes, manualMonthlyOverride })
+    });
+    const index = inspections.findIndex(item => item.id === updated.id);
+    if (index >= 0) inspections[index] = updated;
+    renderInspections();
+    openInspectionAnalysis(updated.id);
+    message(updated.contractChangePending
+      ? 'Novo valor preparado. Envie o link ao associado; o contrato só será atualizado após a confirmação dele.'
+      : 'Revisão comercial salva no dossiê final.', 'success');
+  } catch (error) { message(error.message); }
+  finally { button.disabled = false; button.textContent = original; }
+});
+
+
+$('admin-copy-contract-change-link')?.addEventListener('click', async () => {
+  const url = $('admin-copy-contract-change-link').dataset.url || '';
+  if (!url) return message('Não há link de confirmação pendente.');
+  try {
+    await navigator.clipboard.writeText(url);
+    message('Link de confirmação copiado.', 'success');
+  } catch (_error) {
+    window.prompt('Copie o link abaixo:', url);
+  }
 });
 
 $('quote-analysis-form').addEventListener('submit', async event => {
@@ -2184,7 +2642,7 @@ async function setAdminInspectionDecision(status) {
     await load();
     if (approved) {
       openInspectionAnalysis(id);
-      message('Vistoria aprovada por Pedro Henrique como Supervisão. Agora use “Enviar aceite digital ao cliente” para encaminhar o WebAuthn.', 'success');
+      message('Vistoria aprovada por Pedro Henrique como Supervisão. Agora use “Enviar link para aceite” para encaminhar o aceite digital.', 'success');
     } else {
       message('Vistoria rejeitada por Pedro Henrique como Supervisão.', 'success');
     }
@@ -2241,8 +2699,13 @@ $('admin-registration-not-complete')?.addEventListener('click', async () => {
   const id = $('inspection-analysis-id').value;
   const item = inspections.find(value => value.id === id);
   if (!item) return;
-  if (adminInspectionNeedsFiles(item)) return message('Ainda existem documentos ou arquivos pendentes.');
-  const confirmed = await confirmAction('Marcar Cadastro não feito?', 'Pedro Henrique ficará registrado como responsável pela análise administrativa. A vistoria continuará na fila de análise.', 'Cadastro não feito');
+  if (item.digitalAcceptedAt) return message('O aceite digital do associado já foi concluído. Esta vistoria está bloqueada para edição.');
+  if (!item.registrationCompletedAt) return message('O cadastro já está marcado como não realizado.', 'success');
+  const confirmed = await confirmAction(
+    'Marcar Cadastro não realizado e reabrir?',
+    'A vistoria voltará para a etapa de cadastro para permitir correções. Como Administrador, esta ação é permitida mesmo que existam arquivos pendentes. Se houver um aceite digital ainda não concluído, ele será invalidado e deverá ser enviado novamente depois da nova liberação.',
+    'Reabrir cadastro'
+  );
   if (!confirmed) return;
   try {
     await api(`/api/admin/inspections/${encodeURIComponent(id)}/registration-not-complete`, {
@@ -2251,7 +2714,9 @@ $('admin-registration-not-complete')?.addEventListener('click', async () => {
     });
     closeDialog('inspection-dialog');
     await load();
-    message('Cadastro não feito registrado por Pedro Henrique.', 'success');
+    const updated = inspections.find(value => value.id === id);
+    if (updated) openInspectionAnalysis(id);
+    message('Cadastro reaberto como não realizado. Depois da correção, use “Cadastro realizado · Liberar decisão”.', 'success');
   } catch (error) { message(error.message); }
 });
 
@@ -2259,10 +2724,15 @@ $('admin-registration-complete')?.addEventListener('click', async () => {
   const id = $('inspection-analysis-id').value;
   const item = inspections.find(value => value.id === id);
   if (!item) return;
+  if (item.digitalAcceptedAt) return message('O aceite digital do associado já foi concluído. Esta vistoria está bloqueada para edição.');
+  if (item.registrationCompletedAt) return message('O cadastro já está marcado como realizado.', 'success');
   const pending = adminInspectionPendingCount(item);
-  const text = pending > 0
-    ? `Ainda existem ${pending} ${pending === 1 ? 'pendência' : 'pendências'}. Como Administrador, Pedro Henrique pode assumir a responsabilidade, registrar o cadastro como realizado e liberar a decisão final.`
-    : 'O cadastro será registrado em nome de Pedro Henrique e a decisão final ficará liberada imediatamente.';
+  const pendingContract = Boolean(item.contractChangePending);
+  const text = pendingContract
+    ? 'O cadastro será marcado como realizado. A decisão final continuará bloqueada somente até o associado confirmar a alteração comercial pendente.'
+    : (pending > 0
+      ? `Ainda existem ${pending} ${pending === 1 ? 'pendência' : 'pendências'}. Como Administrador, Pedro Henrique pode assumir a responsabilidade, registrar o cadastro como realizado e liberar a decisão final.`
+      : 'O cadastro será registrado em nome de Pedro Henrique e a decisão final ficará liberada imediatamente.');
   const confirmed = await confirmAction('Registrar Cadastro realizado?', text, 'Cadastro realizado');
   if (!confirmed) return;
   try {
@@ -2371,7 +2841,19 @@ $('add-coverage-rule')?.addEventListener('click', () => { $('coverage-rules-list
 $('coverage-status').addEventListener('change', syncCoveragePrice);
 $('activity-filter').addEventListener('input', renderActivities);
 $('quote-filter').addEventListener('input', renderQuotes);
+['quote-date-field', 'quote-date-from', 'quote-date-to', 'quote-sort-direction'].forEach(id => $(id)?.addEventListener('change', renderQuotes));
+$('quote-date-clear')?.addEventListener('click', () => {
+  $('quote-date-from').value = '';
+  $('quote-date-to').value = '';
+  renderQuotes();
+});
 $('inspection-filter').addEventListener('input', renderInspections);
+['inspection-date-field', 'inspection-date-from', 'inspection-date-to', 'inspection-sort-direction'].forEach(id => $(id)?.addEventListener('change', renderInspections));
+$('inspection-date-clear')?.addEventListener('click', () => {
+  $('inspection-date-from').value = '';
+  $('inspection-date-to').value = '';
+  renderInspections();
+});
 $('price-filter').addEventListener('input', renderPrices);
 $('price-plan-filter').addEventListener('change', renderPrices);
 $('coverage-plan-filter').addEventListener('change', renderCoverages);
@@ -2438,3 +2920,5 @@ installInactivityTracking();
 if (token && lastActivityAtMs() === null) markSessionActivity(true);
 else scheduleInactivityCheck();
 boot();
+
+bindCommercialPricingPreview(ADMIN_COMMERCIAL_CONFIG);

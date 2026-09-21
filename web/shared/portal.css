@@ -1167,3 +1167,360 @@ input, select, textarea, button, a { max-width:100%; }
   .ios-webauthn-help .actions { display:grid; grid-template-columns:1fr; }
   .ios-webauthn-help .actions button { width:100%; }
 }
+
+
+/* Retrato NH — flash manual + automático por baixa iluminação (foto e vídeo). */
+.camera-flash-button[data-flash-mode="auto"] {
+  border-color: rgba(240, 236, 0, .82);
+}
+
+.camera-flash-button[data-flash-mode="on"],
+.camera-flash-button[aria-pressed="true"] {
+  background: #fff8a8;
+  border-color: #d6cd00;
+  color: var(--navy);
+}
+
+.camera-flash-button[data-flash-mode="off"] {
+  background: #fff;
+  color: #5c6277;
+}
+
+.camera-flash-status {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  max-width: min(78%, 360px);
+  padding: 8px 11px;
+  border-radius: 999px;
+  background: rgba(7, 12, 64, .84);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, .24);
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.25;
+  text-align: right;
+  z-index: 2;
+  backdrop-filter: blur(6px);
+}
+
+.camera-flash-status[data-flash-state="on"] {
+  color: var(--yellow);
+  border-color: rgba(240, 236, 0, .72);
+}
+
+@media(max-width:680px) {
+  .camera-flash-status {
+    right: 10px;
+    bottom: 10px;
+    max-width: calc(100% - 20px);
+    font-size: 11px;
+  }
+}
+
+/* V19 - revisão comercial: prévia de desconto/adicionais + edição responsiva */
+.commercial-editor {
+  margin-top: 16px !important;
+  padding: 18px !important;
+  border-radius: 16px !important;
+  overflow: hidden;
+}
+
+.commercial-editor > p {
+  max-width: 920px;
+}
+
+.commercial-editor .form-grid {
+  align-items: start;
+}
+
+.commercial-editor .form-grid > label {
+  min-width: 0;
+}
+
+/* O CSS legado adicionava margem no segundo label e quebrava o alinhamento
+   das grades dos diálogos. Em formulários em grid, o próprio gap deve cuidar
+   do espaçamento vertical/horizontal. */
+.admin-dialog .form-grid > label + label {
+  margin-top: 0 !important;
+}
+
+.commercial-editor input,
+.commercial-editor select,
+.commercial-editor textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.commercial-editor .helper {
+  display: block;
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
+.commercial-preview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.commercial-preview-item {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  min-height: 82px;
+  padding: 12px 13px;
+  border: 1px solid rgba(7, 12, 64, .13);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .78);
+}
+
+.commercial-preview-item span {
+  color: #5f6474;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.3;
+}
+
+.commercial-preview-item strong {
+  margin-top: 4px;
+  color: var(--navy);
+  font-size: clamp(16px, 1.7vw, 21px);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.commercial-preview-item small {
+  display: block;
+  margin-top: 5px;
+  color: #5f6474;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.commercial-preview-discount strong {
+  color: #a12b2b;
+}
+
+.commercial-preview-total {
+  grid-column: 1 / -1;
+  border-width: 2px;
+  border-color: rgba(7, 12, 64, .48);
+  background: rgba(240, 236, 0, .17);
+}
+
+.commercial-preview-total strong {
+  font-size: clamp(19px, 2vw, 25px);
+}
+
+.commercial-benefits-section {
+  margin-top: 18px;
+}
+
+.commercial-benefits-section > p {
+  margin: 6px 0 10px !important;
+}
+
+.commercial-benefits-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px !important;
+  margin-top: 10px;
+}
+
+.commercial-benefits-grid > label,
+.commercial-benefits-grid > label + label,
+.admin-dialog .commercial-benefits-grid > label + label {
+  margin-top: 0 !important;
+}
+
+.commercial-benefit-row {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 10px !important;
+  min-width: 0;
+  padding: 11px 12px !important;
+  border: 1px solid rgba(7, 12, 64, .13) !important;
+  border-radius: 12px !important;
+  background: rgba(255, 255, 255, .76);
+  cursor: pointer;
+}
+
+.commercial-benefit-row:has(.commercial-benefit-input:disabled) {
+  cursor: default;
+}
+
+.commercial-benefit-input {
+  flex: 0 0 18px;
+  width: 18px !important;
+  min-width: 18px !important;
+  height: 18px;
+  margin: 2px 0 0 !important;
+}
+
+.commercial-benefit-copy {
+  display: block;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+}
+
+.commercial-benefit-copy > strong {
+  display: block;
+  line-height: 1.3;
+}
+
+.commercial-benefit-detail {
+  display: block;
+  margin-top: 4px;
+  color: #646979;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.commercial-benefits-empty {
+  grid-column: 1 / -1;
+  padding: 12px;
+  border: 1px dashed rgba(7, 12, 64, .2);
+  border-radius: 10px;
+  color: #686d7d;
+}
+
+.commercial-lock-banner {
+  display: grid;
+  gap: 3px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(170, 36, 36, .28);
+  border-radius: 12px;
+  background: rgba(170, 36, 36, .07);
+}
+
+.commercial-lock-banner[hidden] {
+  display: none !important;
+}
+
+.commercial-lock-banner strong {
+  color: #8d2222;
+}
+
+.commercial-lock-banner span {
+  color: #555b69;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+@media (max-width: 980px) {
+  .commercial-preview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .commercial-preview-total {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .commercial-benefits-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .commercial-editor {
+    padding: 13px !important;
+    margin-top: 12px !important;
+  }
+  .commercial-preview {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .commercial-preview-total {
+    grid-column: auto;
+  }
+  .commercial-preview-item {
+    min-height: 70px;
+    padding: 10px 11px;
+  }
+  .commercial-benefit-row {
+    padding: 10px !important;
+  }
+  .commercial-editor .actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .commercial-editor .actions > button,
+  .commercial-editor .actions > a {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    text-align: center;
+  }
+}
+.commercial-benefit-row.is-selected {
+  border-color: rgba(7, 12, 64, .34) !important;
+  background: rgba(7, 12, 64, .045);
+}
+.commercial-benefit-row.is-locked {
+  opacity: .78;
+}
+
+/* V21 - etapas explícitas da correção comercial e catálogo vivo de adicionais */
+.commercial-stage-heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  margin: 14px 0 10px;
+  padding: 11px 12px;
+  border: 1px solid rgba(7, 12, 64, .13);
+  border-radius: 12px;
+  background: rgba(7, 12, 64, .035);
+}
+.commercial-stage-heading > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--navy);
+  color: var(--yellow);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+.commercial-stage-heading strong,
+.commercial-stage-heading small {
+  display: block;
+}
+.commercial-stage-heading strong {
+  color: var(--navy);
+  line-height: 1.3;
+}
+.commercial-stage-heading small {
+  margin-top: 3px;
+  color: #626878;
+  line-height: 1.4;
+}
+.commercial-stage-two {
+  margin-top: 18px;
+  background: rgba(240, 236, 0, .10);
+}
+@media (max-width: 560px) {
+  .commercial-stage-heading {
+    grid-template-columns: 1fr;
+  }
+  .commercial-stage-heading > span {
+    justify-self: start;
+  }
+}
+
+/* V23 — ações de Cadastro realizado / não realizado visíveis e sem corte em desktop/mobile. */
+.registration-actions-panel{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;width:100%;align-items:stretch;overflow:visible!important}.registration-actions-panel>button,.registration-actions-panel>.button{width:100%;min-width:0!important;max-width:100%;white-space:normal!important;text-align:center;line-height:1.25;overflow-wrap:anywhere}.registration-actions-panel>button:disabled{opacity:.58}@media(max-width:760px){.registration-actions-panel{grid-template-columns:1fr!important}.registration-actions-panel>button,.registration-actions-panel>.button{width:100%!important}}
+
+/* V24: estado atual do cadastro continua clicável para ADM/Supervisão. */
+.registration-actions-panel>button.is-current{box-shadow:inset 0 0 0 2px rgba(255,239,0,.9);font-weight:800}

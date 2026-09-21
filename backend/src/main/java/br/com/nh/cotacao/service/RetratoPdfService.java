@@ -7,6 +7,7 @@ import br.com.nh.cotacao.entity.InspectionRequest;
 import br.com.nh.cotacao.entity.InspectionRequestStatus;
 import br.com.nh.cotacao.entity.Quotation;
 import br.com.nh.cotacao.entity.QuotationOptionalCoverage;
+import br.com.nh.cotacao.entity.RearWindowBranding;
 import com.lowagie.text.Chunk;
 import com.lowagie.text.Document;
 import com.lowagie.text.DocumentException;
@@ -50,6 +51,7 @@ import javax.imageio.ImageIO;
 import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
 import javax.imageio.stream.ImageOutputStream;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.math.BigDecimal;
@@ -64,8 +66,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 @Service
 public class RetratoPdfService {
@@ -83,14 +83,22 @@ public class RetratoPdfService {
     private static final String ASSOCIATION_NAME = "ASSOCIAÇÃO DE PROTEÇÃO VEICULAR NOVO HORIZONTE";
     private static final String ASSOCIATION_CNPJ = "38.078.339/0001-83";
     private static final String ASSOCIATION_LOCATION = "Maceió/AL";
-    public static final String REPORT_LAYOUT_VERSION = "NH_RETRATO_LAYOUT_V49_COMPACT_15MB";
+    public static final String REPORT_LAYOUT_VERSION = "NH_RETRATO_LAYOUT_V52_PPV_DIGITAL_STAMP_HEADER_HD";
     /** Limite funcional do PDF final para compartilhamento/download. */
     public static final int MAX_FINAL_PDF_BYTES = 15_000_000;
     private static final int TARGET_FINAL_PDF_BYTES = 14_500_000;
     private static final int[] COMPACT_DPI_LEVELS = {110, 96, 84, 72, 60, 50, 42, 36};
     private static final int PHOTO_GRID_COLUMNS = 3;
     private static final int DOCUMENT_GRID_COLUMNS = 2;
-    private static final float PAGE_FOOTER_TOP = 82f;
+    /**
+     * Mantém o PDF de entrega leve e estável. Os arquivos continuam preservados no sistema
+     * e no ZIP da vistoria; o PDF incorpora visualmente fotos/documentos e só anexa binários
+     * pequenos até este orçamento total. Vídeos ficam referenciados, evitando estouro de
+     * memória/timeout durante o download em celular.
+     */
+    private static final long MAX_EMBEDDED_ATTACHMENTS_BYTES = 6_000_000L;
+    private static final long MAX_SINGLE_EMBEDDED_ATTACHMENT_BYTES = 2_500_000L;
+    private static final float PAGE_FOOTER_TOP = 91f;
 
     private final InspectionAssetStorageService storageService;
     private final SiteDocumentService siteDocumentService;
@@ -110,7 +118,7 @@ public class RetratoPdfService {
 
     public byte[] generate(InspectionRequest request) {
         try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            Document document = new Document(PageSize.A4, 36, 36, 42, 94);
+            Document document = new Document(PageSize.A4, 36, 36, 42, 103);
             PdfWriter writer = PdfWriter.getInstance(document, output);
             document.addTitle("Relatório de vistoria " + request.getId() + " - Novo Horizonte");
             document.addAuthor("Novo Horizonte Proteção Veicular");
@@ -127,7 +135,7 @@ public class RetratoPdfService {
             if (isFinalDecision(request)) {
                 SiteDocumentService.StoredDocument regulation = siteDocumentService.regulationFile();
                 appendSupervisionDecision(document, request, regulation);
-                appendRegulation(document, writer, regulation);
+                appendRegulation(document, writer, request, regulation);
             }
 
             document.close();
@@ -135,6 +143,19 @@ public class RetratoPdfService {
             return optimizeFinalPdfSize(stamped);
         } catch (Exception exception) {
             throw new IllegalStateException("Não foi possível gerar o relatório da vistoria.", exception);
+        }
+    }
+
+    public boolean isUsableDownloadPdf(byte[] pdfBytes) {
+        if (pdfBytes == null || pdfBytes.length == 0 || pdfBytes.length > MAX_FINAL_PDF_BYTES) return false;
+        PdfReader reader = null;
+        try {
+            reader = new PdfReader(pdfBytes);
+            return reader.getNumberOfPages() > 0;
+        } catch (Exception ignored) {
+            return false;
+        } finally {
+            if (reader != null) reader.close();
         }
     }
 
@@ -165,7 +186,7 @@ public class RetratoPdfService {
             return generate(request);
         }
         try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            Document document = new Document(PageSize.A4, 36, 36, 42, 94);
+            Document document = new Document(PageSize.A4, 36, 36, 42, 103);
             PdfWriter writer = PdfWriter.getInstance(document, output);
             document.addTitle("Relatório padronizado de vistoria " + request.getId() + " - Novo Horizonte");
             document.addAuthor("Novo Horizonte Proteção Veicular");
@@ -194,7 +215,7 @@ public class RetratoPdfService {
             if (isFinalDecision(request)) {
                 SiteDocumentService.StoredDocument regulation = siteDocumentService.regulationFile();
                 appendSupervisionDecision(document, request, regulation);
-                appendRegulation(document, writer, regulation);
+                appendRegulation(document, writer, request, regulation);
             }
 
             if (!recoveredSourceFiles) {
@@ -209,42 +230,55 @@ public class RetratoPdfService {
     }
 
     private void addHeader(Document document, InspectionRequest request) throws Exception {
-        PdfPTable banner = new PdfPTable(new float[]{1.05f, 4.35f, 1.7f});
+        // Cabeçalho V26: reproduz o padrão visual aprovado (faixa azul, símbolo NH,
+        // nome central e identificação/status à direita), mantendo texto vetorial para
+        // máxima nitidez em impressão e zoom. O símbolo usa a arte oficial em alta resolução.
+        PdfPTable banner = new PdfPTable(new float[]{1.05f, 4.55f, 1.55f});
         banner.setWidthPercentage(100);
         banner.setSpacingAfter(18);
+        banner.setKeepTogether(true);
 
         PdfPCell logoCell;
-        try (InputStream logoStream = new ClassPathResource("favicon-nh.png").getInputStream()) {
-            Image logo = Image.getInstance(logoStream.readAllBytes());
-            logo.scaleToFit(66, 66);
-            logoCell = new PdfPCell(logo, false);
+        byte[] logoBytes;
+        ClassPathResource hdLogo = new ClassPathResource("logo-nh-simbolo.png");
+        ClassPathResource fallbackLogo = new ClassPathResource("favicon-nh.png");
+        try (InputStream logoStream = (hdLogo.exists() ? hdLogo : fallbackLogo).getInputStream()) {
+            logoBytes = logoStream.readAllBytes();
         }
+        Image logo = Image.getInstance(logoBytes);
+        logo.scaleToFit(76, 76);
+        logoCell = new PdfPCell(logo, false);
         styleBannerCell(logoCell);
+        logoCell.setPaddingLeft(7);
+        logoCell.setPaddingRight(5);
         logoCell.setHorizontalAlignment(Element.ALIGN_CENTER);
         logoCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
         banner.addCell(logoCell);
 
         Paragraph title = new Paragraph();
         title.setAlignment(Element.ALIGN_CENTER);
-        title.setLeading(25);
-        title.add(new Chunk("NOVO HORIZONTE\n", font(28, Font.BOLD, Color.WHITE)));
-        title.add(new Chunk("PROTEÇÃO VEICULAR\n", font(11, Font.BOLD, YELLOW)));
-        title.add(new Chunk("RELATÓRIO DE VISTORIA DIGITAL", font(10.5f, Font.NORMAL, Color.WHITE)));
+        title.setLeading(24);
+        title.add(new Chunk("NOVO HORIZONTE\n", font(30.5f, Font.BOLD, Color.WHITE)));
+        title.add(new Chunk("PROTEÇÃO VEICULAR\n", font(12.5f, Font.BOLD, YELLOW)));
+        title.add(new Chunk("RELATÓRIO DE VISTORIA DIGITAL", font(11.2f, Font.NORMAL, Color.WHITE)));
         PdfPCell titleCell = new PdfPCell(title);
         styleBannerCell(titleCell);
+        titleCell.setPaddingTop(10);
+        titleCell.setPaddingBottom(10);
         titleCell.setHorizontalAlignment(Element.ALIGN_CENTER);
         titleCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
         banner.addCell(titleCell);
 
         Paragraph identifier = new Paragraph();
         identifier.setAlignment(Element.ALIGN_RIGHT);
-        identifier.setLeading(14);
-        identifier.add(new Chunk("Nº DA VISTORIA\n", font(7, Font.BOLD, YELLOW)));
-        identifier.add(new Chunk(shortInspectionId(request) + "\n", font(8.5f, Font.BOLD, Color.WHITE)));
-        identifier.add(new Chunk("STATUS\n", font(7, Font.BOLD, YELLOW)));
-        identifier.add(new Chunk(headerStatusLabel(request), font(7.5f, Font.BOLD, Color.WHITE)));
+        identifier.setLeading(13);
+        identifier.add(new Chunk("Nº DA VISTORIA\n", font(7.2f, Font.BOLD, YELLOW)));
+        identifier.add(new Chunk(shortInspectionId(request) + "\n", font(9.2f, Font.BOLD, Color.WHITE)));
+        identifier.add(new Chunk("STATUS\n", font(7.2f, Font.BOLD, YELLOW)));
+        identifier.add(new Chunk(headerStatusLabel(request), font(8.1f, Font.BOLD, Color.WHITE)));
         PdfPCell identifierCell = new PdfPCell(identifier);
         styleBannerCell(identifierCell);
+        identifierCell.setPaddingRight(10);
         identifierCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
         banner.addCell(identifierCell);
 
@@ -253,7 +287,7 @@ public class RetratoPdfService {
         PdfPTable intro = new PdfPTable(new float[]{4.5f, 1.5f});
         intro.setWidthPercentage(100);
         PdfPCell introText = new PdfPCell(new Phrase(
-                "Dossiê digital permanente da vistoria com anexos, decisão da supervisão e regulamento",
+                "Dossiê digital da vistoria com anexos, decisão da supervisão e regulamento",
                 font(14.5f, Font.BOLD, NAVY)
         ));
         introText.setBorder(Rectangle.NO_BORDER);
@@ -304,12 +338,12 @@ public class RetratoPdfService {
         }
         if (request.getQuotation() != null && request.getQuotation().getDiscountPercent() > 0) {
             addLabelValue(table, "Desconto da cotação", request.getQuotation().getDiscountPercent() + "%");
-            String branding = request.getQuotation().getDiscountPercent() == 15
-                    ? "Perfurado no vigia traseiro: NH + outra empresa"
-                    : request.getQuotation().getDiscountPercent() == 30
-                    ? "Perfurado no vigia traseiro: somente NH"
-                    : "Não se aplica";
-            addLabelValue(table, "Condição do desconto", branding);
+            RearWindowBranding savedBranding = request.getQuotation().getRearWindowBranding();
+            if (savedBranding == RearWindowBranding.NH_AND_OTHER_COMPANY) {
+                addLabelValue(table, "Condição do desconto", "Perfurado no vigia traseiro: NH + outra empresa");
+            } else if (savedBranding == RearWindowBranding.NH_ONLY) {
+                addLabelValue(table, "Condição do desconto", "Perfurado no vigia traseiro: somente NH");
+            }
         }
         if (isFinalDecision(request)) {
             addLabelValue(table, "Decisão final", decisionLabel(request));
@@ -417,18 +451,10 @@ public class RetratoPdfService {
         benefits.addCell(planHeaderCell("COBERTURA / BENEFÍCIO"));
         benefits.addCell(planHeaderCell("CONDIÇÕES / LIMITES"));
 
-        Map<String, QuotationOptionalCoverage> selectedByCode = quotation.getSelectedOptionals().stream()
-                .collect(Collectors.toMap(
-                        QuotationOptionalCoverage::getCoverageCode,
-                        Function.identity(),
-                        (first, second) -> first
-                ));
-
         int visible = 0;
         for (var item : quotation.getCoverageSnapshots()) {
-            boolean included = item.getCoverageStatus() == CoverageStatus.INCLUDED;
-            QuotationOptionalCoverage selectedOptional = selectedByCode.get(item.getCoverageCode());
-            if (!included && selectedOptional == null) continue;
+            boolean included = item.isFinalSelected() && item.getCoverageStatus() != CoverageStatus.OPTIONAL;
+            if (!item.isFinalSelected()) continue;
 
             benefits.addCell(planBodyCell(included ? "INCLUÍDO" : "CONTRATADO", true));
             benefits.addCell(planBodyCell(item.getCoverageName(), false));
@@ -469,6 +495,7 @@ public class RetratoPdfService {
         List<AssetCard> fileCards = new ArrayList<>();
         List<AssetCard> pdfPreviewCards = new ArrayList<>();
         List<AssetCard> signatureCards = new ArrayList<>();
+        long embeddedAttachmentBytes = 0L;
 
         List<InspectionAsset> assets = request.getAssets().stream()
                 .filter(asset -> asset.getAssetType() != InspectionAssetType.REPORT)
@@ -481,18 +508,41 @@ public class RetratoPdfService {
                 continue;
             }
 
+            String fileName = asset.getFileName() == null || asset.getFileName().isBlank()
+                    ? "arquivo-vistoria"
+                    : asset.getFileName();
+            String contentType = asset.getContentType() == null ? "" : asset.getContentType().toLowerCase(Locale.ROOT);
+            boolean video = asset.getAssetType() == InspectionAssetType.VIDEO || contentType.startsWith("video/");
+
+            // Não carrega vídeos inteiros em memória para montar o PDF. Eles permanecem
+            // preservados e disponíveis no painel/ZIP, enquanto o relatório registra
+            // nome, rótulo e tamanho. Isso evita o "Load failed" observado no iPhone.
+            if (video) {
+                fileCards.add(AssetCard.file(
+                        asset.getLabel(),
+                        fileName,
+                        "Vídeo preservado no sistema · disponível para download individual ou no ZIP da vistoria",
+                        humanSize(asset.getFileSize())
+                ));
+                continue;
+            }
+
             try {
                 byte[] bytes = storageService.readAll(asset.getId());
-                String fileName = asset.getFileName() == null || asset.getFileName().isBlank()
-                        ? "arquivo-vistoria"
-                        : asset.getFileName();
-                String contentType = asset.getContentType() == null ? "" : asset.getContentType().toLowerCase(Locale.ROOT);
+                boolean attachOriginal = bytes.length <= MAX_SINGLE_EMBEDDED_ATTACHMENT_BYTES
+                        && embeddedAttachmentBytes + bytes.length <= MAX_EMBEDDED_ATTACHMENTS_BYTES;
 
-                PdfFileSpecification attachment = PdfFileSpecification.fileEmbedded(writer, null, fileName, bytes);
-                writer.addFileAttachment(asset.getLabel(), attachment);
+                if (attachOriginal) {
+                    PdfFileSpecification attachment = PdfFileSpecification.fileEmbedded(writer, null, fileName, bytes);
+                    writer.addFileAttachment(asset.getLabel(), attachment);
+                    embeddedAttachmentBytes += bytes.length;
+                }
 
                 if (contentType.startsWith("image/")) {
-                    AssetCard imageCard = AssetCard.image(asset.getLabel(), fileName, bytes, asset.getAssetType(), humanSize(asset.getFileSize()));
+                    byte[] preview = compactImagePreview(bytes);
+                    AssetCard imageCard = AssetCard.image(
+                            asset.getLabel(), fileName, preview, asset.getAssetType(), humanSize(asset.getFileSize())
+                    );
                     if (asset.getAssetType() == InspectionAssetType.SIGNATURE) {
                         signatureCards.add(imageCard);
                     } else {
@@ -507,13 +557,20 @@ public class RetratoPdfService {
                     );
                     if (!renderedPages.isEmpty()) {
                         pdfPreviewCards.addAll(renderedPages);
+                        if (!attachOriginal) {
+                            fileCards.add(AssetCard.file(
+                                    asset.getLabel(), fileName,
+                                    "Documento preservado no sistema · prévia visual incorporada ao relatório",
+                                    humanSize(asset.getFileSize())
+                            ));
+                        }
                         continue;
                     }
                 }
 
-                String typeLabel = asset.getAssetType() == InspectionAssetType.VIDEO || contentType.startsWith("video/")
-                        ? "Vídeo anexado ao PDF"
-                        : "Documento anexado ao PDF";
+                String typeLabel = attachOriginal
+                        ? "Documento anexado ao PDF"
+                        : "Documento preservado no sistema · disponível para download individual ou no ZIP";
                 fileCards.add(AssetCard.file(asset.getLabel(), fileName, typeLabel, humanSize(asset.getFileSize())));
             } catch (Exception exception) {
                 fileCards.add(AssetCard.error(asset.getLabel()));
@@ -535,11 +592,10 @@ public class RetratoPdfService {
             addAssetGrid(document, imageCards, false, PHOTO_GRID_COLUMNS);
         }
 
-
         if (!pdfPreviewCards.isEmpty()) {
             document.add(subsectionTitle("DOCUMENTOS PDF - PRÉVIA VISUAL DAS PÁGINAS"));
             Paragraph pdfNote = new Paragraph(
-                    "Cada página dos documentos PDF foi convertida para uma prévia JPG e incorporada visualmente ao dossiê. O PDF original também permanece anexado.",
+                    "As páginas dos documentos PDF foram incorporadas visualmente ao dossiê. Os arquivos originais permanecem preservados no sistema e no pacote ZIP da vistoria.",
                     font(7.8f, Font.NORMAL, MUTED)
             );
             pdfNote.setSpacingAfter(7);
@@ -555,6 +611,30 @@ public class RetratoPdfService {
         if (!signatureCards.isEmpty()) {
             document.add(subsectionTitle("ASSINATURA DO ASSOCIADO"));
             addAssetGrid(document, signatureCards, false, DOCUMENT_GRID_COLUMNS);
+        }
+    }
+
+    private byte[] compactImagePreview(byte[] bytes) {
+        if (bytes == null || bytes.length == 0) return bytes;
+        BufferedImage source = null;
+        BufferedImage resized = null;
+        try (ByteArrayInputStream input = new ByteArrayInputStream(bytes)) {
+            source = ImageIO.read(input);
+            if (source == null) return bytes;
+            int maxDimension = 1400;
+            int width = source.getWidth();
+            int height = source.getHeight();
+            double scale = Math.min(1d, (double) maxDimension / Math.max(width, height));
+            if (scale < 1d) {
+                resized = resizeRgb(source, Math.max(1, (int) Math.round(width * scale)), Math.max(1, (int) Math.round(height * scale)));
+            }
+            BufferedImage preview = resized == null ? source : resized;
+            return encodeJpeg(preview, 0.72f);
+        } catch (Exception ignored) {
+            return bytes;
+        } finally {
+            if (resized != null) resized.flush();
+            if (source != null) source.flush();
         }
     }
 
@@ -626,7 +706,7 @@ public class RetratoPdfService {
 
     private void addPermanentFooterNote(Document document) throws DocumentException {
         Paragraph footer = new Paragraph(
-                "Relatório permanente do Retrato NH, sem prazo de validade. Os arquivos incorporados fazem parte deste dossiê digital.",
+                "Relatório do Retrato NH sujeito à retenção operacional de 40 dias. Os arquivos incorporados fazem parte deste dossiê digital durante esse período.",
                 font(8, Font.NORMAL, Color.GRAY)
         );
         footer.setSpacingBefore(2);
@@ -704,6 +784,7 @@ public class RetratoPdfService {
         List<AssetCard> documents = new ArrayList<>();
         List<AssetCard> pdfPreviewCards = new ArrayList<>();
         List<AssetCard> signatures = new ArrayList<>();
+        long embeddedAttachmentBytes = 0L;
 
         for (LegacyAttachment attachment : attachments) {
             String label = safeValue(attachment.label(), "Arquivo recuperado");
@@ -711,11 +792,31 @@ public class RetratoPdfService {
             if (lowerLabel.contains("regulamento")) continue;
 
             String fileName = safeValue(attachment.fileName(), "arquivo-recuperado");
+            String lowerFileName = fileName.toLowerCase(Locale.ROOT);
             byte[] bytes = attachment.bytes();
             if (bytes == null || bytes.length == 0) continue;
 
-            PdfFileSpecification spec = PdfFileSpecification.fileEmbedded(writer, null, fileName, bytes);
-            writer.addFileAttachment(label, spec);
+            boolean video = lowerFileName.endsWith(".mp4")
+                    || lowerFileName.endsWith(".mov")
+                    || lowerFileName.endsWith(".webm")
+                    || lowerFileName.endsWith(".avi")
+                    || lowerFileName.endsWith(".mkv");
+            if (video) {
+                documents.add(AssetCard.file(
+                        label, fileName,
+                        "Vídeo recuperado do dossiê histórico · preservado como referência para evitar sobrecarga no PDF",
+                        humanSize(bytes.length)
+                ));
+                continue;
+            }
+
+            boolean attachOriginal = bytes.length <= MAX_SINGLE_EMBEDDED_ATTACHMENT_BYTES
+                    && embeddedAttachmentBytes + bytes.length <= MAX_EMBEDDED_ATTACHMENTS_BYTES;
+            if (attachOriginal) {
+                PdfFileSpecification spec = PdfFileSpecification.fileEmbedded(writer, null, fileName, bytes);
+                writer.addFileAttachment(label, spec);
+                embeddedAttachmentBytes += bytes.length;
+            }
 
             boolean signature = lowerLabel.contains("assinatura") || lowerLabel.contains("signature");
             boolean image = isImageBytes(bytes);
@@ -723,7 +824,7 @@ public class RetratoPdfService {
                 AssetCard card = AssetCard.image(
                         label,
                         fileName,
-                        bytes,
+                        compactImagePreview(bytes),
                         signature ? InspectionAssetType.SIGNATURE : InspectionAssetType.PHOTO,
                         humanSize(bytes.length)
                 );
@@ -734,16 +835,20 @@ public class RetratoPdfService {
                         bytes, label, fileName, InspectionAssetType.OTHER_DOCUMENT, humanSize(bytes.length)
                 );
                 if (!renderedPages.isEmpty()) pdfPreviewCards.addAll(renderedPages);
-                else documents.add(AssetCard.file(
+                documents.add(AssetCard.file(
                         label, fileName,
-                        "Arquivo PDF recuperado do dossiê histórico e novamente incorporado ao PDF padronizado",
+                        attachOriginal
+                                ? "Arquivo PDF recuperado e anexado ao dossiê padronizado"
+                                : "Arquivo PDF recuperado · prévia visual incorporada; original preservado no dossiê histórico",
                         humanSize(bytes.length)
                 ));
             } else {
                 documents.add(AssetCard.file(
                         label,
                         fileName,
-                        "Arquivo recuperado do dossiê histórico e novamente incorporado ao PDF padronizado",
+                        attachOriginal
+                                ? "Arquivo recuperado e anexado ao PDF padronizado"
+                                : "Arquivo recuperado do dossiê histórico e preservado como referência",
                         humanSize(bytes.length)
                 ));
             }
@@ -753,7 +858,7 @@ public class RetratoPdfService {
 
         document.add(sectionTitle("ARQUIVOS DA VISTORIA"));
         Paragraph recovered = new Paragraph(
-                "Arquivos recuperados dos anexos internos do dossiê histórico e reorganizados no layout padronizado.",
+                "Arquivos recuperados do dossiê histórico e reorganizados no layout padronizado com foco em estabilidade do download.",
                 font(8.5f, Font.NORMAL, MUTED)
         );
         recovered.setSpacingAfter(9);
@@ -789,10 +894,12 @@ public class RetratoPdfService {
     }
 
     private void appendLegacyAnnex(Document document, PdfWriter writer, byte[] legacyReport) throws Exception {
-        PdfFileSpecification legacyAttachment = PdfFileSpecification.fileEmbedded(
-                writer, null, "dossie-historico-original.pdf", legacyReport
-        );
-        writer.addFileAttachment("Dossiê histórico original preservado", legacyAttachment);
+        if (legacyReport != null && legacyReport.length <= MAX_EMBEDDED_ATTACHMENTS_BYTES) {
+            PdfFileSpecification legacyAttachment = PdfFileSpecification.fileEmbedded(
+                    writer, null, "dossie-historico-original.pdf", legacyReport
+            );
+            writer.addFileAttachment("Dossiê histórico original preservado", legacyAttachment);
+        }
 
         PdfReader legacyReader = new PdfReader(legacyReport);
         try {
@@ -833,12 +940,21 @@ public class RetratoPdfService {
     private void appendRegulation(
             Document document,
             PdfWriter writer,
+            InspectionRequest request,
             SiteDocumentService.StoredDocument regulation
     ) throws Exception {
+        // O PPV permanece visível dentro do dossiê, exatamente após a área de
+        // documentos/assinatura e a decisão da Supervisão. Além disso, o anexo PDF
+        // do PPV é personalizado para esta vistoria e recebe o mesmo rodapé com
+        // assinatura do associado e, após o aceite, o carimbo digital WebAuthn em
+        // TODAS as páginas. A versão visual incorporada ao dossiê é carimbada no
+        // passe final do próprio dossiê para evitar sobreposição dupla.
+        byte[] personalizedPpv = stampRegulationForAssociate(request, regulation.bytes());
+        String ppvFileName = "PPV-Novo-Horizonte-" + shortInspectionId(request) + ".pdf";
         PdfFileSpecification regulationAttachment = PdfFileSpecification.fileEmbedded(
-                writer, null, regulation.fileName(), regulation.bytes()
+                writer, null, ppvFileName, personalizedPpv
         );
-        writer.addFileAttachment("Regulamento do Associado NH", regulationAttachment);
+        writer.addFileAttachment("PPV - Regulamento do Associado NH", regulationAttachment);
 
         PdfReader regulationReader = new PdfReader(regulation.bytes());
         try {
@@ -911,7 +1027,8 @@ public class RetratoPdfService {
 
         Paragraph description = new Paragraph(
                 "O associado confirmou este aceite com verificação segura disponibilizada pelo próprio aparelho (biometria, PIN ou bloqueio equivalente). "
-                        + "A prova criptográfica vincula explicitamente o CPF, o nome do associado, a selfie da vistoria e o hash do dossiê aprovado no momento do aceite.",
+                        + "A prova criptográfica vincula explicitamente o CPF, o nome do associado, a selfie da vistoria e o hash do dossiê aprovado no momento do aceite. "
+                        + "Após a confirmação, o dossiê final e o PPV passam a conter a assinatura do associado e o carimbo digital do aceite em todas as páginas.",
                 font(8.3f, Font.NORMAL, TEXT)
         );
         description.setAlignment(Element.ALIGN_JUSTIFIED);
@@ -923,6 +1040,8 @@ public class RetratoPdfService {
         addDecisionRow(table, "Associado", request.getAssociateName());
         addDecisionRow(table, "CPF vinculado", formatCpf(request.getCpf()));
         addDecisionRow(table, "Aceite confirmado em", request.getAcceptedAt().format(SIGNATURE_DATE_TIME));
+        addDecisionRow(table, "Carimbo digital", "ACEITE DIGITAL CONFIRMADO - " + acceptanceStampCode(request));
+        addDecisionRow(table, "Documentos carimbados", "Dossiê final + PPV (todas as páginas)");
         addDecisionRow(table, "Verificação do usuário", request.isAcceptanceUserVerified() ? "Confirmada pelo autenticador" : "Não confirmada");
         addDecisionRow(table, "Hash SHA-256 da selfie", request.getAcceptanceSelfieSha256());
         addDecisionRow(table, "Hash SHA-256 do dossiê aprovado", request.getAcceptanceDossierSha256());
@@ -1146,6 +1265,41 @@ public class RetratoPdfService {
         return cards;
     }
 
+    private byte[] stampRegulationForAssociate(InspectionRequest request, byte[] regulationPdf) {
+        if (regulationPdf == null || regulationPdf.length == 0) return regulationPdf;
+        PdfReader reader = null;
+        PdfStamper stamper = null;
+        try (ByteArrayOutputStream stampedOutput = new ByteArrayOutputStream()) {
+            reader = new PdfReader(regulationPdf);
+            stamper = new PdfStamper(reader, stampedOutput);
+            ReportPageEvent pageStamp = new ReportPageEvent(request, null);
+
+            Map<String, String> info = reader.getInfo();
+            info.put("Title", "PPV - Programa de Proteção Veicular - " + shortInspectionId(request));
+            info.put("Subject", request.getAcceptedAt() == null
+                    ? "PPV personalizado - assinatura do associado em todas as páginas"
+                    : "PPV aceito digitalmente - assinatura e carimbo WebAuthn em todas as páginas");
+            info.put("Keywords", REPORT_LAYOUT_VERSION + ";PPV_PERSONALIZADO");
+            stamper.setInfoDictionary(info);
+
+            for (int pageNumber = 1; pageNumber <= reader.getNumberOfPages(); pageNumber++) {
+                PdfContentByte canvas = stamper.getOverContent(pageNumber);
+                Rectangle pageSize = reader.getPageSizeWithRotation(pageNumber);
+                pageStamp.stampPage(canvas, pageSize, pageNumber);
+            }
+            stamper.close();
+            stamper = null;
+            reader.close();
+            reader = null;
+            return stampedOutput.toByteArray();
+        } catch (Exception exception) {
+            throw new IllegalStateException("Não foi possível personalizar o PPV com as assinaturas da vistoria.", exception);
+        } finally {
+            try { if (stamper != null) stamper.close(); } catch (Exception ignored) {}
+            try { if (reader != null) reader.close(); } catch (Exception ignored) {}
+        }
+    }
+
     private byte[] stampRequiredSignaturesOnEveryPage(
             InspectionRequest request, byte[] generatedPdf, byte[] legacyReport
     ) {
@@ -1159,7 +1313,9 @@ public class RetratoPdfService {
 
             Map<String, String> info = reader.getInfo();
             info.put("Keywords", REPORT_LAYOUT_VERSION);
-            info.put("Subject", "Dossiê digital padronizado - assinaturas obrigatórias em todas as páginas");
+            info.put("Subject", request.getAcceptedAt() == null
+                    ? "Dossiê digital - assinatura do associado em todas as páginas"
+                    : "Dossiê final aceito digitalmente - assinatura e carimbo WebAuthn em todas as páginas");
             stamper.setInfoDictionary(info);
 
             for (int pageNumber = 1; pageNumber <= reader.getNumberOfPages(); pageNumber++) {
@@ -1415,6 +1571,16 @@ public class RetratoPdfService {
         return null;
     }
 
+    private String acceptanceStampCode(InspectionRequest request) {
+        if (request == null) return "SEM-ACEITE";
+        String hash = request.getAcceptanceProofHash();
+        if (hash == null || hash.isBlank()) hash = request.getAcceptanceEvidenceHash();
+        if (hash == null || hash.isBlank()) hash = request.getAcceptanceDossierSha256();
+        if (hash == null || hash.isBlank()) return "SEM-HASH";
+        String normalized = hash.replaceAll("[^A-Za-z0-9]", "").toUpperCase(Locale.ROOT);
+        return normalized.length() <= 12 ? normalized : normalized.substring(0, 12);
+    }
+
     private String footerSignatureCode(InspectionRequest request) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -1475,7 +1641,7 @@ public class RetratoPdfService {
             float left = pageSize.getLeft() + 28f;
             float right = pageSize.getRight() - 28f;
             float bottom = pageSize.getBottom();
-            float lineY = bottom + 80f;
+            float lineY = bottom + 89f;
 
             canvas.saveState();
             canvas.setColorStroke(YELLOW);
@@ -1486,11 +1652,11 @@ public class RetratoPdfService {
             canvas.restoreState();
 
             if (isFinalDecision(request)) {
-                drawSupervisorDigitalSignature(canvas, left, bottom + 31f, 245f, 41f);
+                drawSupervisorDigitalSignature(canvas, left, bottom + 31f, 245f, 50f);
             } else {
-                drawPendingSupervisorStamp(canvas, left, bottom + 31f, 245f, 41f);
+                drawPendingSupervisorStamp(canvas, left, bottom + 31f, 245f, 50f);
             }
-            drawAssociateSignature(canvas, right - 245f, bottom + 31f, 245f, 41f);
+            drawAssociateSignature(canvas, right - 245f, bottom + 31f, 245f, 50f);
 
             Font footerFont = font(6.7f, Font.NORMAL, MUTED);
             Font pageFont = font(7f, Font.BOLD, NAVY);
@@ -1524,25 +1690,51 @@ public class RetratoPdfService {
 
         private void drawAssociateSignature(PdfContentByte canvas, float x, float y, float w, float h) {
             drawMiniBox(canvas, x, y, w, h);
+            boolean digitallyAccepted = request.getAcceptedAt() != null;
             float textX = x + 7f;
             if (associateSignature != null && associateSignature.length > 0) {
                 try {
                     Image signatureImage = Image.getInstance(associateSignature);
-                    signatureImage.scaleToFit(72f, 28f);
-                    signatureImage.setAbsolutePosition(x + 7f, y + 6f);
+                    signatureImage.scaleToFit(72f, digitallyAccepted ? 26f : 31f);
+                    signatureImage.setAbsolutePosition(x + 7f, y + (digitallyAccepted ? 7f : 8f));
                     canvas.addImage(signatureImage);
                     textX = x + 84f;
                 } catch (Exception ignored) {
                     textX = x + 7f;
                 }
             }
+
+            if (digitallyAccepted) {
+                float badgeW = 112f;
+                float badgeH = 9.5f;
+                float badgeX = x + w - badgeW - 5f;
+                float badgeY = y + h - badgeH - 4f;
+                canvas.saveState();
+                canvas.setColorFill(YELLOW);
+                canvas.roundRectangle(badgeX, badgeY, badgeW, badgeH, 3f);
+                canvas.fill();
+                canvas.restoreState();
+                ColumnText.showTextAligned(canvas, Element.ALIGN_CENTER,
+                        new Phrase("ACEITE DIGITAL CONFIRMADO", font(4.9f, Font.BOLD, NAVY)),
+                        badgeX + badgeW / 2f, badgeY + 2.3f, 0);
+            }
+
             ColumnText.showTextAligned(canvas, Element.ALIGN_LEFT,
-                    new Phrase("ASSINATURA DO ASSOCIADO", font(5.8f, Font.BOLD, NAVY)), textX, y + h - 10f, 0);
+                    new Phrase("ASSINATURA DO ASSOCIADO", font(5.8f, Font.BOLD, NAVY)),
+                    textX, y + h - (digitallyAccepted ? 16f : 11f), 0);
             ColumnText.showTextAligned(canvas, Element.ALIGN_LEFT,
-                    new Phrase(safeValue(request.getAssociateName(), "Associado"), font(6.8f, Font.BOLD, TEXT)), textX, y + h - 20f, 0);
+                    new Phrase(safeValue(request.getAssociateName(), "Associado"), font(6.5f, Font.BOLD, TEXT)),
+                    textX, y + h - (digitallyAccepted ? 25f : 22f), 0);
             ColumnText.showTextAligned(canvas, Element.ALIGN_LEFT,
-                    new Phrase("CPF: " + formatCpf(request.getCpf()), font(5.7f, Font.NORMAL, MUTED)), textX, y + h - 29f, 0);
-            if (associateSignature == null || associateSignature.length == 0) {
+                    new Phrase("CPF: " + formatCpf(request.getCpf()), font(5.5f, Font.NORMAL, MUTED)),
+                    textX, y + h - (digitallyAccepted ? 33f : 32f), 0);
+
+            if (digitallyAccepted) {
+                String acceptedAt = request.getAcceptedAt().format(SIGNATURE_DATE_TIME);
+                String digitalLine = "WebAuthn: " + acceptedAt + " | Hash: " + acceptanceStampCode(request);
+                ColumnText.showTextAligned(canvas, Element.ALIGN_LEFT,
+                        new Phrase(digitalLine, font(4.45f, Font.BOLD, APPROVED_GREEN)), textX, y + 5f, 0);
+            } else if (associateSignature == null || associateSignature.length == 0) {
                 ColumnText.showTextAligned(canvas, Element.ALIGN_LEFT,
                         new Phrase("Imagem da assinatura não disponível no armazenamento atual", font(5.1f, Font.NORMAL, MUTED)), textX, y + 5f, 0);
             }

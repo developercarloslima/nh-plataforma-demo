@@ -76,6 +76,10 @@ services:
         sync: false
       - key: WHATSAPP_TEMPLATE_LANGUAGE
         value: pt_BR
+      - key: INSPECTION_RETENTION_DAYS
+        value: "40"
+      - key: INSPECTION_CLEANUP_CRON
+        value: "0 15 * * * *"
       - key: OPERATIONAL_RETENTION_DAYS
         value: "40"
       - key: OPERATIONAL_RETENTION_CLEANUP_CRON

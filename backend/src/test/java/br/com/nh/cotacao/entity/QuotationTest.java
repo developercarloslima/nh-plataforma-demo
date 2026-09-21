@@ -173,6 +173,39 @@ class QuotationTest {
     }
 
     @Test
+    void shouldEditAllAssociateAndVehicleDataInInspectionWithoutChangingFipe() {
+        Consultant consultant = Consultant.create("Consultor", "TEST");
+        Quotation quotation = Quotation.createForConsultant(
+                "NH-2026-EDIT001", consultant, "Cliente", "52998224725", "82999999999",
+                "ABC1D23", "Veículo teste", 2025, false, new BigDecimal("50000.00"),
+                "CAR_NATIONAL", Region.NATIONAL, null, "CAR_ECONOMICO", "Plano Econômico",
+                new BigDecimal("100.00"), BigDecimal.ZERO, BigDecimal.ZERO, null
+        );
+        quotation.decide(QuoteStatus.ACCEPTED);
+        InspectionRequest inspection = InspectionRequest.createForQuotation("token-edit", quotation);
+        BigDecimal fipeBefore = quotation.getFipeValue();
+
+        inspection.updateEditableAssociateVehicleData(
+                "Cliente Corrigido", "11144477735", "82988887777", "DEF4G56",
+                "Modelo corrigido", 2026, false, "Rua Teste, 100 - Centro"
+        );
+        quotation.updateNonPricingData(
+                inspection.getAssociateName(), inspection.getCpf(), inspection.getWhatsapp(), inspection.getPlate(),
+                inspection.getVehicleModel(), inspection.getModelYear(), false, quotation.getObservation()
+        );
+
+        assertEquals("Cliente Corrigido", inspection.getAssociateName());
+        assertEquals("11144477735", inspection.getCpf());
+        assertEquals("82988887777", inspection.getWhatsapp());
+        assertEquals("DEF4G56", inspection.getPlate());
+        assertEquals("Modelo corrigido", inspection.getVehicleModel());
+        assertEquals(2026, inspection.getModelYear());
+        assertEquals("Rua Teste, 100 - Centro", inspection.getResidenceAddress());
+        assertEquals(fipeBefore, quotation.getFipeValue());
+        assertEquals(new BigDecimal("100.00"), quotation.getMonthlyValue());
+    }
+
+    @Test
     void shouldApplyConsultantDiscountToMonthlyValue() {
         Quotation quotation = quotationWithBaseValue("100.00");
 
@@ -356,6 +389,118 @@ class QuotationTest {
                 () -> inspection.adminReview(InspectionRequestStatus.APPROVED, "Aprovação indevida")
         );
         assertTrue(error.getMessage().contains("Aguardando arquivos"));
+    }
+
+    @Test
+    void shouldApplyFipeThirdPartyRuleWithoutReducingItWhenDiscounted() {
+        Quotation quotation = quotationWithBaseValue("100.00");
+        quotation.addCoverageSnapshot("THIRD_PARTY_BASE", "Terceiros", CoverageStatus.INCLUDED, "Legado", null, 1);
+        quotation.addCoverageSnapshot("THIRD_PARTY", "Terceiros adicional", CoverageStatus.OPTIONAL, "Legado", new BigDecimal("10.00"), 2);
+
+        quotation.updateFipeValue(new BigDecimal("50999.99"));
+        quotation.applyDiscount(10, RearWindowBranding.NOT_APPLICABLE);
+
+        QuotationCoverageSnapshot base = quotation.getCoverageSnapshots().stream()
+                .filter(item -> "THIRD_PARTY_BASE".equals(item.getCoverageCode()))
+                .findFirst().orElseThrow();
+        QuotationCoverageSnapshot supplemental = quotation.getCoverageSnapshots().stream()
+                .filter(item -> "THIRD_PARTY".equals(item.getCoverageCode()))
+                .findFirst().orElseThrow();
+        assertTrue(base.isFinalSelected());
+        assertEquals("Cobertura de até R$ 50 mil", base.getDetail());
+        assertFalse(supplemental.isFinalSelected());
+
+        quotation.updateFipeValue(new BigDecimal("51000.00"));
+        assertEquals("Cobertura de até R$ 100 mil", base.getDetail());
+        assertTrue(base.isFinalSelected());
+    }
+
+    @Test
+    void shouldRemoveNaturalPhenomenaAndSmallRepairsWheneverThereIsDiscount() {
+        Quotation quotation = quotationWithBaseValue("100.00");
+        quotation.addCoverageSnapshot("NATURAL_PHENOMENA", "Fenômenos da natureza", CoverageStatus.INCLUDED, null, null, 1);
+        quotation.addCoverageSnapshot("SMALL_REPAIRS", "Pequenos reparos", CoverageStatus.INCLUDED, null, null, 2);
+
+        quotation.applyDiscount(5, RearWindowBranding.NOT_APPLICABLE);
+
+        assertFalse(quotation.getCoverageSnapshots().stream()
+                .filter(item -> "NATURAL_PHENOMENA".equals(item.getCoverageCode()))
+                .findFirst().orElseThrow().isFinalSelected());
+        assertFalse(quotation.getCoverageSnapshots().stream()
+                .filter(item -> "SMALL_REPAIRS".equals(item.getCoverageCode()))
+                .findFirst().orElseThrow().isFinalSelected());
+    }
+
+    @Test
+    void shouldKeepExpiredInspectionAliveWhenItAlreadyHasDatabaseFile() throws Exception {
+        Consultant consultant = Consultant.create("Consultor", "TEST");
+        Quotation quotation = Quotation.createForConsultant(
+                "NH-2026-FILE001", consultant, "Cliente", "52998224725", "82999999999",
+                "ABC1D23", "Veículo teste", 2025, false, new BigDecimal("50000.00"),
+                "CAR_NATIONAL", Region.NATIONAL, null, "CAR_ECONOMICO", "Plano Econômico",
+                new BigDecimal("100.00"), BigDecimal.ZERO, BigDecimal.ZERO, null
+        );
+        quotation.decide(QuoteStatus.ACCEPTED);
+        InspectionRequest inspection = InspectionRequest.createForQuotation("token-file-db", quotation);
+        var expiresAt = InspectionRequest.class.getDeclaredField("expiresAt");
+        expiresAt.setAccessible(true);
+        expiresAt.set(inspection, java.time.OffsetDateTime.now().minusDays(1));
+        inspection.addAsset(InspectionAsset.createDatabase(
+                inspection, InspectionAssetType.PHOTO, "Frente", "frente.jpg", "image/jpeg", 1000, 1,
+                java.time.OffsetDateTime.now().minusDays(10), null
+        ));
+
+        assertTrue(inspection.hasAnyPreservedFile());
+        assertFalse(inspection.isExpired());
+    }
+
+    @Test
+    void shouldRecognizeLegacyDriveFileAsPreservedInspectionFile() throws Exception {
+        Consultant consultant = Consultant.create("Consultor", "TEST");
+        Quotation quotation = Quotation.createForConsultant(
+                "NH-2026-FILE002", consultant, "Cliente", "52998224725", "82999999999",
+                "ABC1D23", "Veículo teste", 2025, false, new BigDecimal("50000.00"),
+                "CAR_NATIONAL", Region.NATIONAL, null, "CAR_ECONOMICO", "Plano Econômico",
+                new BigDecimal("100.00"), BigDecimal.ZERO, BigDecimal.ZERO, null
+        );
+        quotation.decide(QuoteStatus.ACCEPTED);
+        InspectionRequest inspection = InspectionRequest.createForQuotation("token-file-drive", quotation);
+        var expiresAt = InspectionRequest.class.getDeclaredField("expiresAt");
+        expiresAt.setAccessible(true);
+        expiresAt.set(inspection, java.time.OffsetDateTime.now().minusDays(1));
+        inspection.addAsset(InspectionAsset.create(
+                inspection, InspectionAssetType.PHOTO, "Frente", "frente.jpg", "image/jpeg", 1000, 1,
+                "drive-file-1", "https://drive.google.com/file/d/drive-file-1"
+        ));
+
+        assertTrue(inspection.hasAnyPreservedFile());
+        assertFalse(inspection.isExpired());
+    }
+
+    @Test
+    void shouldBlockDossierChangesAfterDigitalAcceptance() {
+        Consultant consultant = Consultant.create("Consultor", "TEST");
+        Quotation quotation = Quotation.createForConsultant(
+                "NH-2026-DIGITAL001", consultant, "Cliente", "52998224725", "82999999999",
+                "ABC1D23", "Veículo teste", 2025, false, new BigDecimal("50000.00"),
+                "CAR_NATIONAL", Region.NATIONAL, null, "CAR_ECONOMICO", "Plano Econômico",
+                new BigDecimal("100.00"), BigDecimal.ZERO, BigDecimal.ZERO, null
+        );
+        quotation.decide(QuoteStatus.ACCEPTED);
+        InspectionRequest inspection = InspectionRequest.createForQuotation("token-digital-lock", quotation);
+
+        assertDoesNotThrow(inspection::invalidatePendingDigitalAcceptance);
+        inspection.completeDigitalAcceptance(
+                1L, "signature", "authenticator", "client-data", "proof-hash", true,
+                java.time.OffsetDateTime.now()
+        );
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                inspection::invalidatePendingDigitalAcceptance
+        );
+        assertTrue(error.getMessage().contains("aceite digital"));
+        assertThrows(IllegalArgumentException.class, inspection::reopenForMissingFiles);
     }
 
     private Quotation quotationWithBaseValue(String baseValue) {

@@ -60,10 +60,21 @@ public class ApiExceptionHandler {
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiError> handleDataIntegrity(DataIntegrityViolationException exception) {
         log.warn("Conflito de integridade ao salvar alteração administrativa", exception);
+        String cause = exception.getMostSpecificCause() == null
+                ? ""
+                : String.valueOf(exception.getMostSpecificCause().getMessage()).toLowerCase();
+        String message;
+        if (cause.contains("value too long") || cause.contains("too long for type")) {
+            message = "Um dos dados informados ultrapassa o tamanho permitido. Revise os campos e tente novamente.";
+        } else if (cause.contains("duplicate key") || cause.contains("unique constraint")) {
+            message = "Já existe outro registro utilizando uma informação que precisa ser única. Atualize a tela e tente novamente.";
+        } else {
+            message = "Não foi possível salvar a alteração por um conflito de integridade dos dados. Atualize a tela e tente novamente.";
+        }
         return ResponseEntity.badRequest().body(new ApiError(
                 OffsetDateTime.now(),
                 HttpStatus.BAD_REQUEST.value(),
-                "Não foi possível salvar esse vínculo. Atualize a tela e tente novamente. O histórico de cotações e vendas permanece preservado.",
+                message,
                 Map.of()
         ));
     }

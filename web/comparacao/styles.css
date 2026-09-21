@@ -363,3 +363,41 @@ body {
     padding-right: 18px;
   }
 }
+
+/* V50 — comparação dinâmica no mobile.
+   Não limita a quantidade de planos: todos os planos existentes no snapshot
+   do link são empilhados e exibidos integralmente. */
+@media (max-width: 900px) {
+  #plan-list,
+  .plan-list {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    width: 100% !important;
+  }
+
+  #plan-list > .plan-card,
+  .plan-list > .plan-card {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .plan-list {
+    gap: 14px !important;
+  }
+
+  .plan-name-row h3 {
+    font-size: 21px !important;
+    overflow-wrap: anywhere;
+  }
+}

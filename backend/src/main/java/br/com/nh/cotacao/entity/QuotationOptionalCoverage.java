@@ -59,4 +59,16 @@ public class QuotationOptionalCoverage {
     public String getCoverageName() { return coverageName; }
     public String getDetail() { return detail; }
     public BigDecimal getMonthlyPrice() { return monthlyPrice; }
+
+    void updateFromCatalog(String coverageName, String detail, BigDecimal monthlyPrice) {
+        if (coverageName == null || coverageName.isBlank()) {
+            throw new IllegalArgumentException("Nome do serviço adicional inválido.");
+        }
+        if (monthlyPrice == null || monthlyPrice.signum() < 0) {
+            throw new IllegalArgumentException("Valor mensal do serviço adicional inválido.");
+        }
+        this.coverageName = coverageName.trim();
+        this.detail = detail == null || detail.isBlank() ? null : detail.trim();
+        this.monthlyPrice = monthlyPrice.setScale(2, java.math.RoundingMode.HALF_UP);
+    }
 }

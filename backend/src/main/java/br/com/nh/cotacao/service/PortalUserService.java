@@ -141,9 +141,23 @@ public class PortalUserService {
             }
             return;
         }
-        if (!linked.get().equals(assignedId)) {
-            throw new IllegalArgumentException("Esta vistoria está vinculada a outro analista.");
-        }
+        if (linked.get().equals(assignedId)) return;
+
+        // Compatibilidade com históricos: se o responsável salvo não existe mais,
+        // está inativo ou deixou de ser ANALYST, usa o vínculo atual do consultor.
+        Consultant assigned = inspection.getAssignedAnalyst();
+        boolean storedAssignmentUsable = assigned != null
+                && assigned.isActive()
+                && assigned.getRole() == CollaboratorRole.ANALYST;
+        Consultant consultant = inspection.getConsultant();
+        Consultant currentAnalyst = consultant == null ? null : consultant.getAssignedAnalyst();
+        boolean currentAssignmentMatches = currentAnalyst != null
+                && currentAnalyst.isActive()
+                && currentAnalyst.getRole() == CollaboratorRole.ANALYST
+                && linked.get().equals(currentAnalyst.getId());
+        if (!storedAssignmentUsable && currentAssignmentMatches) return;
+
+        throw new IllegalArgumentException("Esta vistoria está vinculada a outro analista.");
     }
 
     @Transactional(readOnly = true)
@@ -157,9 +171,8 @@ public class PortalUserService {
         boolean visible = inspection.getAnalysisStage() == br.com.nh.cotacao.entity.InspectionAnalysisStage.ANALYST_QUEUE
                 || inspection.getAnalysisStage() == br.com.nh.cotacao.entity.InspectionAnalysisStage.ANALYST_PENDING
                 || inspection.getAnalysisStage() == br.com.nh.cotacao.entity.InspectionAnalysisStage.SUPERVISION_QUEUE
-                || (inspection.getAnalysisStage() == br.com.nh.cotacao.entity.InspectionAnalysisStage.FINISHED
-                    && ("SUPERVISION_ANALYSIS".equals(inspection.getReviewedByRole())
-                        || "ADMIN_SUPERVISION".equals(inspection.getReviewedByRole())));
+                || inspection.getStatus() == br.com.nh.cotacao.entity.InspectionRequestStatus.APPROVED
+                || inspection.getStatus() == br.com.nh.cotacao.entity.InspectionRequestStatus.REJECTED;
         if (!visible) throw new IllegalArgumentException("Esta vistoria não faz parte do fluxo de análise/supervisão.");
     }
 

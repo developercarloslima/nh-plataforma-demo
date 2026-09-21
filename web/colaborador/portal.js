@@ -434,9 +434,11 @@ function inspectionActions(item) {
   const startLabel = item.status === 'UPLOADING_FILES' ? 'Continuar vistoria' : 'Iniciar vistoria';
 
   const startButton = canCollectFiles
-    ? (item.publicUrl
-      ? `<a class="button secondary small-button" href="${escapeHtml(item.publicUrl)}" target="_blank" rel="noopener">${startLabel}</a>`
-      : `<button class="secondary small-button" type="button" disabled title="O link desta vistoria ainda não está disponível.">${startLabel}</button>`)
+    ? (item.expiredWithoutFiles
+      ? `<button class="secondary small-button" data-expired-inspection="${item.id}" type="button">${startLabel}</button>`
+      : (item.publicUrl
+        ? `<a class="button secondary small-button" href="${escapeHtml(item.publicUrl)}" target="_blank" rel="noopener">${startLabel}</a>`
+        : `<button class="secondary small-button" type="button" disabled title="O link desta vistoria ainda não está disponível.">${startLabel}</button>`))
     : '';
 
   const requestButton = canCollectFiles
@@ -470,8 +472,10 @@ function quoteActions(item) {
     whatsapp: item.whatsapp || ''
   });
   const validityEnded = item.validUntil && new Date(item.validUntil).getTime() < Date.now();
-  const startInspection = item.status === 'ACCEPTED' && !item.inspectionId && !validityEnded
-    ? `<a class="button secondary small-button" href="/colaborador/retrato.html?${inspectionParams.toString()}">Abrir Retrato NH</a>`
+  const startInspection = item.status === 'ACCEPTED' && !item.inspectionId
+    ? (validityEnded || item.expired
+      ? `<button class="secondary small-button" data-expired-quote="${item.id}" type="button">Abrir Retrato NH</button>`
+      : `<a class="button secondary small-button" href="/colaborador/retrato.html?${inspectionParams.toString()}">Abrir Retrato NH</a>`)
     : '';
   const redo = item.expired
     ? `<button class="secondary small-button" data-redo-quote="${item.id}" type="button">Refazer cotação</button>`
@@ -598,6 +602,10 @@ async function persistQuoteEdit(item, payload) {
 function openQuoteEditDialog(id) {
   const item = findQuote(id);
   if (!item) return;
+  if (item.expired && !item.inspectionHasFiles) {
+    window.alert('Vistoria/cotação vencida, precisa ser refeita.');
+    return;
+  }
   activeQuoteEditId = item.id;
   $('consultant-quote-edit-id').value = item.id;
   $('consultant-quote-edit-name').value = item.customerName || '';
@@ -732,6 +740,9 @@ function renderDashboard(data) {
   document.querySelectorAll('[data-download-report]').forEach(button => {
     button.addEventListener('click', () => downloadConsultantReport(button.dataset.downloadReport, button));
   });
+  document.querySelectorAll('[data-expired-quote], [data-expired-inspection]').forEach(button => {
+    button.addEventListener('click', () => window.alert('Vistoria/cotação vencida, precisa ser refeita.'));
+  });
   document.querySelectorAll('[data-edit-quote]').forEach(button => {
     button.addEventListener('click', () => openQuoteEditDialog(button.dataset.editQuote));
   });
@@ -749,7 +760,7 @@ function openConsultantFiles(id) {
   releaseConsultantMediaUrls();
   $('consultant-files-title').textContent = `${plate(item.plate, true)} — ${item.associateName}`;
   $('consultant-files-retention').textContent = Number(item.assetCount || 0) > 0
-    ? `Os arquivos ficam disponíveis até ${date(item.filesExpireAt)} e são apagados automaticamente após 40 dias.`
+    ? 'Arquivos confirmados: disponíveis até o limite de retenção operacional de 40 dias.'
     : 'Nenhum arquivo disponível.';
   $('consultant-download-all-files').dataset.inspectionId = item.id;
   renderConsultantFiles(item);
@@ -772,7 +783,7 @@ function renderConsultantFiles(item) {
         : `<div class="inspection-media-preview"><div class="inspection-media-placeholder">${asset.type === 'REPORT' ? 'PDF' : 'DOCUMENTO'}</div></div>`;
     const actions = asset.available
       ? `<div class="inspection-media-actions">${video ? `<button class="outline" data-consultant-play-video="${asset.id}" type="button">Reproduzir</button>` : ''}<button class="secondary" data-consultant-download-asset="${asset.id}" data-file-name="${escapeHtml(asset.fileName)}" type="button">Baixar</button></div>`
-      : '<div class="inspection-media-expired">Arquivo removido após 40 dias.</div>';
+      : '<div class="inspection-media-expired">Arquivo histórico indisponível.</div>';
     return `<article class="inspection-media-card ${asset.available ? '' : 'expired'}">${preview}<div class="inspection-media-body"><strong>${escapeHtml(title)}</strong><small>${escapeHtml(asset.fileName)}</small><small>${formatBytes(asset.fileSize)} · ${escapeHtml(asset.contentType || 'arquivo')}</small>${actions}</div></article>`;
   }).join('') || '<div class="empty-state">Nenhum arquivo disponível.</div>';
 

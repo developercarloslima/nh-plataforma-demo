@@ -1,12 +1,14 @@
 package br.com.nh.cotacao.controller;
 
 import br.com.nh.cotacao.dto.InspectionDtos.*;
+import br.com.nh.cotacao.dto.ContractChangeDtos.*;
 import br.com.nh.cotacao.entity.InspectionAssetType;
 import br.com.nh.cotacao.security.PortalPrincipal;
 import br.com.nh.cotacao.service.InspectionResumableUploadService;
 import br.com.nh.cotacao.service.InspectionDigitalAcceptanceService;
 import br.com.nh.cotacao.service.PortalUserService;
 import br.com.nh.cotacao.service.RetratoService;
+import br.com.nh.cotacao.service.InspectionContractChangeService;
 import jakarta.validation.Valid;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
@@ -23,17 +25,20 @@ public class RetratoController {
     private final InspectionResumableUploadService resumableUploadService;
     private final PortalUserService portalUserService;
     private final InspectionDigitalAcceptanceService digitalAcceptanceService;
+    private final InspectionContractChangeService contractChangeService;
 
     public RetratoController(
             RetratoService service,
             InspectionResumableUploadService resumableUploadService,
             PortalUserService portalUserService,
-            InspectionDigitalAcceptanceService digitalAcceptanceService
+            InspectionDigitalAcceptanceService digitalAcceptanceService,
+            InspectionContractChangeService contractChangeService
     ) {
         this.service = service;
         this.resumableUploadService = resumableUploadService;
         this.portalUserService = portalUserService;
         this.digitalAcceptanceService = digitalAcceptanceService;
+        this.contractChangeService = contractChangeService;
     }
 
     @PostMapping("/api/inspections")
@@ -49,6 +54,19 @@ public class RetratoController {
     @GetMapping("/api/public/inspections/{token}")
     public InspectionResponse publicGet(@PathVariable String token) {
         return service.publicGet(token);
+    }
+
+    @GetMapping("/api/public/inspections/{token}/contract-change")
+    public PublicContractChangeResponse publicContractChange(@PathVariable String token) {
+        return contractChangeService.publicStatus(token);
+    }
+
+    @PostMapping("/api/public/inspections/{token}/contract-change/decision")
+    public ContractChangeDecisionResponse publicContractChangeDecision(
+            @PathVariable String token,
+            @Valid @RequestBody ConfirmContractChangeRequest request
+    ) {
+        return contractChangeService.decide(token, request.accepted(), request.keepOptionals());
     }
 
     @PostMapping(value = "/api/public/inspections/{token}/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -109,6 +127,37 @@ public class RetratoController {
                 contentType,
                 videoDurationSeconds,
                 chunk
+        );
+    }
+
+    @PostMapping(value = "/api/public/inspections/{token}/upload-chunk-raw", consumes = MediaType.APPLICATION_OCTET_STREAM_VALUE)
+    public ChunkUploadResponse uploadChunkRaw(
+            @PathVariable String token,
+            @RequestParam InspectionAssetType assetType,
+            @RequestParam int sortOrder,
+            @RequestParam String label,
+            @RequestParam String uploadId,
+            @RequestParam int chunkIndex,
+            @RequestParam int totalChunks,
+            @RequestParam long totalSize,
+            @RequestParam int chunkSize,
+            @RequestParam String contentType,
+            @RequestParam(value = "videoDurationSeconds", required = false) Double videoDurationSeconds,
+            @RequestBody byte[] chunkBytes
+    ) {
+        return resumableUploadService.uploadChunkRaw(
+                token,
+                assetType,
+                sortOrder,
+                label,
+                uploadId,
+                chunkIndex,
+                totalChunks,
+                totalSize,
+                chunkSize,
+                contentType,
+                videoDurationSeconds,
+                chunkBytes
         );
     }
 

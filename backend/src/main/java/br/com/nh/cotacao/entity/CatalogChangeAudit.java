@@ -8,11 +8,13 @@ import java.time.OffsetDateTime;
 @Entity
 @Table(name = "catalog_change_audit")
 public class CatalogChangeAudit {
+    public static final int ITEM_TYPE_MAX_LENGTH = 80;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "item_type", nullable = false, length = 30)
+    @Column(name = "item_type", nullable = false, length = ITEM_TYPE_MAX_LENGTH)
     private String itemType;
 
     @Column(name = "item_id")
@@ -91,8 +93,17 @@ public class CatalogChangeAudit {
             String description,
             String changedBy
     ) {
+        String normalizedType = type == null ? "" : type.trim();
+        if (normalizedType.isEmpty()) {
+            throw new IllegalArgumentException("Identificador interno de auditoria não informado.");
+        }
+        if (normalizedType.length() > ITEM_TYPE_MAX_LENGTH) {
+            throw new IllegalArgumentException(
+                    "Identificador interno de auditoria excede o limite de " + ITEM_TYPE_MAX_LENGTH + " caracteres: " + normalizedType
+            );
+        }
         CatalogChangeAudit audit = new CatalogChangeAudit();
-        audit.itemType = type;
+        audit.itemType = normalizedType;
         audit.itemId = id;
         audit.itemKey = truncateKey(itemKey);
         audit.description = description == null ? "Alteração administrativa" : description.substring(0, Math.min(260, description.length()));

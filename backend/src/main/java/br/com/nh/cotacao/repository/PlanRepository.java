@@ -30,6 +30,8 @@ public interface PlanRepository extends JpaRepository<Plan, Long> {
     @Query("select p from Plan p where p.code = :code and p.active = true and p.category.active = true")
     Optional<Plan> findAvailableByCode(@Param("code") String code);
 
+    Optional<Plan> findByCode(String code);
+
     boolean existsByCode(String code);
 
     boolean existsByCodeAndIdNot(String code, Long id);

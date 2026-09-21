@@ -1920,3 +1920,56 @@ footer .footer-developer a:hover,
 footer .footer-developer a:focus-visible {
   text-decoration: underline;
 }
+
+/* V50 — planos dinâmicos no mobile
+   Garante que qualquer plano criado pelo Admin seja exibido no celular,
+   independentemente da quantidade de planos retornada pela API. */
+@media (max-width: 900px) {
+  #plans-section,
+  #plan-cards,
+  .plan-cards {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  #plan-cards.plan-cards {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 16px !important;
+    width: 100% !important;
+  }
+
+  #plan-cards > .plan-card {
+    display: block !important;
+    position: relative !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+  }
+}
+
+@media (max-width: 520px) {
+  #plan-cards.plan-cards {
+    gap: 14px !important;
+  }
+
+  #plan-cards > .plan-card {
+    padding: 18px 16px !important;
+    border-radius: 16px !important;
+  }
+
+  #plan-cards .plan-card-head h3 {
+    font-size: 1.2rem !important;
+    overflow-wrap: anywhere;
+  }
+
+  #plan-cards .plan-card-head p {
+    min-height: 0 !important;
+  }
+}

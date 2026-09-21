@@ -2,6 +2,7 @@ package br.com.nh.cotacao.entity;
 
 import jakarta.persistence.*;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -84,6 +85,9 @@ public class InspectionRequest {
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
+    @Column(name = "updated_at", nullable = false)
+    private OffsetDateTime updatedAt;
+
     @Column(name = "expires_at", nullable = false)
     private OffsetDateTime expiresAt;
 
@@ -120,6 +124,40 @@ public class InspectionRequest {
 
     @Column(name = "decision_message_sent_at")
     private OffsetDateTime decisionMessageSentAt;
+
+    @Column(name = "pending_contract_fipe_value", precision = 14, scale = 2)
+    private BigDecimal pendingContractFipeValue;
+
+    @Column(name = "pending_contract_monthly_value", precision = 14, scale = 2)
+    private BigDecimal pendingContractMonthlyValue;
+
+    @Column(name = "pending_contract_discount_percent")
+    private Integer pendingContractDiscountPercent;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "pending_contract_rear_window_branding", length = 40)
+    private RearWindowBranding pendingContractRearWindowBranding;
+
+    @Column(name = "pending_contract_benefit_codes", length = 4000)
+    private String pendingContractBenefitCodes;
+
+    @Column(name = "pending_contract_manual_monthly_override", nullable = false)
+    private boolean pendingContractManualMonthlyOverride;
+
+    @Column(name = "contract_change_requested_at")
+    private OffsetDateTime contractChangeRequestedAt;
+
+    @Column(name = "contract_change_requested_by", length = 160)
+    private String contractChangeRequestedBy;
+
+    @Column(name = "contract_change_decided_at")
+    private OffsetDateTime contractChangeDecidedAt;
+
+    @Column(name = "contract_change_accepted")
+    private Boolean contractChangeAccepted;
+
+    @Column(name = "contract_change_keep_optionals")
+    private Boolean contractChangeKeepOptionals;
 
     @Column(name = "drive_folder_id", length = 160)
     private String driveFolderId;
@@ -208,6 +246,18 @@ public class InspectionRequest {
     @OneToMany(mappedBy = "inspectionRequest", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sortOrder ASC")
     private List<InspectionAsset> assets = new ArrayList<>();
+
+    @PrePersist
+    private void initializeTimestamps() {
+        OffsetDateTime now = OffsetDateTime.now();
+        if (createdAt == null) createdAt = now;
+        if (updatedAt == null) updatedAt = createdAt;
+    }
+
+    @PreUpdate
+    private void touchUpdatedAt() {
+        updatedAt = OffsetDateTime.now();
+    }
 
     protected InspectionRequest() {}
 
@@ -322,7 +372,21 @@ public class InspectionRequest {
         return normalized.isBlank() ? null : normalized;
     }
 
+    public boolean hasAnyPreservedFile() {
+        return assets != null && assets.stream().anyMatch(asset -> {
+            if (asset == null || asset.getAssetType() == InspectionAssetType.REPORT || asset.getPurgedAt() != null) {
+                return false;
+            }
+            if (asset.getStorageKind() == InspectionAssetStorageKind.DRIVE) {
+                return (asset.getDriveFileId() != null && !asset.getDriveFileId().isBlank())
+                        || (asset.getDriveFileUrl() != null && !asset.getDriveFileUrl().isBlank());
+            }
+            return asset.getStoredAt() != null;
+        });
+    }
+
     public boolean isExpired() {
+        if (hasAnyPreservedFile()) return false;
         return (status == InspectionRequestStatus.WAITING_FILES
                 || status == InspectionRequestStatus.UPLOADING_FILES
                 || status == InspectionRequestStatus.CREATED
@@ -374,11 +438,20 @@ public class InspectionRequest {
         if (cleanResponsibleName == null) {
             throw new IllegalArgumentException("Informe o responsável pelo cadastro.");
         }
+        boolean preserveFinalDecision = this.analysisStage == InspectionAnalysisStage.FINISHED
+                && (this.status == InspectionRequestStatus.APPROVED
+                || this.status == InspectionRequestStatus.REJECTED);
+        // Se ainda não houve aceite definitivo, qualquer regularização cadastral
+        // invalida uma cerimônia WebAuthn pendente para que o aceite represente o
+        // estado final mais recente da vistoria.
+        invalidatePendingDigitalAcceptance();
         this.adminNote = cleanNote(note);
         this.registrationCompletedAt = OffsetDateTime.now();
         this.registrationCompletedByName = cleanResponsibleName;
-        this.status = InspectionRequestStatus.UNDER_REVIEW;
-        this.analysisStage = InspectionAnalysisStage.SUPERVISION_QUEUE;
+        if (!preserveFinalDecision) {
+            this.status = InspectionRequestStatus.UNDER_REVIEW;
+            this.analysisStage = InspectionAnalysisStage.SUPERVISION_QUEUE;
+        }
         this.reviewedAt = this.registrationCompletedAt;
         this.reviewedByCollaborator = null;
         this.reviewedByName = cleanResponsibleName;
@@ -387,20 +460,45 @@ public class InspectionRequest {
     }
 
     public void markRegistrationNotCompletedByAdministrator(String administratorName, String note) {
-        assertStoredCompletionRequirements(true);
-        String cleanAdministratorName = cleanReviewerName(administratorName);
-        if (cleanAdministratorName == null) {
-            throw new IllegalArgumentException("Informe o nome do administrador responsável.");
+        markRegistrationNotCompletedPrivileged(administratorName, note, "ADMIN_ANALYSIS");
+    }
+
+    public void markRegistrationNotCompletedBySupervisor(String supervisorName, String note) {
+        markRegistrationNotCompletedPrivileged(supervisorName, note, "SUPERVISION_ANALYSIS");
+    }
+
+    /**
+     * Admin e Supervisão podem reabrir a etapa de cadastro até o aceite digital,
+     * inclusive em vistoria já aprovada e mesmo quando ainda existirem arquivos
+     * pendentes. O objetivo é permitir correções operacionais sem transformar a
+     * ausência de documentos em uma trava para o perfil responsável pela decisão.
+     * Qualquer cerimônia WebAuthn ainda pendente é invalidada para que o associado
+     * aceite somente o dossiê final depois da nova conclusão do cadastro.
+     */
+    private void markRegistrationNotCompletedPrivileged(String responsibleName, String note, String reviewerRole) {
+        String cleanResponsibleName = cleanReviewerName(responsibleName);
+        if (cleanResponsibleName == null) {
+            throw new IllegalArgumentException("Informe o responsável pela reabertura do cadastro.");
         }
+        boolean preserveFinalDecision = this.analysisStage == InspectionAnalysisStage.FINISHED
+                && (this.status == InspectionRequestStatus.APPROVED
+                || this.status == InspectionRequestStatus.REJECTED);
+        invalidatePendingDigitalAcceptance();
         this.adminNote = cleanNote(note);
         this.registrationCompletedAt = null;
         this.registrationCompletedByName = null;
-        this.status = InspectionRequestStatus.UNDER_REVIEW;
-        this.analysisStage = InspectionAnalysisStage.ANALYST_QUEUE;
+        // Cadastro e decisão final são estados independentes para ADM/Supervisão.
+        // Ao reabrir uma vistoria já aprovada/rejeitada antes do aceite digital,
+        // preservamos a decisão final para que as correções alterem o contrato real
+        // e o dossiê final, sem cair novamente no fluxo de proposta histórica.
+        if (!preserveFinalDecision) {
+            this.status = InspectionRequestStatus.UNDER_REVIEW;
+            this.analysisStage = InspectionAnalysisStage.ANALYST_QUEUE;
+        }
         this.reviewedAt = OffsetDateTime.now();
         this.reviewedByCollaborator = null;
-        this.reviewedByName = cleanAdministratorName;
-        this.reviewedByRole = "ADMIN_ANALYSIS";
+        this.reviewedByName = cleanResponsibleName;
+        this.reviewedByRole = reviewerRole;
         this.decisionMessageSentAt = null;
     }
 
@@ -454,9 +552,18 @@ public class InspectionRequest {
 
     /**
      * Permite correções cadastrais controladas no fluxo de análise/supervisão.
-     * Não altera CPF, placa, plano, valores ou evidências já coletadas.
+     * O valor FIPE, plano, coberturas, valores comerciais e evidências não são alterados.
      */
-    public void updateEditableAssociateVehicleData(String associateName, String whatsapp, String vehicleModel, Integer modelYear) {
+    public void updateEditableAssociateVehicleData(
+            String associateName,
+            String cpf,
+            String whatsapp,
+            String plate,
+            String vehicleModel,
+            Integer modelYear,
+            boolean zeroKm,
+            String residenceAddress
+    ) {
         if (associateName == null || associateName.isBlank()) {
             throw new IllegalArgumentException("Informe o nome do associado.");
         }
@@ -464,10 +571,26 @@ public class InspectionRequest {
         if (cleanName.length() > 140) {
             throw new IllegalArgumentException("O nome do associado deve possuir no máximo 140 caracteres.");
         }
+
+        String cpfDigits = cpf == null ? "" : cpf.replaceAll("\\D", "");
+        if (cpfDigits.length() != 11) {
+            throw new IllegalArgumentException("Informe um CPF válido.");
+        }
+
         String phoneDigits = whatsapp == null ? "" : whatsapp.replaceAll("\\D", "");
         if (!phoneDigits.isBlank() && (phoneDigits.length() < 10 || phoneDigits.length() > 13)) {
             throw new IllegalArgumentException("Informe um WhatsApp válido com DDD.");
         }
+
+        String cleanPlate = plate == null ? "" : plate.replaceAll("[^A-Za-z0-9]", "").toUpperCase(Locale.ROOT);
+        if (zeroKm && cleanPlate.isBlank()) {
+            cleanPlate = null;
+        } else if (!cleanPlate.matches("^[A-Z0-9]{7,10}$")) {
+            throw new IllegalArgumentException(zeroKm
+                    ? "Informe uma placa válida ou deixe o campo vazio para veículo 0 km."
+                    : "Informe uma placa válida.");
+        }
+
         String cleanModel = vehicleModel == null ? "" : vehicleModel.trim().replaceAll("\\s+", " ");
         if (cleanModel.isBlank()) {
             throw new IllegalArgumentException("Informe o modelo do veículo.");
@@ -478,10 +601,27 @@ public class InspectionRequest {
         if (modelYear == null || modelYear < 1950 || modelYear > 2100) {
             throw new IllegalArgumentException("Informe um ano do modelo válido.");
         }
+
+        String cleanAddress = residenceAddress == null ? "" : residenceAddress.trim().replaceAll("\\s+", " ");
+        if (cleanAddress.length() > 600) {
+            throw new IllegalArgumentException("O endereço residencial deve possuir no máximo 600 caracteres.");
+        }
+
         this.associateName = cleanName;
+        this.cpf = cpfDigits;
         this.whatsapp = phoneDigits.isBlank() ? null : phoneDigits;
+        this.plate = cleanPlate;
         this.vehicleModel = cleanModel;
         this.modelYear = modelYear;
+        this.residenceAddress = cleanAddress.isBlank() ? null : cleanAddress;
+    }
+
+    /** Compatibilidade com fluxos legados que editam apenas nome, WhatsApp, modelo e ano. */
+    public void updateEditableAssociateVehicleData(String associateName, String whatsapp, String vehicleModel, Integer modelYear) {
+        updateEditableAssociateVehicleData(
+                associateName, this.cpf, whatsapp, this.plate, vehicleModel, modelYear,
+                this.plate == null || this.plate.isBlank(), this.residenceAddress
+        );
     }
 
     /** Sincroniza os dados cadastrais vindos da cotação sem alterar o conteúdo da vistoria. */
@@ -535,6 +675,7 @@ public class InspectionRequest {
      * público volta a aceitar somente os slots que estiverem faltando.
      */
     public void reopenForMissingFiles() {
+        invalidatePendingDigitalAcceptance();
         this.status = InspectionRequestStatus.WAITING_FILES;
         if (this.assignedAnalyst != null) {
             this.analysisStage = InspectionAnalysisStage.ANALYST_PENDING;
@@ -741,6 +882,125 @@ public class InspectionRequest {
         // Mantemos o challenge assinado para auditoria da prova WebAuthn.
     }
 
+    /**
+     * Invalida qualquer cerimônia WebAuthn que tenha sido iniciada antes de uma
+     * correção administrativa. Enquanto o associado ainda não concluiu o aceite,
+     * Admin/Supervisão podem corrigir o dossiê; depois da correção o cliente precisa
+     * iniciar um novo aceite, garantindo que o hash assinado represente exatamente
+     * a versão final revisada.
+     */
+    public void invalidatePendingDigitalAcceptance() {
+        if (this.acceptedAt != null) {
+            throw new IllegalArgumentException(
+                    "Esta vistoria já possui aceite digital do associado e não pode mais ser alterada."
+            );
+        }
+        this.webauthnRegistrationChallenge = null;
+        this.webauthnRegistrationExpiresAt = null;
+        this.webauthnOrigin = null;
+        this.webauthnRpId = null;
+        this.webauthnCredentialId = null;
+        this.webauthnPublicKey = null;
+        this.webauthnAlgorithm = null;
+        this.webauthnSignCount = null;
+        this.webauthnAssertionChallenge = null;
+        this.webauthnAssertionExpiresAt = null;
+        this.acceptanceEvidenceHash = null;
+        this.acceptanceSelfieSha256 = null;
+        this.acceptanceDossierSha256 = null;
+        this.acceptanceDeviceMetadata = null;
+        this.acceptanceIp = null;
+        this.acceptanceLatitude = null;
+        this.acceptanceLongitude = null;
+        this.acceptanceAccuracyMeters = null;
+        this.acceptanceAssertionSignature = null;
+        this.acceptanceAuthenticatorData = null;
+        this.acceptanceClientDataJson = null;
+        this.acceptanceProofHash = null;
+        this.acceptanceUserVerified = null;
+    }
+
+    public void requestContractChange(
+            BigDecimal fipeValue,
+            BigDecimal monthlyValue,
+            Integer discountPercent,
+            RearWindowBranding rearWindowBranding,
+            java.util.Set<String> benefitCodes,
+            boolean manualMonthlyOverride,
+            String requestedBy
+    ) {
+        if (fipeValue == null || fipeValue.signum() <= 0) {
+            throw new IllegalArgumentException("Informe um valor FIPE válido.");
+        }
+        if (monthlyValue == null || monthlyValue.signum() <= 0) {
+            throw new IllegalArgumentException("Informe uma mensalidade válida.");
+        }
+        this.pendingContractFipeValue = fipeValue.setScale(2, java.math.RoundingMode.HALF_UP);
+        this.pendingContractMonthlyValue = monthlyValue.setScale(2, java.math.RoundingMode.HALF_UP);
+        this.pendingContractDiscountPercent = discountPercent == null ? 0 : discountPercent;
+        this.pendingContractRearWindowBranding = rearWindowBranding == null ? RearWindowBranding.NOT_APPLICABLE : rearWindowBranding;
+        this.pendingContractBenefitCodes = benefitCodes == null ? "" : benefitCodes.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(code -> code.trim().toUpperCase(java.util.Locale.ROOT))
+                .filter(code -> !code.isBlank())
+                .distinct()
+                .sorted()
+                .collect(java.util.stream.Collectors.joining(","));
+        this.pendingContractManualMonthlyOverride = manualMonthlyOverride;
+        this.contractChangeRequestedAt = OffsetDateTime.now();
+        this.contractChangeRequestedBy = cleanReviewerName(requestedBy);
+        this.contractChangeDecidedAt = null;
+        this.contractChangeAccepted = null;
+        this.contractChangeKeepOptionals = null;
+    }
+
+    public void requestContractChange(BigDecimal fipeValue, BigDecimal monthlyValue, String requestedBy) {
+        java.util.Set<String> currentBenefits = quotation == null ? java.util.Set.of() : quotation.finalSelectedCoverageCodes();
+        requestContractChange(
+                fipeValue, monthlyValue,
+                quotation == null ? 0 : quotation.getDiscountPercent(),
+                quotation == null ? RearWindowBranding.NOT_APPLICABLE : quotation.getRearWindowBranding(),
+                currentBenefits, false, requestedBy
+        );
+    }
+
+    public java.util.Set<String> pendingContractBenefitCodesSet() {
+        if (pendingContractBenefitCodes == null || pendingContractBenefitCodes.isBlank()) return java.util.Set.of();
+        return java.util.Arrays.stream(pendingContractBenefitCodes.split(","))
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+    }
+
+    public void resolveContractChange(boolean accepted, Boolean keepOptionals) {
+        this.contractChangeDecidedAt = OffsetDateTime.now();
+        this.contractChangeAccepted = accepted;
+        this.contractChangeKeepOptionals = keepOptionals;
+        this.pendingContractFipeValue = null;
+        this.pendingContractMonthlyValue = null;
+        this.pendingContractDiscountPercent = null;
+        this.pendingContractRearWindowBranding = null;
+        this.pendingContractBenefitCodes = null;
+        this.pendingContractManualMonthlyOverride = false;
+        this.contractChangeRequestedAt = null;
+        this.contractChangeRequestedBy = null;
+    }
+
+    public void clearPendingContractChange() {
+        this.pendingContractFipeValue = null;
+        this.pendingContractMonthlyValue = null;
+        this.pendingContractDiscountPercent = null;
+        this.pendingContractRearWindowBranding = null;
+        this.pendingContractBenefitCodes = null;
+        this.pendingContractManualMonthlyOverride = false;
+        this.contractChangeRequestedAt = null;
+        this.contractChangeRequestedBy = null;
+    }
+
+    public boolean hasPendingContractChange() {
+        return pendingContractFipeValue != null && pendingContractMonthlyValue != null;
+    }
+
     public void updateSupervisionNote(String note, String supervisorName) {
         this.supervisionNote = cleanNote(note);
         this.supervisionNoteUpdatedAt = OffsetDateTime.now();
@@ -783,6 +1043,7 @@ public class InspectionRequest {
     public Quotation getQuotation() { return quotation; }
     public InspectionRequestStatus getStatus() { return status; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
+    public OffsetDateTime getUpdatedAt() { return updatedAt; }
     public OffsetDateTime getExpiresAt() { return expiresAt; }
     public OffsetDateTime getCompletedAt() { return completedAt; }
     public String getAdminNote() { return adminNote; }
@@ -795,6 +1056,17 @@ public class InspectionRequest {
     public String getReviewedByRole() { return reviewedByRole; }
     public OffsetDateTime getCompletionMessageSentAt() { return completionMessageSentAt; }
     public OffsetDateTime getDecisionMessageSentAt() { return decisionMessageSentAt; }
+    public BigDecimal getPendingContractFipeValue() { return pendingContractFipeValue; }
+    public BigDecimal getPendingContractMonthlyValue() { return pendingContractMonthlyValue; }
+    public Integer getPendingContractDiscountPercent() { return pendingContractDiscountPercent; }
+    public RearWindowBranding getPendingContractRearWindowBranding() { return pendingContractRearWindowBranding; }
+    public String getPendingContractBenefitCodes() { return pendingContractBenefitCodes; }
+    public boolean isPendingContractManualMonthlyOverride() { return pendingContractManualMonthlyOverride; }
+    public OffsetDateTime getContractChangeRequestedAt() { return contractChangeRequestedAt; }
+    public String getContractChangeRequestedBy() { return contractChangeRequestedBy; }
+    public OffsetDateTime getContractChangeDecidedAt() { return contractChangeDecidedAt; }
+    public Boolean getContractChangeAccepted() { return contractChangeAccepted; }
+    public Boolean getContractChangeKeepOptionals() { return contractChangeKeepOptionals; }
     public String getDriveFolderId() { return driveFolderId; }
     public String getDriveFolderUrl() { return driveFolderUrl; }
     public String getReportFileId() { return reportFileId; }

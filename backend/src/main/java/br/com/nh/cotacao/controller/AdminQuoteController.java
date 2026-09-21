@@ -39,7 +39,8 @@ public class AdminQuoteController {
             @Valid @RequestBody UpdateAdminQuoteDetailsRequest request,
             Authentication auth
     ) {
-        return service.updateQuoteDetails(id, request, username(auth));
+        PortalPrincipal principal = (PortalPrincipal) auth.getPrincipal();
+        return service.updateQuoteDetails(id, request, principal.username(), principal.role());
     }
 
     @PatchMapping("/{id}/status")

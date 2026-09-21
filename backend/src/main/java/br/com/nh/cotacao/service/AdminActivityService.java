@@ -12,8 +12,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.util.UriUtils;
 
 import java.nio.charset.StandardCharsets;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.OffsetDateTime;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -29,6 +34,7 @@ public class AdminActivityService {
     private final PortalUserService portalUserService;
     private final RetratoService retratoService;
     private final RetratoPdfService retratoPdfService;
+    private final CommercialPricingService commercialPricingService;
     private final String publicApiUrl;
     private final String publicWebUrl;
 
@@ -42,6 +48,7 @@ public class AdminActivityService {
             PortalUserService portalUserService,
             RetratoService retratoService,
             RetratoPdfService retratoPdfService,
+            CommercialPricingService commercialPricingService,
             @Value("${app.public-api-url:http://localhost:8080}") String publicApiUrl,
             @Value("${app.public-web-url:https://aforma-demo.vercel.app}") String publicWebUrl
     ) {
@@ -54,6 +61,7 @@ public class AdminActivityService {
         this.portalUserService = portalUserService;
         this.retratoService = retratoService;
         this.retratoPdfService = retratoPdfService;
+        this.commercialPricingService = commercialPricingService;
         this.publicApiUrl = stripTrailingSlash(publicApiUrl);
         this.publicWebUrl = normalizePublicWebUrl(publicWebUrl);
     }
@@ -100,32 +108,50 @@ public class AdminActivityService {
     }
 
     @Transactional
-    public AdminQuoteResponse updateQuoteDetails(UUID id, UpdateAdminQuoteDetailsRequest request, String username) {
+    public AdminQuoteResponse updateQuoteDetails(
+            UUID id, UpdateAdminQuoteDetailsRequest request, String username, PortalRole actorRole
+    ) {
         Quotation quotation = quotationRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Cotação não encontrada."));
         InspectionRequest inspection = inspectionRepository.findByQuotation_Id(id).orElse(null);
-        if (inspection != null && inspection.getAcceptedAt() != null) {
-            throw new IllegalArgumentException("Os dados não podem ser alterados após o aceite digital WebAuthn do associado.");
+
+        if (actorRole == PortalRole.ANALYST) {
+            if (inspection == null) throw new IllegalArgumentException("O analista só pode editar cotações com vistoria vinculada.");
+            portalUserService.assertAnalysisInspectionAccess(username, actorRole, inspection.getId());
+        } else if (actorRole == PortalRole.SUPERVISION_ANALYSIS) {
+            if (inspection == null) throw new IllegalArgumentException("A Supervisão só pode editar cotações com vistoria vinculada.");
+            portalUserService.assertSupervisionInspectionAccess(username, actorRole, inspection.getId());
+        } else if (actorRole != PortalRole.ADMIN) {
+            throw new IllegalArgumentException("Este usuário não possui permissão para editar dados da cotação.");
         }
-        String old = editableDataSummary(quotation.getCustomerName(), quotation.getWhatsapp(), quotation.getModel(), quotation.getManufactureYear());
+
+        assertEditableForActor(inspection, actorRole);
+        assertNotExpiredWithoutPreservedFiles(quotation, inspection);
+
+        String old = editableDataSummary(quotation.getCustomerName(), quotation.getCustomerCpf(), quotation.getWhatsapp(), quotation.getPlate(),
+                quotation.getModel(), quotation.getManufactureYear(), quotation.isZeroKm(), quotation.getObservation(),
+                inspection == null ? null : inspection.getResidenceAddress());
+
+        String normalizedCpf = normalizeOptionalCpf(request.customerCpf());
         quotation.updateNonPricingData(
-                request.customerName(), quotation.getCustomerCpf(), request.whatsapp(), quotation.getPlate(),
-                request.model(), request.modelYear(), quotation.isZeroKm(), quotation.getObservation()
+                request.customerName(), normalizedCpf, request.whatsapp(), request.plate(),
+                request.model(), request.modelYear(), Boolean.TRUE.equals(request.zeroKm()), request.observation()
         );
         if (inspection != null) {
-            inspection.updateEditableAssociateVehicleData(
-                    request.customerName(), request.whatsapp(), request.model(), request.modelYear()
-            );
-        }
-        quotationRepository.flush();
-        if (inspection != null) {
-            inspectionRepository.flush();
-            if (inspection.getStatus() == InspectionRequestStatus.APPROVED
-                    || inspection.getStatus() == InspectionRequestStatus.REJECTED) {
-                persistFinalInspectionDossier(inspection);
+            if (normalizedCpf == null) {
+                throw new IllegalArgumentException("Informe o CPF do associado para manter a vistoria vinculada sincronizada.");
             }
+            inspection.updateEditableAssociateVehicleData(
+                    request.customerName(), normalizedCpf, request.whatsapp(), request.plate(),
+                    request.model(), request.modelYear(), Boolean.TRUE.equals(request.zeroKm()), inspection.getResidenceAddress()
+            );
+            inspectionRepository.saveAndFlush(inspection);
         }
-        String updated = editableDataSummary(quotation.getCustomerName(), quotation.getWhatsapp(), quotation.getModel(), quotation.getManufactureYear());
+        quotationRepository.saveAndFlush(quotation);
+
+        String updated = editableDataSummary(quotation.getCustomerName(), quotation.getCustomerCpf(), quotation.getWhatsapp(), quotation.getPlate(),
+                quotation.getModel(), quotation.getManufactureYear(), quotation.isZeroKm(), quotation.getObservation(),
+                inspection == null ? null : inspection.getResidenceAddress());
         auditRepository.save(CatalogChangeAudit.createText(
                 "QUOTE_EDITABLE_DATA", null, id.toString(),
                 "Dados cadastrais/veículo da cotação " + quotation.getQuoteNumber() + " atualizados",
@@ -185,8 +211,10 @@ public class AdminActivityService {
 
     @Transactional(readOnly = true)
     public List<AdminInspectionResponse> inspections() {
+        // O Admin pode editar os dados em qualquer status, então recebe o CPF completo
+        // no payload administrativo. A exibição mascarada continua sendo decisão do frontend.
         return inspectionRepository.findAllByOrderByCreatedAtDesc().stream()
-                .map(item -> toInspection(item, false))
+                .map(item -> toInspection(item, true))
                 .toList();
     }
 
@@ -194,20 +222,57 @@ public class AdminActivityService {
     public List<AdminInspectionResponse> inspectionsForAnalysis(String username, PortalRole role) {
         if (role == PortalRole.ADMIN) {
             return inspectionRepository.findAllByOrderByCreatedAtDesc().stream()
-                    .filter(item -> item.getAnalysisStage() == InspectionAnalysisStage.ANALYST_QUEUE
-                            || item.getAnalysisStage() == InspectionAnalysisStage.ANALYST_PENDING)
+                    .filter(this::isOpenForAnalysisTeam)
                     .map(item -> toInspection(item, true))
                     .toList();
         }
         UUID analystId = portalUserService.linkedAnalystId(username).orElse(null);
         return inspectionRepository.findAllByOrderByCreatedAtDesc().stream()
-                .filter(item -> item.getAnalysisStage() == InspectionAnalysisStage.ANALYST_QUEUE
-                        || item.getAnalysisStage() == InspectionAnalysisStage.ANALYST_PENDING)
-                .filter(item -> analystId == null
-                        ? item.getAssignedAnalyst() == null
-                        : (item.getAssignedAnalyst() != null && analystId.equals(item.getAssignedAnalyst().getId())))
+                .filter(this::isOpenForAnalysisTeam)
+                .filter(item -> belongsToAnalystQueue(item, analystId))
                 .map(item -> toInspection(item, true))
                 .toList();
+    }
+
+    /**
+     * Compatibilidade com vistorias históricas: ANALYST_QUEUE/ANALYST_PENDING são
+     * sempre editáveis pelo Cadastro. Também aceita registros legados ainda abertos
+     * que tenham ficado com uma etapa inconsistente antes das migrations atuais.
+     */
+    private boolean isOpenForAnalysisTeam(InspectionRequest item) {
+        if (item == null) return false;
+        InspectionAnalysisStage stage = item.getAnalysisStage();
+        if (stage == InspectionAnalysisStage.ANALYST_QUEUE || stage == InspectionAnalysisStage.ANALYST_PENDING) {
+            return true;
+        }
+        if (stage == InspectionAnalysisStage.SUPERVISION_QUEUE || stage == InspectionAnalysisStage.FINISHED) {
+            return false;
+        }
+        InspectionRequestStatus status = item.getStatus();
+        return item.getRegistrationCompletedAt() == null
+                && status != InspectionRequestStatus.APPROVED
+                && status != InspectionRequestStatus.REJECTED
+                && status != InspectionRequestStatus.CANCELLED
+                && status != InspectionRequestStatus.EXPIRED;
+    }
+
+    private boolean belongsToAnalystQueue(InspectionRequest item, UUID analystId) {
+        Consultant assigned = item == null ? null : item.getAssignedAnalyst();
+        if (analystId == null) return assigned == null;
+        if (assigned != null && analystId.equals(assigned.getId())) return true;
+
+        // Para históricos sem responsável válido, respeita o vínculo ATUAL
+        // consultor -> analista, sem tomar de outro analista ativo uma vistoria válida.
+        boolean storedAssignmentUsable = assigned != null
+                && assigned.isActive()
+                && assigned.getRole() == CollaboratorRole.ANALYST;
+        if (storedAssignmentUsable) return false;
+
+        Consultant consultant = item.getConsultant();
+        Consultant currentAnalyst = consultant == null ? null : consultant.getAssignedAnalyst();
+        return currentAnalyst != null && currentAnalyst.isActive()
+                && currentAnalyst.getRole() == CollaboratorRole.ANALYST
+                && analystId.equals(currentAnalyst.getId());
     }
 
     @Transactional(readOnly = true)
@@ -216,9 +281,10 @@ public class AdminActivityService {
                 .filter(item -> item.getAnalysisStage() == InspectionAnalysisStage.ANALYST_QUEUE
                         || item.getAnalysisStage() == InspectionAnalysisStage.ANALYST_PENDING
                         || item.getAnalysisStage() == InspectionAnalysisStage.SUPERVISION_QUEUE
-                        || (item.getAnalysisStage() == InspectionAnalysisStage.FINISHED
-                            && ("SUPERVISION_ANALYSIS".equals(item.getReviewedByRole())
-                                || "ADMIN_SUPERVISION".equals(item.getReviewedByRole()))))
+                        // Inclui decisões finais atuais e históricas mesmo quando a versão
+                        // antiga não gravou reviewedByRole/FINISHED de forma padronizada.
+                        || item.getStatus() == InspectionRequestStatus.APPROVED
+                        || item.getStatus() == InspectionRequestStatus.REJECTED)
                 .map(item -> toInspection(item, true))
                 .toList();
     }
@@ -237,39 +303,168 @@ public class AdminActivityService {
 
         InspectionRequest inspection = inspectionRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
-        if (inspection.getAcceptedAt() != null) {
-            throw new IllegalArgumentException("Os dados não podem ser alterados após o aceite digital WebAuthn do associado.");
-        }
-        String old = editableDataSummary(inspection.getAssociateName(), inspection.getWhatsapp(),
-                inspection.getVehicleModel(), inspection.getModelYear());
-
-        inspection.updateEditableAssociateVehicleData(
-                request.associateName(), request.whatsapp(), request.model(), request.modelYear()
-        );
+        assertEditableForActor(inspection, actorRole);
 
         Quotation quotation = inspection.getQuotation();
+        assertNotExpiredWithoutPreservedFilesUnlessApprovedEditable(quotation, inspection, actorRole);
+        boolean oldZeroKm = quotation != null ? quotation.isZeroKm() : (inspection.getPlate() == null || inspection.getPlate().isBlank());
+        String old = editableDataSummary(inspection.getAssociateName(), inspection.getCpf(), inspection.getWhatsapp(), inspection.getPlate(),
+                inspection.getVehicleModel(), inspection.getModelYear(), oldZeroKm,
+                quotation == null ? null : quotation.getObservation(), inspection.getResidenceAddress());
+
+        boolean zeroKm = Boolean.TRUE.equals(request.zeroKm());
+        String normalizedCpf = normalizeRequiredCpf(request.cpf());
+        inspection.updateEditableAssociateVehicleData(
+                request.associateName(), normalizedCpf, request.whatsapp(), request.plate(),
+                request.model(), request.modelYear(), zeroKm, request.residenceAddress()
+        );
+        inspectionRepository.saveAndFlush(inspection);
+
         if (quotation != null) {
             quotation.updateNonPricingData(
-                    request.associateName(), quotation.getCustomerCpf(), request.whatsapp(), quotation.getPlate(),
-                    request.model(), request.modelYear(), quotation.isZeroKm(), quotation.getObservation()
+                    request.associateName(), normalizedCpf, request.whatsapp(), request.plate(),
+                    request.model(), request.modelYear(), zeroKm, quotation.getObservation()
             );
-            quotationRepository.flush();
+            quotationRepository.saveAndFlush(quotation);
         }
-        inspectionRepository.flush();
+        refreshInspectionDossierAfterEdit(inspection);
 
-        if (inspection.getStatus() == InspectionRequestStatus.APPROVED
-                || inspection.getStatus() == InspectionRequestStatus.REJECTED) {
-            persistFinalInspectionDossier(inspection);
-        }
-
-        String updated = editableDataSummary(inspection.getAssociateName(), inspection.getWhatsapp(),
-                inspection.getVehicleModel(), inspection.getModelYear());
+        String updated = editableDataSummary(inspection.getAssociateName(), inspection.getCpf(), inspection.getWhatsapp(), inspection.getPlate(),
+                inspection.getVehicleModel(), inspection.getModelYear(), zeroKm,
+                quotation == null ? null : quotation.getObservation(), inspection.getResidenceAddress());
         auditRepository.save(CatalogChangeAudit.createText(
                 "INSPECTION_EDITABLE_DATA", null, id.toString(),
                 "Dados cadastrais/veículo da vistoria de " + inspection.getAssociateName() + " atualizados",
                 old, updated, username
         ));
-        return toInspection(inspection, actorRole != PortalRole.ADMIN);
+        return toInspection(inspection, true);
+    }
+
+    @Transactional(readOnly = true)
+    public CommercialPricingPreviewResponse previewInspectionContractPricing(
+            UUID id, CommercialPricingPreviewRequest request, String username, PortalRole actorRole
+    ) {
+        assertContractPricingAccess(id, username, actorRole);
+        InspectionRequest inspection = inspectionRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
+        Quotation quotation = inspection.getQuotation();
+        if (quotation == null) {
+            throw new IllegalArgumentException("Esta vistoria não possui uma cotação vinculada para calcular o contrato.");
+        }
+
+        BigDecimal requestedFipe = request.fipeValue().setScale(2, RoundingMode.HALF_UP);
+        int requestedDiscount = request.discountPercent() == null ? 0 : request.discountPercent();
+        Set<String> requestedBenefits = normalizeRequestedBenefits(
+                quotation, requestedFipe, requestedDiscount, request.benefitCodes()
+        );
+        var pricing = commercialPricingService.calculate(quotation, requestedFipe, requestedDiscount, requestedBenefits);
+        return new CommercialPricingPreviewResponse(
+                pricing.planBaseMonthlyValue(), pricing.mandatoryMonthlyFee(), pricing.oneTimeFee(),
+                pricing.mandatoryFeeDescription(), pricing.optionalsMonthlyValue(), pricing.subtotalBeforeDiscount(),
+                pricing.discountValue(), pricing.finalMonthlyValue(), pricing.catalogBased()
+        );
+    }
+
+    @Transactional
+    public AdminInspectionResponse updateInspectionContractValues(
+            UUID id, UpdateInspectionContractValuesRequest request, String username, PortalRole actorRole
+    ) {
+        assertContractPricingAccess(id, username, actorRole);
+
+        InspectionRequest inspection = inspectionRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
+        assertContractValuesEditable(inspection, actorRole);
+
+        Quotation quotation = inspection.getQuotation();
+        if (quotation == null) {
+            throw new IllegalArgumentException("Esta vistoria não possui uma cotação vinculada para alterar o contrato.");
+        }
+        assertNotExpiredWithoutPreservedFilesUnlessApprovedEditable(quotation, inspection, actorRole);
+
+        BigDecimal requestedFipe = request.fipeValue().setScale(2, RoundingMode.HALF_UP);
+        int requestedDiscount = request.discountPercent() == null ? 0 : request.discountPercent();
+        RearWindowBranding requestedBranding = validateDiscountAndBranding(quotation, requestedDiscount, request.rearWindowBranding());
+        Set<String> requestedBenefits = normalizeRequestedBenefits(
+                quotation, requestedFipe, requestedDiscount, request.benefitCodes()
+        );
+
+        // A fonte padrão do novo valor é sempre a tabela vigente do plano para a
+        // FIPE atual + somente as taxas obrigatórias que ainda se aplicam +
+        // adicionais selecionados. A mensalidade histórica não entra no cálculo.
+        var pricing = commercialPricingService.calculate(quotation, requestedFipe, requestedDiscount, requestedBenefits);
+        if (Boolean.TRUE.equals(request.manualMonthlyOverride())) {
+            throw new IllegalArgumentException(
+                    "O valor mensal final é calculado automaticamente pela tabela do plano, FIPE, rastreador/taxas, adicionais e desconto."
+            );
+        }
+        boolean manualMonthlyOverride = false;
+        BigDecimal requestedMonthly = pricing.finalMonthlyValue();
+
+        BigDecimal currentFipe = quotation.getFipeValue().setScale(2, RoundingMode.HALF_UP);
+        BigDecimal currentMonthly = quotation.getMonthlyValue().setScale(2, RoundingMode.HALF_UP);
+        int currentDiscount = quotation.getDiscountPercent() == null ? 0 : quotation.getDiscountPercent();
+        RearWindowBranding currentBranding = quotation.getRearWindowBranding() == null
+                ? RearWindowBranding.NOT_APPLICABLE : quotation.getRearWindowBranding();
+        Set<String> currentBenefits = normalizedFinalBenefits(quotation, currentFipe, currentDiscount);
+
+        boolean fipeChanged = currentFipe.compareTo(requestedFipe) != 0;
+        boolean monthlyChanged = currentMonthly.compareTo(requestedMonthly) != 0;
+        boolean discountChanged = currentDiscount != requestedDiscount;
+        boolean brandingChanged = currentBranding != requestedBranding;
+        boolean benefitsChanged = !currentBenefits.equals(requestedBenefits);
+
+        if (!fipeChanged && !monthlyChanged && !discountChanged && !brandingChanged && !benefitsChanged
+                && !inspection.hasPendingContractChange()) {
+            return toInspection(inspection, true);
+        }
+
+        String old = contractRevisionSummary(currentFipe, currentMonthly, currentDiscount, currentBranding, currentBenefits);
+        boolean approvedAwaitingDigitalAcceptance = inspection.getStatus() == InspectionRequestStatus.APPROVED
+                && inspection.getAcceptedAt() == null
+                && (actorRole == PortalRole.ADMIN || actorRole == PortalRole.SUPERVISION_ANALYSIS);
+        boolean needsAssociateConfirmation = !approvedAwaitingDigitalAcceptance
+                && (monthlyChanged || discountChanged || brandingChanged);
+        if (needsAssociateConfirmation) {
+            inspection.requestContractChange(
+                    requestedFipe, requestedMonthly, requestedDiscount, requestedBranding, requestedBenefits,
+                    manualMonthlyOverride, username
+            );
+            inspectionRepository.flush();
+            String updated = "PROPOSTA PENDENTE; "
+                    + contractRevisionSummary(requestedFipe, requestedMonthly, requestedDiscount, requestedBranding, requestedBenefits);
+            auditRepository.save(CatalogChangeAudit.createText(
+                    "INSPECTION_CONTRACT_CHANGE_REQUEST", null, id.toString(),
+                    "Revisão comercial aguardando confirmação do associado",
+                    old, updated, username
+            ));
+            return toInspection(inspection, true);
+        }
+
+        // Antes de consolidar, sincroniza serviços adicionais com o catálogo
+        // vigente. Assim inclusão/remoção usa sempre o preço cadastrado agora.
+        commercialPricingService.synchronizeSelectedOptionals(quotation, requestedBenefits);
+
+        // FIPE e benefícios podem ser saneados no dossiê final sem alterar o preço
+        // aceito. Regras automáticas continuam prevalecendo dentro da entidade.
+        quotation.applyCommercialRevision(
+                requestedFipe, requestedMonthly, requestedDiscount, requestedBranding, requestedBenefits,
+                pricing.planBaseMonthlyValue(), pricing.mandatoryMonthlyFee(), pricing.oneTimeFee(),
+                pricing.mandatoryFeeDescription(), manualMonthlyOverride
+        );
+        quotationRepository.saveAndFlush(quotation);
+        if (inspection.hasPendingContractChange()) {
+            inspection.clearPendingContractChange();
+            inspectionRepository.flush();
+        }
+        auditRepository.save(CatalogChangeAudit.createText(
+                "INSPECTION_CONTRACT_VALUES", null, id.toString(),
+                "Dossiê comercial da vistoria de " + inspection.getAssociateName() + " revisado",
+                old, contractRevisionSummary(quotation.getFipeValue(), quotation.getMonthlyValue(),
+                        quotation.getDiscountPercent(), quotation.getRearWindowBranding(), quotation.finalSelectedCoverageCodes()),
+                username
+        ));
+        refreshInspectionDossierAfterEdit(inspection);
+        return toInspection(inspection, true);
     }
 
     @Transactional
@@ -282,6 +477,7 @@ public class AdminActivityService {
         portalUserService.assertSupervisionInspectionAccess(username, actorRole, id);
         InspectionRequest inspection = inspectionRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
+        assertDigitalAcceptanceNotFinalized(inspection);
 
         String supervisorName = ADMIN_RESPONSIBLE_NAME;
         if (actorRole == PortalRole.SUPERVISION_ANALYSIS) {
@@ -293,6 +489,7 @@ public class AdminActivityService {
         String oldNote = inspection.getSupervisionNote();
         inspection.updateSupervisionNote(note, supervisorName);
         inspectionRepository.flush();
+        refreshInspectionDossierAfterEdit(inspection);
         auditRepository.save(CatalogChangeAudit.createText(
                 "INSPECTION_SUPERVISION_NOTE", null, id.toString(),
                 "O.B.S. da Supervisão atualizada por " + supervisorName,
@@ -312,6 +509,16 @@ public class AdminActivityService {
         }
         InspectionRequest inspection = inspectionRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
+        assertDigitalAcceptanceNotFinalized(inspection);
+        // ADM e Supervisão podem concluir a etapa cadastral mesmo quando existe
+        // uma alteração comercial pendente. A confirmação comercial continua
+        // bloqueando a decisão final, mas não deve impedir o estado "Cadastro realizado".
+        // O analista mantém a regra restritiva original.
+        if (inspection.hasPendingContractChange() && actorRole == PortalRole.ANALYST) {
+            throw new IllegalArgumentException(
+                    "Existe uma alteração de FIPE/mensalidade aguardando confirmação do associado. Envie o link e aguarde a resposta antes de marcar Cadastro feito."
+            );
+        }
         String old = inspectionAnalysisSummary(inspection);
         String reviewerName;
         if (actorRole == PortalRole.ADMIN) {
@@ -332,29 +539,45 @@ public class AdminActivityService {
             inspection.markRegistrationCompleted(analyst, note);
         }
         inspectionRepository.flush();
-        String source = actorRole == PortalRole.SUPERVISION_ANALYSIS
-                ? "Cadastro assumido pela Supervisão por " + reviewerName
-                : "Cadastro concluído por " + reviewerName + " e enviado à Supervisão de Análise";
+        refreshInspectionDossierAfterEdit(inspection);
+        boolean finalDecisionPreserved = inspection.getAnalysisStage() == InspectionAnalysisStage.FINISHED
+                && (inspection.getStatus() == InspectionRequestStatus.APPROVED
+                || inspection.getStatus() == InspectionRequestStatus.REJECTED);
+        String source = finalDecisionPreserved
+                ? "Cadastro regularizado por " + reviewerName + " sem remover a decisão final já registrada"
+                : (actorRole == PortalRole.SUPERVISION_ANALYSIS
+                    ? "Cadastro assumido pela Supervisão por " + reviewerName
+                    : "Cadastro concluído por " + reviewerName + " e enviado à Supervisão de Análise");
         auditRepository.save(CatalogChangeAudit.createText(
                 "INSPECTION_REGISTRATION", null, id.toString(),
                 source,
-                old, inspectionAnalysisSummary(inspection) + "; etapa=SUPERVISION_QUEUE", username
+                old, inspectionAnalysisSummary(inspection) + "; etapa=" + inspection.getAnalysisStage(), username
         ));
         return toInspection(inspection, true);
     }
 
     @Transactional
     public AdminInspectionResponse markRegistrationNotCompleted(UUID id, String note, String username, PortalRole actorRole) {
-        if (actorRole != PortalRole.ANALYST && actorRole != PortalRole.ADMIN) {
-            throw new IllegalArgumentException("Este usuário não possui permissão para marcar Cadastro não feito.");
+        if (actorRole != PortalRole.ANALYST
+                && actorRole != PortalRole.ADMIN
+                && actorRole != PortalRole.SUPERVISION_ANALYSIS) {
+            throw new IllegalArgumentException("Este usuário não possui permissão para marcar Cadastro não realizado.");
         }
         InspectionRequest inspection = inspectionRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
+        assertDigitalAcceptanceNotFinalized(inspection);
         String old = inspectionAnalysisSummary(inspection);
         String reviewerName;
         if (actorRole == PortalRole.ADMIN) {
             reviewerName = ADMIN_RESPONSIBLE_NAME;
             inspection.markRegistrationNotCompletedByAdministrator(reviewerName, note);
+        } else if (actorRole == PortalRole.SUPERVISION_ANALYSIS) {
+            portalUserService.assertSupervisionInspectionAccess(username, actorRole, id);
+            UUID supervisorId = portalUserService.linkedSupervisorId(username)
+                    .orElseThrow(() -> new IllegalArgumentException("Este usuário de supervisão não está vinculado a um colaborador."));
+            Consultant supervisor = consultantService.findActiveSupervisor(supervisorId);
+            reviewerName = supervisor.getName();
+            inspection.markRegistrationNotCompletedBySupervisor(reviewerName, note);
         } else {
             UUID analystId = portalUserService.linkedAnalystId(username)
                     .orElseThrow(() -> new IllegalArgumentException("Este usuário de análise não está vinculado a um analista específico."));
@@ -363,10 +586,12 @@ public class AdminActivityService {
             inspection.markRegistrationNotCompleted(analyst, note);
         }
         inspectionRepository.flush();
+        refreshInspectionDossierAfterEdit(inspection);
         auditRepository.save(CatalogChangeAudit.createText(
                 "INSPECTION_REGISTRATION", null, id.toString(),
-                "Cadastro marcado como não feito por " + reviewerName,
-                old, inspectionAnalysisSummary(inspection) + "; etapa=ANALYST_QUEUE; situação=CADASTRO_NAO_FEITO", username
+                "Cadastro marcado como não realizado por " + reviewerName,
+                old, inspectionAnalysisSummary(inspection) + "; etapa=" + inspection.getAnalysisStage()
+                        + "; situação=CADASTRO_NAO_REALIZADO", username
         ));
         return toInspection(inspection, true);
     }
@@ -427,8 +652,19 @@ public class AdminActivityService {
         }
         InspectionRequest inspection = inspectionRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
-        if (inspection.getAnalysisStage() != InspectionAnalysisStage.SUPERVISION_QUEUE) {
-            throw new IllegalArgumentException("Esta vistoria ainda não foi marcada como Cadastro feito e enviada para a Supervisão.");
+        assertDigitalAcceptanceNotFinalized(inspection);
+        boolean firstDecision = inspection.getAnalysisStage() == InspectionAnalysisStage.SUPERVISION_QUEUE;
+        boolean revisableFinalDecision = inspection.getStatus() == InspectionRequestStatus.APPROVED
+                || inspection.getStatus() == InspectionRequestStatus.REJECTED;
+        if (!firstDecision && !revisableFinalDecision) {
+            throw new IllegalArgumentException(
+                    "Esta vistoria ainda não está disponível para decisão da Supervisão."
+            );
+        }
+        if (inspection.hasPendingContractChange()) {
+            throw new IllegalArgumentException(
+                    "Existe uma alteração de FIPE/mensalidade aguardando confirmação do associado. Envie o link de confirmação e aguarde a resposta antes da decisão final."
+            );
         }
         Consultant supervisorCollaborator = null;
         String reviewerName = ADMIN_RESPONSIBLE_NAME;
@@ -441,9 +677,12 @@ public class AdminActivityService {
             reviewerRole = "SUPERVISION_ANALYSIS";
         }
         String old = inspectionAnalysisSummary(inspection);
+        if (revisableFinalDecision) {
+            inspection.invalidatePendingDigitalAcceptance();
+        }
         // A entrada em SUPERVISION_QUEUE já comprova que os requisitos foram conferidos
-        // no momento do Cadastro feito. Isso também permite decidir vistorias históricas
-        // cujos arquivos operacionais já expiraram, preservando o dossiê permanente.
+        // no momento do Cadastro feito. A decisão continua disponível enquanto a vistoria
+        // estiver dentro da retenção operacional; aos 40 dias a vistoria é excluída.
         inspection.adminReview(
                 request.status(), request.adminNote(), supervisorCollaborator, reviewerName, reviewerRole,
                 true
@@ -467,6 +706,7 @@ public class AdminActivityService {
     ) {
         InspectionRequest inspection = inspectionRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Solicitação do Retrato NH não encontrada."));
+        assertDigitalAcceptanceNotFinalized(inspection);
         String old = inspectionAnalysisSummary(inspection);
 
         Consultant reviewerCollaborator = null;
@@ -507,6 +747,23 @@ public class AdminActivityService {
                 old, inspectionAnalysisSummary(inspection), username
         ));
         return toInspection(inspection, revealCpf);
+    }
+
+    private void refreshNonFinalInspectionReportIfPresent(InspectionRequest inspection) {
+        InspectionAsset report = inspection.getAssets().stream()
+                .filter(asset -> asset.getAssetType() == InspectionAssetType.REPORT)
+                .findFirst()
+                .orElse(null);
+        if (report == null) return;
+        byte[] reportBytes = retratoPdfService.generate(inspection);
+        storageService.replaceGeneratedReport(
+                inspection,
+                "Relatório da vistoria atualizado",
+                "relatorio-retrato-nh.pdf",
+                report.getSortOrder(),
+                reportBytes
+        );
+        inspectionRepository.flush();
     }
 
     private void persistFinalInspectionDossier(InspectionRequest inspection) {
@@ -574,14 +831,22 @@ public class AdminActivityService {
     }
 
     private AdminQuoteResponse toQuote(Quotation item) {
-        boolean expired = (item.getStatus() == QuoteStatus.CREATED || item.getStatus() == QuoteStatus.UNDER_REVIEW)
+        InspectionRequest linkedInspection = inspectionRepository.findByQuotation_Id(item.getId()).orElse(null);
+        boolean hasPreservedFile = linkedInspection != null && linkedInspection.hasAnyPreservedFile();
+        boolean expired = item.getStatus() != QuoteStatus.CANCELLED
+                && !hasPreservedFile
+                && item.getValidUntil() != null
                 && OffsetDateTime.now().isAfter(item.getValidUntil());
         String pdfUrl = publicApiUrl + "/api/quotes/" + item.getId() + "/pdf";
         String whatsapp = settingsService.teamWhatsapp();
         String email = settingsService.teamEmail();
-        String inspectionUrl = inspectionRepository.findByQuotation_Id(item.getId())
-                .map(inspection -> publicWebUrl + "/retrato/?token=" + inspection.getPublicToken())
-                .orElse(null);
+        String inspectionUrl = linkedInspection == null
+                ? null
+                : publicWebUrl + "/retrato/?token=" + linkedInspection.getPublicToken();
+        // A área /api/admin/quotes é do Administrador. O Admin pode corrigir
+        // dados cadastrais do associado/veículo em qualquer etapa; a FIPE não
+        // faz parte do DTO de edição e continua imutável por esta operação.
+        boolean detailsEditable = true;
         String message = "Cotação " + item.getQuoteNumber()
                 + "\nCliente: " + item.getCustomerName()
                 + "\nOrigem: " + (item.getOrigin() == QuoteOrigin.SELF_SERVICE ? "Cliente pelo site" : "Consultor")
@@ -593,12 +858,12 @@ public class AdminActivityService {
         return new AdminQuoteResponse(
                 item.getId(), item.getQuoteNumber(), item.getOrigin(),
                 item.getConsultant() == null ? null : item.getConsultant().getId(),
-                item.getConsultantName(), item.getCustomerName(), maskCpf(item.getCustomerCpf()), item.getWhatsapp(),
-                item.getPlate(), item.getModel(), item.getManufactureYear(), item.isZeroKm(), item.getFipeValue(),
+                item.getConsultantName(), item.getCustomerName(), maskCpf(item.getCustomerCpf()), formatCpf(item.getCustomerCpf()), item.getWhatsapp(),
+                item.getPlate(), item.getModel(), item.getManufactureYear(), item.isZeroKm(), detailsEditable, item.getFipeValue(),
                 item.getAuctionOrChassisRemarked(), item.getIndemnityFipePercent(),
                 item.getCategoryCode(), item.getRegion(), item.getMotorcycleOrigin(), item.getMotorcycleCc(), item.getObservation(), item.getSelectedPlanName(),
                 item.getPreDiscountMonthlyValue(), item.getDiscountPercent(), item.getRearWindowBranding(), item.getMonthlyValue(), item.getOneTimeFee(),
-                item.getStatus(), item.getCreatedAt(), item.getValidUntil(), expired, item.getDecidedAt(), item.getAdminNote(),
+                item.getStatus(), item.getCreatedAt(), item.getUpdatedAt(), item.getValidUntil(), expired, item.getDecidedAt(), item.getAdminNote(),
                 item.getReviewedAt(), pdfUrl, item.getDriveFolderUrl(), item.getDrivePdfUrl(), inspectionUrl,
                 whatsappUrl(whatsapp, message), emailUrl(email, subject, message)
         );
@@ -661,18 +926,74 @@ public class AdminActivityService {
         String consultantInspectionUrl = consultantInspectionWhatsappUrl(item, publicUrl);
         String associateDecisionUrl = associateDecisionWhatsappUrl(item);
         boolean decisionMessagePending = associateDecisionUrl != null && item.getDecisionMessageSentAt() == null;
+
+        boolean contractChangePending = item.hasPendingContractChange();
+        String contractChangeConfirmationUrl = contractChangePending
+                ? publicWebUrl + "/confirmacao-valor/?token=" + UriUtils.encode(item.getPublicToken(), StandardCharsets.UTF_8)
+                : null;
+        String contractChangeWhatsappUrl = null;
+        if (contractChangePending && item.getWhatsapp() != null && !item.getWhatsapp().isBlank()) {
+            String firstName = item.getAssociateName() == null || item.getAssociateName().isBlank()
+                    ? "associado" : item.getAssociateName().trim().split("\\s+")[0];
+            String contractMessage = "Olá, " + firstName + "! Houve uma revisão da FIPE/valor/benefícios do seu plano da Novo Horizonte."
+                    + "\nPara o contrato seguir com o novo valor, confirme neste link: " + contractChangeConfirmationUrl
+                    + "\nSe você já havia escolhido adicionais, o link também perguntará se deseja mantê-los.";
+            contractChangeWhatsappUrl = whatsappUrl(item.getWhatsapp(), contractMessage);
+        }
+        Quotation quotation = item.getQuotation();
+        BigDecimal effectiveFipe = contractChangePending && item.getPendingContractFipeValue() != null
+                ? item.getPendingContractFipeValue() : (quotation == null ? null : quotation.getFipeValue());
+        int effectiveDiscount = contractChangePending && item.getPendingContractDiscountPercent() != null
+                ? item.getPendingContractDiscountPercent() : (quotation == null || quotation.getDiscountPercent() == null ? 0 : quotation.getDiscountPercent());
+        Set<String> effectiveBenefits = quotation == null ? Set.of()
+                : (contractChangePending && item.getPendingContractBenefitCodes() != null
+                    ? normalizeStoredBenefits(quotation, effectiveFipe, effectiveDiscount, item.pendingContractBenefitCodesSet())
+                    : normalizedFinalBenefits(quotation, effectiveFipe, effectiveDiscount));
+        List<CommercialBenefitResponse> commercialBenefits = quotation == null ? List.of()
+                : commercialPricingService.benefitCatalog(quotation).stream()
+                    .map(benefit -> toCommercialBenefit(quotation, benefit, effectiveFipe, effectiveDiscount, effectiveBenefits))
+                    .toList();
+        BigDecimal effectivePendingMonthly = item.getPendingContractMonthlyValue();
+        if (quotation != null && contractChangePending && effectiveFipe != null) {
+            // Não devolve para a tela um total pendente histórico. A segunda etapa
+            // abre já com a mensalidade que o catálogo atual produz neste instante.
+            effectivePendingMonthly = commercialPricingService.calculate(
+                    quotation, effectiveFipe, effectiveDiscount, effectiveBenefits
+            ).finalMonthlyValue();
+        }
+        boolean expiredWithoutFiles = !item.hasAnyPreservedFile()
+                && ((item.getExpiresAt() != null && OffsetDateTime.now().isAfter(item.getExpiresAt()))
+                    || (quotation != null && quotation.getValidUntil() != null && OffsetDateTime.now().isAfter(quotation.getValidUntil())));
+
         return new AdminInspectionResponse(
                 item.getId(), item.getRequestType().name(), item.getVehicleType().name(), item.getAssociateName(),
-                revealCpf ? formatCpf(item.getCpf()) : maskCpf(item.getCpf()),
-                item.getWhatsapp(), item.getPlate(), item.getVehicleModel(), item.getModelYear(), item.getResidenceAddress(), item.getContractedPlan(),
+                revealCpf ? formatCpf(item.getCpf()) : maskCpf(item.getCpf()), formatCpf(item.getCpf()),
+                item.getWhatsapp(), item.getPlate(),
+                item.getQuotation() != null ? item.getQuotation().isZeroKm() : (item.getPlate() == null || item.getPlate().isBlank()),
+                item.getVehicleModel(), item.getModelYear(), item.getResidenceAddress(), item.getContractedPlan(),
+                item.getQuotation() == null ? null : item.getQuotation().getFipeValue(),
+                item.getQuotation() == null ? null : item.getQuotation().getMonthlyValue(),
+                item.getQuotation() == null ? null : item.getQuotation().getPreDiscountMonthlyValue(),
                 item.getQuotation() == null ? null : item.getQuotation().getBillingDueDay(),
                 item.getQuotation() == null ? null : item.getQuotation().getFirstBillingDueDate(),
                 item.getQuotation() == null ? 0 : item.getQuotation().getDiscountPercent(),
-                item.getQuotation() == null ? RearWindowBranding.NOT_APPLICABLE : item.getQuotation().getRearWindowBranding(), null,
+                item.getQuotation() == null ? RearWindowBranding.NOT_APPLICABLE : item.getQuotation().getRearWindowBranding(),
+                quotation == null ? null : quotation.getSelectedPlanName(),
+                commercialBenefits,
+                contractChangePending,
+                item.getPendingContractDiscountPercent(),
+                item.getPendingContractRearWindowBranding(),
+                new java.util.ArrayList<>(item.pendingContractBenefitCodesSet()),
+                item.getPendingContractFipeValue(),
+                effectivePendingMonthly,
+                item.getContractChangeRequestedAt(),
+                contractChangeConfirmationUrl,
+                contractChangeWhatsappUrl,
+                null,
                 item.getConsultant() == null ? null : item.getConsultant().getId(), item.getConsultantName(),
                 item.getAssignedAnalyst() == null ? null : item.getAssignedAnalyst().getId(), item.getAssignedAnalystName(),
                 item.getAnalysisStage(), item.getRegistrationCompletedAt(), item.getRegistrationCompletedByName(), displayStatus,
-                item.getCreatedAt(), item.getExpiresAt(), item.getCompletedAt(), item.getAdminNote(),
+                item.getCreatedAt(), item.getUpdatedAt(), item.getExpiresAt(), expiredWithoutFiles, item.getCompletedAt(), item.getAdminNote(),
                 item.getSupervisionNote(), item.getSupervisionNoteUpdatedAt(), item.getSupervisionNoteByName(), item.getReviewedAt(),
                 item.getReviewedByCollaborator() == null ? null : item.getReviewedByCollaborator().getId(),
                 item.getReviewedByName(), item.getReviewedByRole(),
@@ -730,6 +1051,9 @@ public class AdminActivityService {
                 ? "associado" : item.getAssociateName().trim().split("\\s+")[0];
         String message;
         if (item.getStatus() == InspectionRequestStatus.APPROVED) {
+            // O aceite final só entra no fluxo depois de Cadastro realizado e sem
+            // revisão comercial aguardando confirmação.
+            if (item.getRegistrationCompletedAt() == null || item.hasPendingContractChange()) return null;
             String acceptanceUrl = publicWebUrl + "/retrato/?token=" + item.getPublicToken();
             message = "Olá, " + firstName + "! Sua vistoria foi aprovada pela equipe Novo Horizonte Proteção Veicular. "
                     + "Para concluir o aceite digital do PPV/dossiê aprovado, abra o link abaixo no seu próprio aparelho e confirme com a verificação segura disponível nele (biometria, PIN, senha/padrão de bloqueio):\n"
@@ -777,11 +1101,240 @@ public class AdminActivityService {
         return plate == null || plate.isBlank() ? (zeroKm ? "Veículo 0 km — sem placa" : "Sem placa") : plate;
     }
 
-    private String editableDataSummary(String name, String whatsapp, String model, Integer modelYear) {
+    /**
+     * Regras de correção cadastral:
+     * - ADMIN pode corrigir os dados do associado/veículo enquanto não houver aceite digital;
+     * - SUPERVISION_ANALYSIS também pode corrigir vistorias aprovadas antes do aceite digital;
+     * - ANALYST permanece limitado à etapa operacional de cadastro;
+     * - FIPE, desconto, mensalidade, benefícios e adicionais usam o endpoint contratual próprio.
+     */
+    private void assertNotExpiredWithoutPreservedFiles(Quotation quotation, InspectionRequest inspection) {
+        if (inspection != null && inspection.hasAnyPreservedFile()) return;
+        boolean quoteExpired = quotation != null && quotation.getValidUntil() != null
+                && OffsetDateTime.now().isAfter(quotation.getValidUntil());
+        boolean inspectionExpired = inspection != null && inspection.isExpired();
+        if (quoteExpired || inspectionExpired) {
+            throw new IllegalArgumentException("Vistoria/cotação vencida, precisa ser refeita.");
+        }
+    }
+
+    /**
+     * Uma vistoria já aprovada entra na fase de fechamento do dossiê. Para Admin e
+     * Supervisão, o aceite digital do associado é a única trava de edição nessa fase;
+     * o vencimento comercial não deve impedir a correção final antes da assinatura.
+     * A retenção física de 40 dias continua independente desta regra.
+     */
+    private void assertNotExpiredWithoutPreservedFilesUnlessApprovedEditable(
+            Quotation quotation, InspectionRequest inspection, PortalRole actorRole
+    ) {
+        boolean privilegedApprovedEdit = inspection != null
+                && inspection.getStatus() == InspectionRequestStatus.APPROVED
+                && inspection.getAcceptedAt() == null
+                && (actorRole == PortalRole.ADMIN || actorRole == PortalRole.SUPERVISION_ANALYSIS);
+        if (privilegedApprovedEdit) return;
+        assertNotExpiredWithoutPreservedFiles(quotation, inspection);
+    }
+
+    private void assertContractPricingAccess(UUID id, String username, PortalRole actorRole) {
+        if (actorRole == PortalRole.ANALYST) {
+            portalUserService.assertAnalysisInspectionAccess(username, actorRole, id);
+        } else if (actorRole == PortalRole.SUPERVISION_ANALYSIS) {
+            portalUserService.assertSupervisionInspectionAccess(username, actorRole, id);
+        } else if (actorRole != PortalRole.ADMIN) {
+            throw new IllegalArgumentException("Este usuário não possui permissão para alterar os valores do contrato.");
+        }
+    }
+
+    private RearWindowBranding validateDiscountAndBranding(
+            Quotation quotation, int discountPercent, RearWindowBranding requestedBranding
+    ) {
+        if (!Set.of(0, 5, 10, 15, 30).contains(discountPercent)) {
+            throw new IllegalArgumentException("O desconto deve ser 0%, 5%, 10%, 15% ou 30%.");
+        }
+        RearWindowBranding branding = requestedBranding == null
+                ? RearWindowBranding.NOT_APPLICABLE : requestedBranding;
+        boolean motorcycle = quotation.getCategoryCode() != null
+                && (quotation.getCategoryCode().startsWith("MOTORCYCLE")
+                    || "SCOOTER_ELECTRIC".equals(quotation.getCategoryCode()));
+        if ((discountPercent == 15 || discountPercent == 30) && motorcycle) {
+            throw new IllegalArgumentException("Os descontos de 15% e 30% não se aplicam a motos ou scooters.");
+        }
+        if (discountPercent == 15 && branding != RearWindowBranding.NH_AND_OTHER_COMPANY) {
+            throw new IllegalArgumentException("O desconto de 15% exige as logomarcas da Novo Horizonte e da outra empresa no vigia traseiro.");
+        }
+        if (discountPercent == 30 && branding != RearWindowBranding.NH_ONLY) {
+            throw new IllegalArgumentException("O desconto de 30% exige somente a logomarca da Novo Horizonte no vigia traseiro.");
+        }
+        return discountPercent == 15 || discountPercent == 30 ? branding : RearWindowBranding.NOT_APPLICABLE;
+    }
+
+    private String normalizeBenefitCode(String code) {
+        return code == null ? "" : code.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private Set<String> normalizeRequestedBenefits(
+            Quotation quotation, BigDecimal requestedFipe, int discountPercent, List<String> requestedCodes
+    ) {
+        // A etapa de correção sempre usa o catálogo ATUAL do plano. Dessa forma,
+        // serviços adicionais criados depois da cotação original também aparecem
+        // e entram no cálculo com o preço que está cadastrado hoje.
+        Set<String> allowed = commercialPricingService.benefitCodes(quotation);
+        Set<String> selected = (requestedCodes == null ? List.<String>of() : requestedCodes).stream()
+                .map(this::normalizeBenefitCode)
+                .filter(code -> !code.isBlank())
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        Set<String> unknown = new LinkedHashSet<>(selected);
+        unknown.removeAll(allowed);
+        if (!unknown.isEmpty()) {
+            throw new IllegalArgumentException("Benefício(s)/serviço(s) adicional(is) inválido(s) para o plano atual: "
+                    + String.join(", ", unknown));
+        }
+        if (selected.contains("FUNERAL") && selected.contains("FUNERAL_FAMILY")) {
+            throw new IllegalArgumentException("Escolha apenas uma modalidade de auxílio funeral.");
+        }
+        if (quotation.usesFipeThirdPartyRule()) {
+            if (allowed.contains("THIRD_PARTY_BASE")) selected.add("THIRD_PARTY_BASE");
+            selected.remove("THIRD_PARTY");
+        }
+        if (discountPercent > 0) {
+            selected.removeIf(Quotation::isDiscountExcludedBenefit);
+        }
+        return selected;
+    }
+
+    private Set<String> normalizeStoredBenefits(
+            Quotation quotation, BigDecimal fipe, int discountPercent, Set<String> storedCodes
+    ) {
+        Set<String> current = commercialPricingService.filterToCurrentCatalog(quotation, storedCodes);
+        return normalizeRequestedBenefits(quotation, fipe, discountPercent, new java.util.ArrayList<>(current));
+    }
+
+    private Set<String> normalizedFinalBenefits(Quotation quotation, BigDecimal fipe, int discountPercent) {
+        return normalizeStoredBenefits(quotation, fipe, discountPercent, quotation.finalSelectedCoverageCodes());
+    }
+
+    private CommercialBenefitResponse toCommercialBenefit(
+            Quotation quotation, CommercialPricingService.BenefitCatalogItem benefit,
+            BigDecimal fipe, int discountPercent, Set<String> selected
+    ) {
+        String code = normalizeBenefitCode(benefit.code());
+        boolean locked = false;
+        String lockReason = null;
+        boolean isSelected = selected.contains(code);
+        String detail = benefit.detail();
+
+        if (quotation.usesFipeThirdPartyRule() && "THIRD_PARTY_BASE".equals(code)) {
+            locked = true;
+            isSelected = true;
+            BigDecimal limit = quotation.thirdPartyLimitForFipe(fipe);
+            detail = limit != null && limit.compareTo(new BigDecimal("100000.00")) >= 0
+                    ? "Cobertura de até R$ 100 mil" : "Cobertura de até R$ 50 mil";
+            lockReason = "Obrigatório pela regra FIPE: até R$ 50.999,99 = R$ 50 mil; a partir de R$ 51 mil = R$ 100 mil.";
+        } else if (quotation.usesFipeThirdPartyRule() && "THIRD_PARTY".equals(code)) {
+            locked = true;
+            isSelected = false;
+            lockReason = "Adicional de terceiros não se aplica: o limite já é definido automaticamente pela FIPE.";
+        } else if (discountPercent > 0 && Quotation.isDiscountExcludedBenefit(code)) {
+            locked = true;
+            isSelected = false;
+            lockReason = "Benefício indisponível quando há desconto no plano.";
+        }
+
+        return new CommercialBenefitResponse(
+                benefit.code(), benefit.name(), benefit.status(), detail,
+                benefit.monthlyPrice(), isSelected, locked, lockReason
+        );
+    }
+
+    private String contractRevisionSummary(
+            BigDecimal fipe, BigDecimal monthly, Integer discount, RearWindowBranding branding, Set<String> benefits
+    ) {
+        return "FIPE=" + fipe + "; mensalidade=" + monthly + "; desconto=" + discount
+                + "% ; vigia=" + branding + "; benefícios=" + String.join(",", benefits);
+    }
+
+    private void assertContractValuesEditable(InspectionRequest inspection, PortalRole actorRole) {
+        if (inspection == null) return;
+        assertDigitalAcceptanceNotFinalized(inspection);
+
+        // Admin e Supervisão podem corrigir integralmente uma vistoria já aprovada
+        // enquanto o associado ainda não realizou o aceite digital. O próprio aceite
+        // é a trava definitiva do dossiê.
+        if (actorRole == PortalRole.ADMIN || actorRole == PortalRole.SUPERVISION_ANALYSIS) return;
+
+        InspectionAnalysisStage stage = inspection.getAnalysisStage();
+        if (actorRole == PortalRole.ANALYST
+                && stage != InspectionAnalysisStage.ANALYST_QUEUE
+                && stage != InspectionAnalysisStage.ANALYST_PENDING) {
+            throw new IllegalArgumentException(
+                    "O analista pode alterar FIPE, mensalidade e benefícios somente enquanto a vistoria estiver na etapa de análise/cadastro."
+            );
+        }
+        if (stage == InspectionAnalysisStage.FINISHED) {
+            throw new IllegalArgumentException("Esta vistoria já está finalizada para o perfil atual.");
+        }
+    }
+
+    private void assertEditableForActor(InspectionRequest inspection, PortalRole actorRole) {
+        if (inspection == null) return;
+        assertDigitalAcceptanceNotFinalized(inspection);
+
+        if (actorRole == PortalRole.ADMIN || actorRole == PortalRole.SUPERVISION_ANALYSIS) return;
+
+        // Analistas continuam limitados à etapa operacional de cadastro.
+        boolean registrationCompleted = inspection.getAnalysisStage() == InspectionAnalysisStage.SUPERVISION_QUEUE
+                || inspection.getAnalysisStage() == InspectionAnalysisStage.FINISHED;
+
+        if (registrationCompleted) {
+            throw new IllegalArgumentException(
+                    "O analista não pode alterar os dados depois que a vistoria estiver com status Cadastro feito."
+            );
+        }
+    }
+
+    private void assertDigitalAcceptanceNotFinalized(InspectionRequest inspection) {
+        if (inspection != null && inspection.getAcceptedAt() != null) {
+            throw new IllegalArgumentException(
+                    "Esta vistoria já possui aceite digital do associado e está bloqueada para edição."
+            );
+        }
+    }
+
+    private void refreshInspectionDossierAfterEdit(InspectionRequest inspection) {
+        if (inspection == null) return;
+        if (inspection.getStatus() == InspectionRequestStatus.APPROVED && inspection.getAcceptedAt() == null) {
+            inspection.invalidatePendingDigitalAcceptance();
+            inspectionRepository.flush();
+            persistFinalInspectionDossier(inspection);
+            return;
+        }
+        refreshNonFinalInspectionReportIfPresent(inspection);
+    }
+
+    private String normalizeRequiredCpf(String cpf) {
+        String digits = cpf == null ? "" : cpf.replaceAll("\\D", "");
+        if (digits.length() != 11) {
+            throw new IllegalArgumentException("Informe um CPF válido com 11 dígitos.");
+        }
+        return digits;
+    }
+
+    private String normalizeOptionalCpf(String cpf) {
+        if (cpf == null || cpf.isBlank()) return null;
+        return normalizeRequiredCpf(cpf);
+    }
+
+    private String editableDataSummary(String name, String cpf, String whatsapp, String plate, String model, Integer modelYear,
+                                       boolean zeroKm, String observation, String residenceAddress) {
         return "nome=" + value(name)
+                + "; cpf=" + maskCpf(cpf)
                 + "; whatsapp=" + value(whatsapp)
+                + "; placa=" + value(plate)
+                + "; zeroKm=" + zeroKm
                 + "; modelo=" + value(model)
-                + "; anoModelo=" + (modelYear == null ? "—" : modelYear);
+                + "; anoModelo=" + (modelYear == null ? "—" : modelYear)
+                + "; observação=" + value(observation)
+                + "; endereço=" + value(residenceAddress);
     }
 
     private String value(String value) { return value == null || value.isBlank() ? "—" : value; }

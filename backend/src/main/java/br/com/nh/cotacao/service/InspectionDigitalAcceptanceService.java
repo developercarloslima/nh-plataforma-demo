@@ -54,6 +54,7 @@ public class InspectionDigitalAcceptanceService {
     private final InspectionRequestRepository repository;
     private final InspectionAssetStorageService storageService;
     private final RetratoPdfService pdfService;
+    private final InspectionReportDownloadService reportDownloadService;
     private final ObjectMapper jsonMapper;
     private final SecureRandom secureRandom = new SecureRandom();
 
@@ -61,11 +62,13 @@ public class InspectionDigitalAcceptanceService {
             InspectionRequestRepository repository,
             InspectionAssetStorageService storageService,
             RetratoPdfService pdfService,
+            InspectionReportDownloadService reportDownloadService,
             ObjectMapper jsonMapper
     ) {
         this.repository = repository;
         this.storageService = storageService;
         this.pdfService = pdfService;
+        this.reportDownloadService = reportDownloadService;
         this.jsonMapper = jsonMapper;
     }
 
@@ -77,9 +80,12 @@ public class InspectionDigitalAcceptanceService {
     public DigitalAcceptanceStatusResponse toStatus(InspectionRequest request) {
         boolean approved = request.getStatus() == InspectionRequestStatus.APPROVED;
         boolean accepted = request.getAcceptedAt() != null;
+        boolean readyForAcceptance = approved
+                && request.getRegistrationCompletedAt() != null
+                && !request.hasPendingContractChange();
         return new DigitalAcceptanceStatusResponse(
                 approved,
-                approved && !accepted,
+                readyForAcceptance && !accepted,
                 accepted,
                 request.getAcceptedAt(),
                 request.getAcceptanceEvidenceHash(),
@@ -102,6 +108,10 @@ public class InspectionDigitalAcceptanceService {
 
         OriginInfo originInfo = resolveOrigin(httpRequest);
         InspectionAsset selfie = findSelfie(request);
+        // Antes de calcular o hash do aceite, força a verificação/regeneração do
+        // dossiê contra os dados atuais da vistoria e da cotação. Assim o cliente
+        // nunca assina uma versão anterior às correções feitas por ADM/Supervisão.
+        reportDownloadService.generate(request.getId());
         InspectionAsset dossier = findFinalDossier(request);
         byte[] selfieBytes = storageService.readAll(selfie.getId());
         byte[] dossierBytes = storageService.readAll(dossier.getId());
@@ -445,6 +455,12 @@ public class InspectionDigitalAcceptanceService {
     private void assertApprovedAndPending(InspectionRequest request) {
         if (request.getStatus() != InspectionRequestStatus.APPROVED) {
             throw new IllegalArgumentException("O aceite digital só é liberado depois da aprovação da Supervisão.");
+        }
+        if (request.getRegistrationCompletedAt() == null) {
+            throw new IllegalArgumentException("Marque Cadastro realizado antes de enviar o link para aceite.");
+        }
+        if (request.hasPendingContractChange()) {
+            throw new IllegalArgumentException("Existe uma revisão comercial aguardando confirmação. Conclua essa etapa antes do aceite digital final.");
         }
         if (request.getAcceptedAt() != null) {
             throw new IllegalArgumentException("Este dossiê já possui aceite digital confirmado.");

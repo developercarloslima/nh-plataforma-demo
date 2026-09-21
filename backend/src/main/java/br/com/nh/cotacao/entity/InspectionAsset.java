@@ -114,13 +114,22 @@ public class InspectionAsset {
 
     public boolean isAvailable() {
         if (storageKind != InspectionAssetStorageKind.DATABASE || purgedAt != null) return false;
-        // O relatório consolidado é permanente: ele guarda o dossiê da vistoria e não possui validade.
-        if (assetType == InspectionAssetType.REPORT && expiresAt == null) return true;
-        return expiresAt != null && expiresAt.isAfter(OffsetDateTime.now());
+        // A validade comercial da vistoria é separada da retenção física dos arquivos.
+        // Arquivos persistidos ficam disponíveis somente durante a janela de retenção.
+        // NULL é aceito apenas como compatibilidade transitória com registros legados;
+        // a migração V55 normaliza esses registros para o prazo de 40 dias.
+        if (expiresAt == null) return true;
+        return expiresAt.isAfter(OffsetDateTime.now());
     }
 
     public void markPurged(OffsetDateTime at) {
         this.purgedAt = at;
+    }
+
+    public void replaceStoredFileMetadata(String fileName, String contentType, long fileSize) {
+        if (fileName != null && !fileName.isBlank()) this.fileName = fileName;
+        if (contentType != null && !contentType.isBlank()) this.contentType = contentType;
+        if (fileSize > 0) this.fileSize = fileSize;
     }
 
     public UUID getId() { return id; }

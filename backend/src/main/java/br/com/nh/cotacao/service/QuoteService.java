@@ -133,8 +133,8 @@ public class QuoteService {
         );
         quotation.configureVehicleHistory(request.auctionOrChassisRemarked());
         quotation.configureBillingDueDate(request.firstBillingDueDate());
-        applyCatalogSnapshot(quotation, selection.plan(), selection.optionals(), request.discountPercent());
         quotation.applyDiscount(request.discountPercent(), request.rearWindowBranding());
+        applyCatalogSnapshot(quotation, selection.plan(), selection.optionals(), request.discountPercent());
         return toResponse(quotationRepository.save(quotation));
     }
 
@@ -203,9 +203,9 @@ public class QuoteService {
         if (source == null) throw new IllegalArgumentException("Cotação não encontrada.");
         if (consultant == null) throw new IllegalArgumentException("Informe o consultor responsável.");
 
-        boolean expired = (source.getStatus() == QuoteStatus.CREATED
-                || source.getStatus() == QuoteStatus.UNDER_REVIEW)
-                && OffsetDateTime.now().isAfter(source.getValidUntil());
+        boolean expired = source.getStatus() != QuoteStatus.CANCELLED
+                && OffsetDateTime.now().isAfter(source.getValidUntil())
+                && !retratoService.hasPreservedFileForQuotation(source.getId());
         if (!expired) {
             throw new IllegalArgumentException("Somente uma cotação vencida pode ser refeita.");
         }
@@ -251,8 +251,8 @@ public class QuoteService {
         );
         recreated.configureVehicleHistory(source.getAuctionOrChassisRemarked());
         recreated.configureBillingDueDate(resolveBillingDueDateForRecreatedQuote(recreated, source.getBillingDueDay()));
-        applyCatalogSnapshot(recreated, selection.plan(), selection.optionals(), source.getDiscountPercent());
         recreated.applyDiscount(source.getDiscountPercent(), source.getRearWindowBranding());
+        applyCatalogSnapshot(recreated, selection.plan(), selection.optionals(), source.getDiscountPercent());
         return quotationRepository.save(recreated);
     }
 
@@ -400,6 +400,7 @@ public class QuoteService {
                         item.getMonthlyPrice(),
                         item.getSortOrder()
                 ));
+        quotation.enforceAutomaticBenefitRules();
     }
 
     private String coverageDetailForContext(
@@ -409,6 +410,16 @@ public class QuoteService {
             BigDecimal fipeValue,
             Integer discountPercent
     ) {
+        String code = coverage.getCode() == null ? "" : coverage.getCode().trim().toUpperCase(java.util.Locale.ROOT);
+        if (isFipeThirdPartyCategory(categoryCode) && "THIRD_PARTY_BASE".equals(code)) {
+            BigDecimal amount = fipeValue != null && fipeValue.compareTo(new BigDecimal("51000.00")) >= 0
+                    ? new BigDecimal("100000.00") : new BigDecimal("50000.00");
+            return "Cobertura de até " + coverageAmountLabel(amount);
+        }
+        if (isFipeThirdPartyCategory(categoryCode) && "THIRD_PARTY".equals(code)) {
+            return "Limite de terceiros definido automaticamente pela FIPE";
+        }
+
         var matchedRule = coverageRuleRepository.findByCoverage_IdOrderBySortOrderAscIdAsc(coverage.getId()).stream()
                 .filter(rule -> rule.matches(categoryCode, fipeValue))
                 .sorted(Comparator.comparing((CoverageRule rule) -> rule.getCategoryCode() == null ? 1 : 0)
@@ -611,7 +622,8 @@ public class QuoteService {
                 quotation.getStatus(),
                 quotation.getCreatedAt(),
                 quotation.getValidUntil(),
-                (quotation.getStatus() == QuoteStatus.CREATED || quotation.getStatus() == QuoteStatus.UNDER_REVIEW)
+                quotation.getStatus() != QuoteStatus.CANCELLED
+                        && !retratoService.hasPreservedFileForQuotation(quotation.getId())
                         && OffsetDateTime.now().isAfter(quotation.getValidUntil()),
                 quotation.getDecidedAt(),
                 quotation.getDriveFolderUrl(),
@@ -630,13 +642,27 @@ public class QuoteService {
         return quotationRepository.findTop300ByOrderByCreatedAtDesc().stream().map(this::toResponse).toList();
     }
 
+    private boolean isFipeThirdPartyCategory(String categoryCode) {
+        return "CAR_NATIONAL".equalsIgnoreCase(categoryCode)
+                || "CAR_IMPORTED".equalsIgnoreCase(categoryCode)
+                || "UTILITY".equalsIgnoreCase(categoryCode);
+    }
+
     private List<PlanCoverage> resolveSelectedOptionals(Plan plan, List<String> requestedCodes) {
-        Set<String> uniqueCodes = new LinkedHashSet<>(requestedCodes);
-        if (uniqueCodes.size() != requestedCodes.size()) {
+        List<String> normalizedCodes = requestedCodes == null ? List.of() : requestedCodes.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(code -> code.trim().toUpperCase(java.util.Locale.ROOT))
+                .filter(code -> !code.isBlank())
+                .toList();
+        Set<String> uniqueCodes = new LinkedHashSet<>(normalizedCodes);
+        if (uniqueCodes.size() != normalizedCodes.size()) {
             throw new IllegalArgumentException("O mesmo opcional não pode ser selecionado mais de uma vez.");
         }
         if (uniqueCodes.contains("FUNERAL") && uniqueCodes.contains("FUNERAL_FAMILY")) {
             throw new IllegalArgumentException("Escolha apenas uma modalidade de auxílio funeral.");
+        }
+        if (isFipeThirdPartyCategory(plan.getCategory().getCode())) {
+            uniqueCodes.remove("THIRD_PARTY");
         }
 
         List<PlanCoverage> optionals = plan.getCoverages().stream()
@@ -673,6 +699,8 @@ public class QuoteService {
                 pricing.oneTimeFee(),
                 pricing.mandatoryFeeDescription(),
                 plan.getCoverages().stream()
+                        .filter(item -> !isFipeThirdPartyCategory(plan.getCategory().getCode())
+                                || !"THIRD_PARTY".equalsIgnoreCase(item.getCoverage().getCode()))
                         .map(item -> new CoverageOption(
                                 item.getCoverage().getCode(),
                                 item.getCoverage().getName(),
@@ -696,6 +724,8 @@ public class QuoteService {
                 pricing.oneTimeFee(),
                 pricing.mandatoryFeeDescription(),
                 plan.getCoverages().stream()
+                        .filter(item -> !isFipeThirdPartyCategory(plan.getCategory().getCode())
+                                || !"THIRD_PARTY".equalsIgnoreCase(item.getCoverage().getCode()))
                         .map(item -> new CoverageOption(
                                 item.getCoverage().getCode(),
                                 item.getCoverage().getName(),

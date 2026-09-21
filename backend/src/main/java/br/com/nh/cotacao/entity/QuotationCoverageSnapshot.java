@@ -44,6 +44,9 @@ public class QuotationCoverageSnapshot {
     @Column(name = "sort_order", nullable = false)
     private Integer sortOrder;
 
+    @Column(name = "final_selected")
+    private Boolean finalSelected;
+
     protected QuotationCoverageSnapshot() {}
 
     public static QuotationCoverageSnapshot create(
@@ -68,6 +71,7 @@ public class QuotationCoverageSnapshot {
         snapshot.detail = detail == null || detail.isBlank() ? null : detail.trim();
         snapshot.monthlyPrice = monthlyPrice;
         snapshot.sortOrder = sortOrder == null ? 100 : Math.max(0, sortOrder);
+        snapshot.finalSelected = coverageStatus == CoverageStatus.INCLUDED;
         return snapshot;
     }
 
@@ -78,4 +82,14 @@ public class QuotationCoverageSnapshot {
     public String getDetail() { return detail; }
     public BigDecimal getMonthlyPrice() { return monthlyPrice; }
     public Integer getSortOrder() { return sortOrder; }
+    public boolean isFinalSelected() { return finalSelected != null ? finalSelected : coverageStatus == CoverageStatus.INCLUDED; }
+    public Boolean getFinalSelected() { return finalSelected; }
+
+    public void setFinalSelected(boolean selected) {
+        this.finalSelected = selected;
+    }
+
+    public void updateFinalDetail(String detail) {
+        this.detail = detail == null || detail.isBlank() ? null : detail.trim();
+    }
 }

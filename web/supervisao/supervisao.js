@@ -5,6 +5,7 @@ const LAST_ACTIVITY_KEY = 'nhPortalLastActivityAt';
 const INACTIVITY_LIMIT_MS = 20 * 60 * 1000;
 const ACTIVITY_WRITE_THROTTLE_MS = 15 * 1000;
 const $ = id => document.getElementById(id);
+const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
 let token = localStorage.getItem(TOKEN_KEY);
 let inactivityTimer = null;
@@ -33,6 +34,249 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
 }[char]));
 const date = value => value ? new Date(value).toLocaleString('pt-BR') : '—';
 const hasFiles = item => Number(item?.assetCount || 0) > 0;
+
+function renderCommercialBenefits(containerId, item, locked = false) {
+  const container = $(containerId);
+  if (!container) return;
+  container.innerHTML = '';
+  const benefits = Array.isArray(item?.commercialBenefits) ? item.commercialBenefits : [];
+  if (!benefits.length) {
+    const empty = document.createElement('span');
+    empty.className = 'commercial-benefits-empty';
+    empty.textContent = 'Nenhum benefício cadastrado para este plano.';
+    container.appendChild(empty);
+    return;
+  }
+  benefits.forEach(benefit => {
+    const row = document.createElement('label');
+    row.className = 'commercial-benefit-row';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.className = 'commercial-benefit-input';
+    input.checked = benefit.selected === true;
+    input.dataset.benefitCode = benefit.code || '';
+    input.dataset.catalogStatus = benefit.catalogStatus || '';
+    input.dataset.monthlyPrice = String(Number(benefit.monthlyPrice || 0));
+    input.dataset.alwaysLocked = (benefit.locked && !['NATURAL_PHENOMENA','SMALL_REPAIRS'].includes(String(benefit.code || '').toUpperCase())) ? 'true' : 'false';
+    input.disabled = locked || input.dataset.alwaysLocked === 'true';
+    const text = document.createElement('span');
+    text.className = 'commercial-benefit-copy';
+    const title = document.createElement('strong');
+    title.textContent = benefit.name || benefit.code || 'Benefício';
+    text.appendChild(title);
+    const detail = document.createElement('small');
+    detail.className = 'commercial-benefit-detail';
+    const price = Number(benefit.monthlyPrice || 0);
+    detail.textContent = [benefit.detail, price > 0 ? `Adicional: ${brl.format(price)}/mês` : null, benefit.lockReason].filter(Boolean).join(' · ');
+    detail.dataset.baseDetail = [benefit.detail, price > 0 ? `Adicional: ${brl.format(price)}/mês` : null].filter(Boolean).join(' · ');
+    detail.dataset.benefitDetail = 'true';
+    text.appendChild(detail);
+    row.append(input, text);
+    container.appendChild(row);
+  });
+}
+
+function selectedCommercialBenefits(containerId) {
+  const container = $(containerId);
+  if (!container) return [];
+  return [...container.querySelectorAll('input[data-benefit-code]:checked')].map(input => input.dataset.benefitCode);
+}
+
+function refreshCommercialRules(config, locked = false) {
+  const discountEl = $(config.discountId);
+  const brandingEl = $(config.brandingId);
+  const fipeEl = $(config.fipeId);
+  const benefitsEl = $(config.benefitsId);
+  if (!discountEl || !brandingEl || !benefitsEl) return;
+  const discount = Number(discountEl.value || 0);
+  if (discount === 15) brandingEl.value = 'NH_AND_OTHER_COMPANY';
+  else if (discount === 30) brandingEl.value = 'NH_ONLY';
+  else brandingEl.value = 'NOT_APPLICABLE';
+  brandingEl.disabled = locked || ![15, 30].includes(discount);
+  const parse = window.NHMoney?.parse;
+  const fipe = typeof parse === 'function' ? parse(fipeEl?.value || '') : Number(String(fipeEl?.value || '').replace(/[^0-9,]/g, '').replace(',', '.'));
+  benefitsEl.querySelectorAll('input[data-benefit-code]').forEach(input => {
+    const code = String(input.dataset.benefitCode || '').toUpperCase();
+    const alwaysLocked = input.dataset.alwaysLocked === 'true';
+    if (code === 'THIRD_PARTY_BASE') { input.checked = true; input.disabled = true; }
+    else if (code === 'THIRD_PARTY') { input.checked = false; input.disabled = true; }
+    else if (discount > 0 && ['NATURAL_PHENOMENA','SMALL_REPAIRS'].includes(code)) { input.checked = false; input.disabled = true; }
+    else input.disabled = locked || alwaysLocked;
+    const row = input.closest('.commercial-benefit-row');
+    const detail = input.parentElement?.querySelector('[data-benefit-detail]');
+    if (code === 'THIRD_PARTY_BASE') {
+      if (detail && Number.isFinite(fipe)) {
+        detail.textContent = `Cobertura de até ${fipe >= 51000 ? 'R$ 100 mil' : 'R$ 50 mil'} · Limite obrigatório definido pela FIPE.`;
+      }
+    } else if (discount > 0 && ['NATURAL_PHENOMENA','SMALL_REPAIRS'].includes(code)) {
+      if (detail) detail.textContent = [detail.dataset.baseDetail, 'Removido automaticamente porque o plano possui desconto.'].filter(Boolean).join(' · ');
+    } else if (detail && detail.dataset.baseDetail) {
+      detail.textContent = detail.dataset.baseDetail;
+    }
+    row?.classList.toggle('is-selected', input.checked);
+    row?.classList.toggle('is-locked', input.disabled);
+  });
+}
+
+function setCommercialPreviewValue(id, value) {
+  const element = $(id);
+  if (element) element.textContent = brl.format(Number.isFinite(Number(value)) ? Number(value) : 0);
+}
+
+const commercialPricingTimers = new WeakMap();
+
+function parseCommercialMoneyInput(element) {
+  const parse = window.NHMoney?.parse;
+  if (!element) return NaN;
+  return typeof parse === 'function'
+    ? parse(element.value || '')
+    : Number(String(element.value || '').replace(/[^0-9,]/g, '').replace(',', '.'));
+}
+
+function markCommercialMonthlyAutomatic(config) {
+  const monthlyEl = $(config.monthlyId);
+  if (monthlyEl) monthlyEl.dataset.manualOverride = 'false';
+}
+
+async function requestCommercialPricingPreview(config, applyCalculatedValue = true) {
+  const inspectionId = $(config.inspectionIdId)?.value;
+  const benefitsEl = $(config.benefitsId);
+  const discountEl = $(config.discountId);
+  const fipeEl = $(config.fipeId);
+  const monthlyEl = $(config.monthlyId);
+  const finalNote = $(config.previewFinalNoteId);
+  if (!inspectionId || !benefitsEl || !discountEl || !fipeEl) return;
+
+  const fipeValue = parseCommercialMoneyInput(fipeEl);
+  if (!Number.isFinite(fipeValue) || fipeValue <= 0) {
+    if (finalNote) finalNote.textContent = 'Informe uma FIPE válida para recalcular a mensalidade.';
+    return;
+  }
+
+  const discountPercent = Number(discountEl.value || 0) || 0;
+  const benefitCodes = selectedCommercialBenefits(config.benefitsId);
+  const sequence = (Number(benefitsEl.dataset.pricingRequestSequence || 0) || 0) + 1;
+  benefitsEl.dataset.pricingRequestSequence = String(sequence);
+  if (finalNote) finalNote.textContent = 'Recalculando pela tabela atual do plano...';
+
+  try {
+    const pricing = await api(`${config.previewApiBase}/${encodeURIComponent(inspectionId)}/contract-pricing-preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fipeValue, discountPercent, benefitCodes })
+    });
+    if (Number(benefitsEl.dataset.pricingRequestSequence || 0) !== sequence) return;
+
+    const base = Number(pricing.planBaseMonthlyValue || 0);
+    const mandatory = Number(pricing.mandatoryMonthlyFee || 0);
+    const optionals = Number(pricing.optionalsMonthlyValue || 0);
+    const subtotal = Number(pricing.subtotalBeforeDiscount || 0);
+    const discountValue = Number(pricing.discountValue || 0);
+    const finalValue = Number(pricing.finalMonthlyValue || 0);
+    const oneTime = Number(pricing.oneTimeFee || 0);
+
+    setCommercialPreviewValue(config.previewBaseId, base);
+    setCommercialPreviewValue(config.previewMandatoryId, mandatory);
+    setCommercialPreviewValue(config.previewOptionalsId, optionals);
+    setCommercialPreviewValue(config.previewSubtotalId, subtotal);
+    setCommercialPreviewValue(config.previewOneTimeId, oneTime);
+    setCommercialPreviewValue(config.previewDiscountId, discountValue);
+    setCommercialPreviewValue(config.previewFinalId, finalValue);
+    benefitsEl.dataset.calculatedFinal = String(finalValue);
+
+    const mandatoryLabel = $(config.previewMandatoryLabelId);
+    if (mandatoryLabel) {
+      mandatoryLabel.textContent = mandatory > 0 ? 'Rastreador / taxa mensal aplicável' : 'Rastreador / taxa mensal (não aplicável)';
+      mandatoryLabel.title = pricing.mandatoryFeeDescription || '';
+    }
+
+    const discountLabel = $(config.previewDiscountLabelId);
+    if (discountLabel) discountLabel.textContent = discountPercent > 0 ? `Desconto (${discountPercent}%)` : 'Desconto';
+
+    const sourceText = pricing.catalogBased
+      ? 'Preço calculado agora pelo catálogo atual: base do plano por FIPE/tipo do veículo + rastreador/taxas aplicáveis + serviços adicionais selecionados - desconto. Valores antigos não são usados como base.'
+      : 'Preço reconstruído pelos componentes disponíveis da cotação.';
+    const feeText = mandatory > 0 && pricing.mandatoryFeeDescription
+      ? ` ${pricing.mandatoryFeeDescription}`
+      : (mandatory === 0 ? ' Nenhuma mensalidade de rastreador/taxa obrigatória foi adicionada.' : '');
+    if (finalNote) finalNote.textContent = sourceText + feeText;
+
+    if (applyCalculatedValue && monthlyEl && !monthlyEl.disabled) {
+      monthlyEl.value = window.NHMoney?.format(finalValue) || finalValue.toFixed(2).replace('.', ',');
+      monthlyEl.dataset.manualOverride = 'false';
+      window.NHMoney?.refresh(monthlyEl);
+    }
+    return pricing;
+  } catch (error) {
+    if (Number(benefitsEl.dataset.pricingRequestSequence || 0) !== sequence) return;
+    if (finalNote) finalNote.textContent = `Não foi possível recalcular pela tabela: ${error.message || 'erro inesperado'}`;
+    return null;
+  }
+}
+
+function scheduleCommercialPricingPreview(config, applyCalculatedValue = true, delay = 250) {
+  const benefitsEl = $(config.benefitsId);
+  if (!benefitsEl) return;
+  const previous = commercialPricingTimers.get(benefitsEl);
+  if (previous) window.clearTimeout(previous);
+  const timer = window.setTimeout(() => {
+    commercialPricingTimers.delete(benefitsEl);
+    requestCommercialPricingPreview(config, applyCalculatedValue);
+  }, delay);
+  commercialPricingTimers.set(benefitsEl, timer);
+}
+
+function initializeCommercialPricingPreview(config) {
+  markCommercialMonthlyAutomatic(config);
+  scheduleCommercialPricingPreview(config, true, 0);
+}
+
+function bindCommercialPricingPreview(config) {
+  const discountEl = $(config.discountId);
+  const fipeEl = $(config.fipeId);
+  const benefitsEl = $(config.benefitsId);
+  const monthlyEl = $(config.monthlyId);
+
+  discountEl?.addEventListener('change', () => {
+    refreshCommercialRules(config, discountEl.disabled);
+    markCommercialMonthlyAutomatic(config);
+    scheduleCommercialPricingPreview(config, true, 0);
+  });
+  fipeEl?.addEventListener('input', () => {
+    refreshCommercialRules(config, fipeEl.disabled);
+    markCommercialMonthlyAutomatic(config);
+    scheduleCommercialPricingPreview(config, true, 300);
+  });
+  benefitsEl?.addEventListener('change', event => {
+    if (!event.target?.matches?.('input[data-benefit-code]')) return;
+    refreshCommercialRules(config, false);
+    markCommercialMonthlyAutomatic(config);
+    scheduleCommercialPricingPreview(config, true, 0);
+  });
+}
+
+const SUPERVISION_COMMERCIAL_CONFIG = Object.freeze({
+  discountId: 'supervision-contract-discount',
+  brandingId: 'supervision-contract-branding',
+  fipeId: 'supervision-contract-fipe',
+  benefitsId: 'supervision-contract-benefits',
+  monthlyId: 'supervision-contract-monthly',
+  inspectionIdId: 'inspection-id',
+  previewApiBase: '/api/supervision/inspections',
+  previewBaseId: 'supervision-preview-base',
+  previewMandatoryId: 'supervision-preview-mandatory',
+  previewMandatoryLabelId: 'supervision-preview-mandatory-label',
+  previewOptionalsId: 'supervision-preview-optionals',
+  previewSubtotalId: 'supervision-preview-subtotal',
+  previewOneTimeId: 'supervision-preview-one-time',
+  previewDiscountId: 'supervision-preview-discount',
+  previewFinalId: 'supervision-preview-final',
+  previewFinalNoteId: 'supervision-preview-final-note',
+  previewDiscountLabelId: 'supervision-preview-discount-label'
+});
+
+
+
 
 function inspectionAssetAvailable(item, type, sortOrder) {
   return Array.isArray(item?.assets) && item.assets.some(asset =>
@@ -289,10 +533,31 @@ async function analysisSessionStillValid() {
   }
 }
 
+function normalizedCpf(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
 async function apiBlob(path) {
   const headers = new Headers();
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  const response = await fetch(window.NH_API?.backend(path) || path, { headers, cache: 'no-store' });
+
+  let response = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const requestPath = attempt === 0
+      ? path
+      : `${path}${path.includes('?') ? '&' : '?'}_nhRetry=${Date.now()}`;
+    try {
+      response = await fetch(window.NH_API?.backend(requestPath) || requestPath, { headers, cache: 'no-store' });
+      break;
+    } catch (networkError) {
+      if (attempt === 1) {
+        throw new Error('A conexão com o servidor foi interrompida durante o download. Tente novamente; o sistema preservou os arquivos da vistoria.');
+      }
+      await new Promise(resolve => window.setTimeout(resolve, 700));
+    }
+  }
+
+  if (!response) throw new Error('Não foi possível iniciar o download.');
   if (token && response.status === 401) {
     showLogin('Sua sessão expirou. Entre novamente.');
     const error = new Error('Sessão inválida.');
@@ -503,19 +768,43 @@ function configureStatusOptions(item) {
   else select.value = '';
 
   const pendingAnalyst = item?.analysisStage === 'ANALYST_QUEUE' || item?.analysisStage === 'ANALYST_PENDING';
-  const canDecide = item?.analysisStage === 'SUPERVISION_QUEUE';
-  $('supervision-registration-actions').hidden = !pendingAnalyst;
+  // A Supervisão usa o marcador explícito do cadastro. Não inferimos cadastro
+  // realizado apenas porque a vistoria está/esteve aprovada.
+  const registrationCompleted = Boolean(item?.registrationCompletedAt);
+  const registrationBlocked = Boolean(item?.digitalAcceptedAt) || ['CANCELLED', 'EXPIRED'].includes(item?.status);
+  const canManageRegistration = !registrationBlocked;
+  const canDecide = item?.analysisStage === 'SUPERVISION_QUEUE' || (['APPROVED', 'REJECTED'].includes(item?.status) && !item?.digitalAcceptedAt);
+
+  // A Supervisão pode reabrir ou concluir novamente o cadastro em qualquer viewport,
+  // inclusive após aprovação, até o associado efetivar o aceite digital.
+  $('supervision-registration-actions').hidden = !canManageRegistration;
+  const supervisionRegistrationNotComplete = $('supervision-registration-not-complete');
+  const supervisionRegistrationComplete = $('supervision-registration-complete');
+  // Supervisor pode escolher qualquer estado até o aceite digital; o estado atual
+  // fica destacado, mas ambos os controles permanecem disponíveis.
+  supervisionRegistrationNotComplete.disabled = !canManageRegistration;
+  supervisionRegistrationComplete.disabled = !canManageRegistration;
+  supervisionRegistrationNotComplete.classList.toggle('is-current', !registrationCompleted);
+  supervisionRegistrationComplete.classList.toggle('is-current', registrationCompleted);
+  supervisionRegistrationNotComplete.setAttribute('aria-pressed', String(!registrationCompleted));
+  supervisionRegistrationComplete.setAttribute('aria-pressed', String(registrationCompleted));
   $('supervision-decision-status-wrap').hidden = pendingAnalyst;
   $('supervision-decision-note-wrap').hidden = pendingAnalyst;
   $('save-supervision-decision').hidden = !canDecide;
   select.disabled = !canDecide;
   $('inspection-note').readOnly = !canDecide;
 
-  if (pendingAnalyst) {
+  if (canManageRegistration) {
     const pending = inspectionPendingCount(item);
-    $('supervision-registration-helper').textContent = pending > 0
-      ? `Existem ${pending} ${pending === 1 ? 'pendência' : 'pendências'} de arquivo/documento. A Supervisão pode assumir a responsabilidade, registrar o cadastro como realizado e então decidir a vistoria.`
-      : 'O analista ainda não concluiu o cadastro. A Supervisão pode assumir esta etapa, registrar Cadastro realizado e liberar a decisão final.';
+    if (registrationCompleted) {
+      $('supervision-registration-helper').textContent = item?.status === 'APPROVED'
+        ? 'A vistoria está aprovada e o cadastro está realizado. Antes do aceite digital, a Supervisão pode marcar Cadastro não realizado para reabrir e corrigir os dados.'
+        : 'O cadastro está realizado. Se precisar corrigir a vistoria antes do aceite digital, marque Cadastro não realizado para reabrir a etapa.';
+    } else {
+      $('supervision-registration-helper').textContent = pending > 0
+        ? `Existem ${pending} ${pending === 1 ? 'pendência' : 'pendências'} de arquivo/documento. A Supervisão pode assumir a responsabilidade e registrar Cadastro realizado mesmo assim.`
+        : 'O cadastro está aberto. Depois das correções, registre Cadastro realizado para liberar a decisão final.';
+    }
     $('supervision-registration-note').value = item?.adminNote || '';
   } else {
     $('supervision-registration-note').value = '';
@@ -534,6 +823,11 @@ function supervisionStageLabel(item) {
 function openInspection(id) {
   const item = inspections.find(value => value.id === id);
   if (!item) return;
+  const approvedDossier = item.status === 'APPROVED';
+  if (item.expiredWithoutFiles && !approvedDossier) {
+    window.alert('Vistoria/cotação vencida, precisa ser refeita.');
+    return;
+  }
 
   releaseMediaUrls();
   const filesAvailable = hasFiles(item);
@@ -546,13 +840,57 @@ function openInspection(id) {
   $('inspection-id').value = item.id;
   $('dialog-title').textContent = `${item.plate || '0 km — sem placa'} — ${item.associateName}`;
   $('edit-associate-name').value = item.associateName || '';
+  $('edit-associate-cpf').value = item.cpf || item.maskedCpf || '';
   $('edit-associate-whatsapp').value = formatPhone(item.whatsapp) || '';
+  $('edit-associate-plate').value = item.plate || '';
+  $('edit-zero-km').value = item.zeroKm ? 'true' : 'false';
   $('edit-vehicle-model').value = item.vehicleModel || '';
   $('edit-model-year').value = item.modelYear || '';
+  $('edit-residence-address').value = item.residenceAddress || '';
+  $('supervision-contract-fipe').value = window.NHMoney?.format(item.pendingFipeValue ?? item.fipeValue) || (item.pendingFipeValue ?? item.fipeValue ?? '');
+  $('supervision-contract-monthly').value = window.NHMoney?.format(item.pendingMonthlyValue ?? item.monthlyValue) || (item.pendingMonthlyValue ?? item.monthlyValue ?? '');
+  $('supervision-contract-plan').textContent = item.selectedPlanName || item.contractedPlan || '—';
+  $('supervision-contract-discount').value = String(item.pendingDiscountPercent ?? item.discountPercent ?? 0);
+  $('supervision-contract-branding').value = item.pendingRearWindowBranding || item.rearWindowBranding || 'NOT_APPLICABLE';
+  window.NHMoney?.refresh($('supervision-contract-fipe'));
+  window.NHMoney?.refresh($('supervision-contract-monthly'));
   const editableLocked = Boolean(item.digitalAcceptedAt);
-  ['edit-associate-name','edit-associate-whatsapp','edit-vehicle-model','edit-model-year','save-editable-details'].forEach(id => { const el = $(id); if (el) el.disabled = editableLocked; });
+  const digitalLock = $('supervision-digital-lock');
+  if (digitalLock) digitalLock.hidden = !editableLocked;
+  ['edit-associate-name','edit-associate-cpf','edit-associate-whatsapp','edit-associate-plate','edit-zero-km','edit-vehicle-model','edit-model-year','edit-residence-address','save-editable-details']
+    .forEach(id => { const el = $(id); if (el) el.disabled = editableLocked; });
+  const hasContractValues = item.requestType === 'NEW_INSPECTION' && item.fipeValue != null && item.monthlyValue != null;
+  const contractLocked = Boolean(item.digitalAcceptedAt);
+  renderCommercialBenefits('supervision-contract-benefits', item, contractLocked || !hasContractValues);
+  refreshCommercialRules(SUPERVISION_COMMERCIAL_CONFIG, contractLocked || !hasContractValues);
+  initializeCommercialPricingPreview(SUPERVISION_COMMERCIAL_CONFIG, item);
+  const contractSection = $('supervision-contract-values-section');
+  if (contractSection) contractSection.hidden = item.requestType !== 'NEW_INSPECTION';
+  ['supervision-contract-fipe','supervision-contract-monthly','supervision-contract-discount','supervision-contract-branding','supervision-save-contract-values']
+    .forEach(id => { const el = $(id); if (el) el.disabled = contractLocked || !hasContractValues; });
+  const contractHelper = $('supervision-contract-values-helper');
+  if (contractHelper) contractHelper.textContent = contractLocked
+    ? 'O aceite digital do associado já foi concluído. O dossiê comercial está bloqueado para edição.'
+    : (hasContractValues
+        ? 'A Supervisão pode corrigir FIPE, desconto, mensalidade, benefícios e adicionais inclusive em vistoria aprovada, até o associado concluir o aceite digital.'
+        : 'Esta vistoria não possui valores de cotação vinculados para edição.');
+
+  const pendingContractBox = $('supervision-contract-change-pending');
+  if (pendingContractBox) {
+    const canSendContractAcceptance = Boolean(item.contractChangePending && item.registrationCompletedAt);
+    pendingContractBox.hidden = !canSendContractAcceptance;
+    if (canSendContractAcceptance) {
+      $('supervision-contract-change-pending-text').textContent = `FIPE proposta: ${brl.format(item.pendingFipeValue)} · mensalidade com os adicionais atuais: ${brl.format(item.pendingMonthlyValue)}. O contrato só será atualizado depois da confirmação do associado.`;
+      const sendLink = $('supervision-send-contract-change-link');
+      sendLink.href = item.contractChangeWhatsappUrl || item.contractChangeConfirmationUrl || '#';
+      sendLink.hidden = !(item.contractChangeWhatsappUrl || item.contractChangeConfirmationUrl);
+      $('supervision-copy-contract-change-link').dataset.url = item.contractChangeConfirmationUrl || '';
+    }
+  }
   $('inspection-note').value = item.adminNote || '';
   $('supervision-note').value = item.supervisionNote || '';
+  $('supervision-note').disabled = editableLocked;
+  $('save-supervision-note').disabled = editableLocked;
   $('supervision-note-meta').textContent = item.supervisionNoteUpdatedAt
     ? `Última atualização: ${date(item.supervisionNoteUpdatedAt)}${item.supervisionNoteByName ? ` por ${item.supervisionNoteByName}` : ''}. A observação fica visível para o analista.`
     : 'A observação ficará visível para o analista ao abrir esta vistoria.';
@@ -562,9 +900,9 @@ function openInspection(id) {
   const retentionText = filesAvailable
     ? (needsFiles
       ? `${pendingCount} ${pendingCount === 1 ? 'item pendente' : 'itens pendentes'}; os demais arquivos continuam armazenados no sistema.`
-      : `Disponíveis no painel até ${date(item.filesExpireAt)}.`)
+      : 'Arquivos confirmados disponíveis durante a retenção operacional de 40 dias.')
     : (Number(item.expiredAssetCount || 0) > 0
-      ? 'O prazo de 40 dias terminou e os arquivos foram apagados automaticamente.'
+      ? 'Há arquivo histórico indisponível. Novos arquivos também seguem a retenção operacional de 40 dias.'
       : 'Aguardando envio do associado.');
 
   const discountPercent = Number(item.discountPercent || 0);
@@ -576,7 +914,7 @@ function openInspection(id) {
 
   const inspectionDetails = [
     ['Associado', item.associateName],
-    ['CPF', item.maskedCpf],
+    ['CPF', item.cpf || item.maskedCpf || '—'],
     ['WhatsApp', formatPhone(item.whatsapp) || '—'],
     ['Modelo', item.vehicleModel || '—'],
     ['Ano do modelo', item.modelYear || '—'],
@@ -667,8 +1005,8 @@ function renderInspectionFiles(item) {
   }
 
   $('inspection-files-retention').textContent = available.length
-    ? `Os arquivos ficam disponíveis até ${date(item.filesExpireAt)} e são apagados automaticamente após 40 dias.`
-    : 'O prazo de 40 dias terminou e os arquivos foram apagados automaticamente.';
+    ? 'Arquivos confirmados: disponíveis até o limite de retenção operacional de 40 dias.'
+    : 'Há arquivo histórico indisponível. Novos arquivos também seguem a retenção operacional de 40 dias.';
   $('download-all-files').hidden = available.length === 0;
   $('download-all-files').dataset.inspectionId = item.id;
 
@@ -681,18 +1019,18 @@ function renderInspectionFiles(item) {
       : video
         ? `<div class="inspection-media-preview"><div class="inspection-media-placeholder">▶ Vídeo disponível</div><video data-video-preview="${asset.id}" controls hidden></video></div>`
         : `<div class="inspection-media-preview"><div class="inspection-media-placeholder">${asset.type === 'REPORT' ? 'PDF' : 'DOCUMENTO'}</div></div>`;
-    const canDelete = asset.available && ['PHOTO', 'VIDEO', 'SIGNATURE', 'VEHICLE_DOCUMENT', 'IDENTITY_DOCUMENT'].includes(asset.type);
+    const canDelete = asset.available && !item.digitalAcceptedAt && ['PHOTO', 'VIDEO', 'SIGNATURE', 'VEHICLE_DOCUMENT', 'IDENTITY_DOCUMENT'].includes(asset.type);
     const legacyLargeVideo = video && Number(asset.fileSize || 0) > 15 * 1024 * 1024;
     const downloadName = legacyLargeVideo ? compactedVideoFileName(asset.fileName) : asset.fileName;
     const compressionNote = legacyLargeVideo
-      ? '<small class="inspection-media-note">Original preservado · download em WebM compactado automaticamente para até 15 MB.</small>'
+      ? '<small class="inspection-media-note">Vídeo original preservado sem limite de MB.</small>'
       : '';
     const canRegenerateReport = asset.type === 'REPORT' && Boolean(item.completedAt);
     const actions = canRegenerateReport
       ? `<div class="inspection-media-actions"><button class="secondary" data-analysis-download-report="${item.id}" type="button">Baixar relatório</button></div>`
       : asset.available
         ? `<div class="inspection-media-actions">${video ? `<button class="outline" data-play-video="${asset.id}" type="button">Reproduzir</button>` : ''}<button class="secondary" data-download-asset="${asset.id}" data-file-name="${esc(downloadName)}" type="button">${legacyLargeVideo ? 'Baixar WebM' : 'Baixar'}</button>${canDelete ? `<button class="danger" data-delete-asset="${asset.id}" data-file-name="${esc(title)}" type="button">Reprovar arquivo</button>` : ''}</div>`
-        : `<div class="inspection-media-expired">${inspectionNeedsFiles(item) && asset.type !== 'REPORT' ? 'Arquivo excluído / aguardando reenvio.' : 'Arquivo removido após 40 dias.'}</div>`;
+        : `<div class="inspection-media-expired">${inspectionNeedsFiles(item) && asset.type !== 'REPORT' ? 'Arquivo excluído / aguardando reenvio.' : 'Arquivo histórico indisponível.'}</div>`;
     return `<article class="inspection-media-card ${asset.available ? '' : 'expired'}">${preview}<div class="inspection-media-body"><strong>${esc(title)}</strong><small>${esc(asset.fileName)}</small><small>${formatBytes(asset.fileSize)} · ${esc(asset.contentType || 'arquivo')}</small>${compressionNote}${actions}</div></article>`;
   }).join('');
 
@@ -861,7 +1199,7 @@ function showNotificationButton(item) {
   const webauthnBox = $('webauthn-notification');
   const sendWebauthn = $('send-webauthn-token');
   const copyWebauthn = $('copy-webauthn-link');
-  const pendingWebauthn = item?.status === 'APPROVED' && !item?.digitalAcceptedAt && Boolean(item?.publicUrl);
+  const pendingWebauthn = item?.status === 'APPROVED' && Boolean(item?.registrationCompletedAt) && !item?.contractChangePending && !item?.digitalAcceptedAt && Boolean(item?.publicUrl);
   if (pendingWebauthn) {
     sendWebauthn.dataset.inspectionId = item.id;
     copyWebauthn.dataset.inspectionId = item.id;
@@ -873,19 +1211,59 @@ function showNotificationButton(item) {
   }
 }
 
+$('supervision-registration-not-complete')?.addEventListener('click', async () => {
+  const id = $('inspection-id').value;
+  const item = inspections.find(value => value.id === id);
+  if (!item) return message('Vistoria não encontrada.');
+  if (item.digitalAcceptedAt) return message('O aceite digital do associado já foi concluído. Esta vistoria está bloqueada para edição.');
+  if (!item.registrationCompletedAt) return message('O cadastro já está marcado como não realizado.', 'success');
+
+  const note = $('supervision-registration-note').value.trim();
+  const confirmed = await confirmAnalysisAction(
+    'Marcar Cadastro não realizado e reabrir?',
+    'A vistoria voltará para a etapa de cadastro para permitir correções. A Supervisão pode fazer isso mesmo com arquivos pendentes. Se existir uma cerimônia de aceite digital ainda não concluída, ela será invalidada e deverá ser enviada novamente após a nova liberação.',
+    'Reabrir cadastro'
+  );
+  if (!confirmed) return;
+
+  const button = $('supervision-registration-not-complete');
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Reabrindo...';
+  try {
+    await api(`/api/supervision/inspections/${encodeURIComponent(id)}/registration-not-complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note })
+    });
+    if ($('inspection-dialog').open) $('inspection-dialog').close();
+    activeAnalysisQueue = 'analyst_pending';
+    await load();
+    const updated = inspections.find(value => value.id === id);
+    if (updated) openInspection(id);
+    message('Cadastro reaberto como não realizado. Depois da correção, use “Cadastro realizado · Liberar decisão”.', 'success');
+  } catch (error) {
+    message(error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+});
+
 $('supervision-registration-complete')?.addEventListener('click', async () => {
   const id = $('inspection-id').value;
   const item = inspections.find(value => value.id === id);
   if (!item) return message('Vistoria não encontrada.');
-  if (!['ANALYST_QUEUE', 'ANALYST_PENDING'].includes(item.analysisStage)) {
-    return message('O cadastro desta vistoria já foi concluído ou ela já saiu da fila do analista.');
-  }
+  if (item.digitalAcceptedAt) return message('O aceite digital do associado já foi concluído. Esta vistoria está bloqueada para edição.');
+  if (item.registrationCompletedAt) return message('O cadastro já está marcado como realizado.', 'success');
 
   const pending = inspectionPendingCount(item);
   const note = $('supervision-registration-note').value.trim();
-  const warning = pending > 0
-    ? `Esta vistoria ainda possui ${pending} ${pending === 1 ? 'pendência' : 'pendências'}. Ao continuar, a Supervisão assume a responsabilidade pela etapa de cadastro e libera a vistoria para decisão final.`
-    : 'A Supervisão assumirá a etapa de cadastro que ainda não foi concluída pelo analista e liberará a vistoria para decisão final.';
+  const warning = item.contractChangePending
+    ? 'O cadastro será marcado como realizado. A decisão final continuará bloqueada somente até o associado confirmar a alteração comercial pendente.'
+    : (pending > 0
+      ? `Esta vistoria ainda possui ${pending} ${pending === 1 ? 'pendência' : 'pendências'}. Ao continuar, a Supervisão assume a responsabilidade pela etapa de cadastro e libera a vistoria para decisão final.`
+      : 'A Supervisão assumirá a etapa de cadastro que ainda não foi concluída pelo analista e liberará a vistoria para decisão final.');
   const confirmed = await confirmAnalysisAction('Registrar Cadastro realizado?', warning, 'Cadastro realizado');
   if (!confirmed) return;
 
@@ -954,26 +1332,85 @@ $('save-editable-details').addEventListener('click', async () => {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         associateName: $('edit-associate-name').value.trim(),
+        cpf: normalizedCpf($('edit-associate-cpf').value),
         whatsapp: $('edit-associate-whatsapp').value.trim(),
+        plate: $('edit-associate-plate').value.trim(),
+        zeroKm: $('edit-zero-km').value === 'true',
         model: $('edit-vehicle-model').value.trim(),
-        modelYear: Number($('edit-model-year').value)
+        modelYear: Number($('edit-model-year').value),
+        residenceAddress: $('edit-residence-address').value.trim()
       })
     });
     const index = inspections.findIndex(item => item.id === updated.id);
     if (index >= 0) inspections[index] = updated;
     render();
     openInspection(updated.id);
-    message('Dados do associado e veículo atualizados. A cotação vinculada também foi sincronizada.', 'success');
+    message('Dados do associado e veículo atualizados. A cotação vinculada foi sincronizada sem alterar a FIPE.', 'success');
   } catch (error) { message(error.message); }
   finally { button.disabled = false; button.textContent = original; }
+});
+
+$('supervision-save-contract-values')?.addEventListener('click', async () => {
+  const id = $('inspection-id').value;
+  if (!id) return;
+  const manualMonthlyOverride = false;
+  const preview = await requestCommercialPricingPreview(SUPERVISION_COMMERCIAL_CONFIG, true);
+  if (!preview) return message('Não foi possível recalcular o valor pela tabela atual do plano.');
+  const fipeValue = window.NHMoney?.parse($('supervision-contract-fipe').value);
+  const monthlyValue = window.NHMoney?.parse($('supervision-contract-monthly').value);
+  const discountPercent = Number($('supervision-contract-discount').value || 0);
+  const rearWindowBranding = $('supervision-contract-branding').value || 'NOT_APPLICABLE';
+  const benefitCodes = selectedCommercialBenefits('supervision-contract-benefits');
+  if (!Number.isFinite(fipeValue) || fipeValue <= 0) return message('Informe um valor FIPE válido.');
+  if (!Number.isFinite(monthlyValue) || monthlyValue <= 0) return message('Informe uma mensalidade válida.');
+  const currentItem = inspections.find(item => item.id === id);
+  const approvedBeforeDigitalAcceptance = currentItem?.status === 'APPROVED' && !currentItem?.digitalAcceptedAt;
+  const confirmationSuffix = approvedBeforeDigitalAcceptance
+    ? ' Como a vistoria está aprovada e ainda sem aceite digital, a revisão será aplicada agora e o dossiê final será regenerado para o novo aceite.'
+    : ' Se houver alteração contratual que exija confirmação, o sistema preparará o fluxo correspondente para o associado.';
+  if (!window.confirm(`Confirma FIPE ${brl.format(fipeValue)} e mensalidade final ${brl.format(monthlyValue)}?${confirmationSuffix}`)) return;
+  const button = $('supervision-save-contract-values');
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Salvando...';
+  try {
+    const updated = await api(`/api/supervision/inspections/${encodeURIComponent(id)}/contract-values`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fipeValue, monthlyValue, discountPercent, rearWindowBranding, benefitCodes, manualMonthlyOverride })
+    });
+    const index = inspections.findIndex(item => item.id === updated.id);
+    if (index >= 0) inspections[index] = updated;
+    render();
+    openInspection(updated.id);
+    message(updated.contractChangePending
+      ? 'Novo valor preparado. Envie o link ao associado; o contrato só será atualizado após a confirmação dele.'
+      : 'Revisão comercial salva no dossiê final.', 'success');
+  } catch (error) { message(error.message); }
+  finally { button.disabled = false; button.textContent = original; }
+});
+
+
+$('supervision-copy-contract-change-link')?.addEventListener('click', async () => {
+  const url = $('supervision-copy-contract-change-link').dataset.url || '';
+  if (!url) return message('Não há link de confirmação pendente.');
+  try {
+    await navigator.clipboard.writeText(url);
+    message('Link de confirmação copiado.', 'success');
+  } catch (_error) {
+    window.prompt('Copie o link abaixo:', url);
+  }
 });
 
 $('inspection-form').addEventListener('submit', async event => {
   event.preventDefault();
   const id = $('inspection-id').value;
   const item = inspections.find(value => value.id === id);
-  if (!item || item.analysisStage !== 'SUPERVISION_QUEUE') {
-    return message('Esta vistoria ainda está com o analista. Use O.B.S. Supervisão para registrar orientações; a decisão final só fica disponível após Cadastro feito.');
+  const revisableFinalDecision = ['APPROVED', 'REJECTED'].includes(item?.status)
+    && !item?.digitalAcceptedAt;
+  if (!item || (item.analysisStage !== 'SUPERVISION_QUEUE' && !revisableFinalDecision)) {
+    return message(item?.digitalAcceptedAt
+      ? 'Esta vistoria já possui aceite digital do associado e não pode mais ser alterada.'
+      : 'Esta vistoria ainda está com o analista. Use O.B.S. Supervisão para registrar orientações; a decisão final só fica disponível após Cadastro feito.');
   }
   const status = $('inspection-status').value;
   const note = $('inspection-note').value.trim();
@@ -1188,3 +1625,5 @@ installInactivityTracking();
 if (token && lastActivityAtMs() === null) markSessionActivity(true);
 else scheduleInactivityCheck();
 boot();
+
+bindCommercialPricingPreview(SUPERVISION_COMMERCIAL_CONFIG);

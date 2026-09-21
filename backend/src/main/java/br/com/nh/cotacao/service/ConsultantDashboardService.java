@@ -88,9 +88,6 @@ public class ConsultantDashboardService {
         Consultant consultant = consultantService.findActive(consultantId);
         Quotation quotation = findOwnedQuotation(consultant, quoteId);
         repairOwnership(quotation, consultant);
-        if (OffsetDateTime.now().isAfter(quotation.getValidUntil())) {
-            throw new IllegalArgumentException("Esta cotação expirou e não pode mais iniciar uma nova vistoria. Refaça a cotação.");
-        }
         if (quotation.getStatus() != QuoteStatus.ACCEPTED) {
             throw new IllegalArgumentException("A cotação precisa estar aceita para iniciar a nova vistoria.");
         }
@@ -121,6 +118,8 @@ public class ConsultantDashboardService {
         Consultant consultant = consultantService.findActive(consultantId);
         Quotation quotation = findOwnedQuotation(consultant, quoteId);
         repairOwnership(quotation, consultant);
+        InspectionRequest inspection = inspectionRepository.findByQuotation_Id(quotation.getId()).orElse(null);
+        assertNotExpiredWithoutPreservedFiles(quotation, inspection);
 
         Map<String, String> immutableBefore = immutableQuoteSnapshot(quotation);
         quoteService.updateNonPricingData(
@@ -135,7 +134,6 @@ public class ConsultantDashboardService {
                 request.observation()
         );
 
-        InspectionRequest inspection = inspectionRepository.findByQuotation_Id(quotation.getId()).orElse(null);
         if (inspection != null) {
             repairOwnership(inspection, consultant);
             inspection.updateAssociateData(
@@ -250,17 +248,28 @@ public class ConsultantDashboardService {
         }
     }
 
+    private void assertNotExpiredWithoutPreservedFiles(Quotation quotation, InspectionRequest inspection) {
+        if (inspection != null && inspection.hasAnyPreservedFile()) return;
+        boolean quotationExpired = quotation != null && quotation.getValidUntil() != null
+                && OffsetDateTime.now().isAfter(quotation.getValidUntil());
+        boolean inspectionExpired = inspection != null && inspection.isExpired();
+        if (quotationExpired || inspectionExpired) {
+            throw new IllegalArgumentException("Vistoria/cotação vencida, precisa ser refeita.");
+        }
+    }
+
     private boolean hasStoredCpf(Quotation quotation) {
         return quoteService.hasValidCustomerCpf(quotation);
     }
 
     private ConsultantQuoteSummary toQuote(Quotation item, InspectionRequest inspection) {
-        boolean expired = (item.getStatus() == QuoteStatus.CREATED || item.getStatus() == QuoteStatus.UNDER_REVIEW)
+        boolean hasFiles = hasFiles(inspection);
+        boolean expired = item.getStatus() != QuoteStatus.CANCELLED
+                && !hasFiles
                 && OffsetDateTime.now().isAfter(item.getValidUntil());
         InspectionRequestStatus inspectionStatus = displayStatus(inspection);
         OffsetDateTime inspectionCompletedAt = inspection == null ? item.getInspectionCompletedAt() : inspection.getCompletedAt();
         InspectionResponse inspectionResponse = inspection == null ? null : retratoService.toResponse(inspection);
-        boolean hasFiles = hasFiles(inspection);
         return new ConsultantQuoteSummary(
                 item.getId(), item.getQuoteNumber(), item.getCustomerName(), item.getCustomerCpf(), item.getWhatsapp(),
                 item.getPlate(), item.isZeroKm(), item.getModel(), item.getManufactureYear(), item.getCategoryCode(),
@@ -345,9 +354,13 @@ public class ConsultantDashboardService {
                 .filter(java.util.Objects::nonNull)
                 .max(OffsetDateTime::compareTo)
                 .orElse(null);
+        boolean expiredWithoutFiles = !item.hasAnyPreservedFile()
+                && ((item.getExpiresAt() != null && OffsetDateTime.now().isAfter(item.getExpiresAt()))
+                    || (item.getQuotation() != null && item.getQuotation().getValidUntil() != null
+                        && OffsetDateTime.now().isAfter(item.getQuotation().getValidUntil())));
         return new ConsultantInspectionSummary(
                 item.getId(), item.getRequestType(), item.getAssociateName(), item.getPlate(), displayStatus(item),
-                item.getCreatedAt(), item.getExpiresAt(), item.getCompletedAt(), null,
+                item.getCreatedAt(), item.getExpiresAt(), expiredWithoutFiles, item.getCompletedAt(), null,
                 item.getWhatsapp(), completionUrl, item.getCompletionMessageSentAt(), pending,
                 response.publicUrl(), response.whatsappUrl(), null, availableCount > 0, availableCount,
                 filesExpireAt, assets
@@ -371,7 +384,7 @@ public class ConsultantDashboardService {
     }
 
     private boolean hasFiles(InspectionRequest item) {
-        return item != null && item.getAssets().stream().anyMatch(storageService::isAvailable);
+        return item != null && item.hasAnyPreservedFile();
     }
 
     private String associateCompletionWhatsappUrl(InspectionRequest item) {

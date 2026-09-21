@@ -58,6 +58,7 @@ public final class ConsultantDashboardDtos {
             InspectionRequestStatus status,
             OffsetDateTime createdAt,
             OffsetDateTime expiresAt,
+            boolean expiredWithoutFiles,
             OffsetDateTime completedAt,
             String reportUrl,
             String whatsapp,

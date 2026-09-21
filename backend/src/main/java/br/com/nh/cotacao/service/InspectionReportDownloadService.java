@@ -5,6 +5,8 @@ import br.com.nh.cotacao.entity.InspectionAssetType;
 import br.com.nh.cotacao.entity.InspectionRequest;
 import br.com.nh.cotacao.entity.InspectionRequestType;
 import br.com.nh.cotacao.repository.InspectionRequestRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,6 +15,8 @@ import java.util.UUID;
 
 @Service
 public class InspectionReportDownloadService {
+    private static final Logger log = LoggerFactory.getLogger(InspectionReportDownloadService.class);
+
     private final InspectionRequestRepository inspectionRepository;
     private final RetratoPdfService pdfService;
     private final InspectionAssetStorageService storageService;
@@ -31,21 +35,27 @@ public class InspectionReportDownloadService {
     public byte[] generate(UUID inspectionId) {
         InspectionRequest request = inspectionRepository.findById(inspectionId)
                 .orElseThrow(() -> new IllegalArgumentException("Vistoria não encontrada."));
+
+        Optional<InspectionAsset> storedReport = request.getAssets().stream()
+                .filter(asset -> asset.getAssetType() == InspectionAssetType.REPORT)
+                .filter(storageService::isAvailable)
+                .max((a, b) -> {
+                    if (a.getStoredAt() == null && b.getStoredAt() == null) return 0;
+                    if (a.getStoredAt() == null) return -1;
+                    if (b.getStoredAt() == null) return 1;
+                    return a.getStoredAt().compareTo(b.getStoredAt());
+                });
+
+        byte[] storedBytes = null;
+        if (storedReport.isPresent()) {
+            try {
+                storedBytes = storageService.readAll(storedReport.get().getId());
+            } catch (Exception readException) {
+                log.warn("Não foi possível ler o relatório já armazenado da vistoria {}. Será tentada uma nova geração.", inspectionId, readException);
+            }
+        }
+
         try {
-            Optional<InspectionAsset> storedReport = request.getAssets().stream()
-                    .filter(asset -> asset.getAssetType() == InspectionAssetType.REPORT)
-                    .filter(storageService::isAvailable)
-                    .max((a, b) -> {
-                        if (a.getStoredAt() == null && b.getStoredAt() == null) return 0;
-                        if (a.getStoredAt() == null) return -1;
-                        if (b.getStoredAt() == null) return 1;
-                        return a.getStoredAt().compareTo(b.getStoredAt());
-                    });
-
-            byte[] storedBytes = storedReport.isPresent()
-                    ? storageService.readAll(storedReport.get().getId())
-                    : null;
-
             // Não troca o arquivo no meio de uma cerimônia WebAuthn já iniciada, pois o
             // hash do dossiê faz parte da evidência criptográfica em andamento. Depois do
             // aceite o próprio fluxo gera novamente o PDF no layout vigente.
@@ -55,13 +65,23 @@ public class InspectionReportDownloadService {
                     && !request.getAcceptanceEvidenceHash().isBlank()
                     && ((request.getWebauthnRegistrationExpiresAt() != null && request.getWebauthnRegistrationExpiresAt().isAfter(now))
                         || (request.getWebauthnAssertionExpiresAt() != null && request.getWebauthnAssertionExpiresAt().isAfter(now)));
-            if (digitalAcceptanceInProgress && storedBytes != null) {
+            // Depois do aceite digital o dossiê é imutável: entregamos exatamente
+            // o arquivo preservado que representa a versão aceita pelo associado.
+            if (request.getAcceptedAt() != null && pdfService.isUsableDownloadPdf(storedBytes)) {
                 return storedBytes;
             }
 
-            // Todo download passa pelo verificador de versão do layout. Assim, PDFs antigos
-            // já aprovados/rejeitados também são atualizados para o padrão vigente.
-            if (storedBytes != null && pdfService.isCurrentLayout(storedBytes)) {
+            if (digitalAcceptanceInProgress && pdfService.isUsableDownloadPdf(storedBytes)) {
+                return storedBytes;
+            }
+
+            // Antes do aceite, um PDF só pode ser reutilizado se estiver no layout
+            // atual E tiver sido gravado depois das últimas alterações da vistoria
+            // e da cotação. Isso elimina dossiê antigo após correção cadastral/comercial.
+            if (storedBytes != null
+                    && pdfService.isCurrentLayout(storedBytes)
+                    && storedReport.isPresent()
+                    && isReportFresh(request, storedReport.get())) {
                 return storedBytes;
             }
 
@@ -71,12 +91,8 @@ public class InspectionReportDownloadService {
 
             byte[] standardized;
             if (!sourceAssetUnavailable) {
-                // Melhor cenário: reconstrói todo o dossiê com fotos/documentos originais,
-                // CPF completo e o rodapé de assinaturas em todas as páginas.
                 standardized = pdfService.generate(request);
             } else if (storedBytes != null) {
-                // Para históricos fora da retenção, preserva integralmente o PDF anterior
-                // como anexo visual dentro do documento padronizado.
                 standardized = pdfService.standardizeLegacyReport(request, storedBytes);
             } else {
                 standardized = pdfService.generate(request);
@@ -93,11 +109,31 @@ public class InspectionReportDownloadService {
             );
             inspectionRepository.flush();
             return standardized;
-        } catch (Exception exception) {
-            throw new IllegalStateException("Não foi possível gerar o relatório desta vistoria. Os arquivos preservados não foram alterados.", exception);
+        } catch (Exception generationException) {
+            // Um relatório já consolidado e legível é melhor do que interromper o download
+            // no celular. Se a atualização do layout falhar por memória, arquivo legado ou
+            // qualquer incompatibilidade, entregamos a última cópia válida preservada.
+            if (pdfService.isUsableDownloadPdf(storedBytes)) {
+                log.warn("Falha ao regenerar o relatório da vistoria {}. Entregando a última cópia válida preservada.", inspectionId, generationException);
+                return storedBytes;
+            }
+            throw new IllegalStateException(
+                    "Não foi possível gerar o relatório desta vistoria. Os arquivos preservados não foram alterados.",
+                    generationException
+            );
         }
     }
 
+
+    private boolean isReportFresh(InspectionRequest request, InspectionAsset report) {
+        if (report == null || report.getStoredAt() == null) return false;
+        java.time.OffsetDateTime latestChange = request.getUpdatedAt();
+        if (request.getQuotation() != null && request.getQuotation().getUpdatedAt() != null
+                && (latestChange == null || request.getQuotation().getUpdatedAt().isAfter(latestChange))) {
+            latestChange = request.getQuotation().getUpdatedAt();
+        }
+        return latestChange == null || !report.getStoredAt().isBefore(latestChange);
+    }
 
     private int defaultReportOrder(InspectionRequest request) {
         return request.getRequestType() == InspectionRequestType.NEW_INSPECTION

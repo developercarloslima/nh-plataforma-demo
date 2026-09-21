@@ -10,6 +10,8 @@ import br.com.nh.cotacao.entity.InspectionRequest;
 import br.com.nh.cotacao.entity.InspectionRequestStatus;
 import br.com.nh.cotacao.entity.InspectionRequestType;
 import br.com.nh.cotacao.repository.InspectionRequestRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -21,15 +23,15 @@ import java.util.Set;
 
 @Service
 public class InspectionResumableUploadService {
+    private static final Logger log = LoggerFactory.getLogger(InspectionResumableUploadService.class);
     private static final long MAX_UPLOAD_BYTES = 15L * 1024 * 1024;
     private static final long MAX_PHOTO_BYTES = MAX_UPLOAD_BYTES;
-    private static final long MAX_VIDEO_BYTES = MAX_UPLOAD_BYTES;
     private static final long MAX_SIGNATURE_BYTES = MAX_UPLOAD_BYTES;
     private static final long MAX_DOCUMENT_BYTES = MAX_UPLOAD_BYTES;
     private static final long MAX_CHUNK_BYTES = 6L * 1024 * 1024;
-    private static final int MAX_CHUNKS = 512;
+    private static final int MAX_CHUNKS = 4096;
     private static final Set<String> PHOTO_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
-    private static final Set<String> VIDEO_TYPES = Set.of("video/mp4", "video/quicktime", "video/webm", "video/3gpp");
+    private static final Set<String> VIDEO_TYPES = Set.of("video/mp4", "video/quicktime", "video/webm", "video/3gpp", "video/x-m4v");
     private static final Set<String> DOCUMENT_TYPES = Set.of(
             "application/pdf",
             "application/msword",
@@ -70,7 +72,9 @@ public class InspectionResumableUploadService {
     ) {
         InspectionRequest request = findByToken(token);
         Optional<InspectionAsset> storedAsset = findAsset(request, assetType, sortOrder);
-        if (storedAsset.isPresent() && storageService.isAvailable(storedAsset.get())) {
+        if (storedAsset.isPresent()
+                && storageService.isAvailable(storedAsset.get())
+                && assetType != InspectionAssetType.VIDEO) {
             return new ChunkUploadStatusResponse(true, List.of(), retratoService.toResponse(request));
         }
         validateRequestAvailable(request);
@@ -100,6 +104,51 @@ public class InspectionResumableUploadService {
             Double videoDurationSeconds,
             MultipartFile chunk
     ) {
+        // Mantido para clientes antigos. Clientes atuais usam uploadChunkRaw para
+        // não depender do parser multipart em iOS/WebKit.
+        validateChunk(uploadId, chunkIndex, totalChunks, chunk);
+        byte[] chunkBytes = readChunk(chunk);
+        return uploadChunkInternal(
+                token, assetType, sortOrder, label, uploadId, chunkIndex, totalChunks,
+                totalSize, contentType, videoDurationSeconds, chunkBytes
+        );
+    }
+
+    @Transactional
+    public ChunkUploadResponse uploadChunkRaw(
+            String token,
+            InspectionAssetType assetType,
+            int sortOrder,
+            String label,
+            String uploadId,
+            int chunkIndex,
+            int totalChunks,
+            long totalSize,
+            int chunkSize,
+            String contentType,
+            Double videoDurationSeconds,
+            byte[] chunkBytes
+    ) {
+        validateRawChunk(uploadId, chunkIndex, totalChunks, totalSize, chunkSize, chunkBytes);
+        return uploadChunkInternal(
+                token, assetType, sortOrder, label, uploadId, chunkIndex, totalChunks,
+                totalSize, contentType, videoDurationSeconds, chunkBytes
+        );
+    }
+
+    private ChunkUploadResponse uploadChunkInternal(
+            String token,
+            InspectionAssetType assetType,
+            int sortOrder,
+            String label,
+            String uploadId,
+            int chunkIndex,
+            int totalChunks,
+            long totalSize,
+            String contentType,
+            Double videoDurationSeconds,
+            byte[] chunkBytes
+    ) {
         // O bloqueio pessimista funciona entre processos/contêineres e impede
         // duas requisições de alterarem ou finalizarem o mesmo slot ao mesmo tempo.
         InspectionRequest current = repository.findByPublicTokenForUpdate(token)
@@ -107,13 +156,6 @@ public class InspectionResumableUploadService {
         validateRequestAvailable(current);
         String cleanType = cleanType(contentType);
         String cleanLabel = validateAssetMetadata(current, assetType, sortOrder, label, totalSize, cleanType, videoDurationSeconds);
-        validateChunk(uploadId, chunkIndex, totalChunks, chunk);
-        byte[] chunkBytes = readChunk(chunk);
-        Optional<InspectionAsset> currentAsset = findAsset(current, assetType, sortOrder);
-        if (currentAsset.isPresent() && storageService.isAvailable(currentAsset.get())) {
-            return completedChunkResponse(current, assetType, sortOrder, totalChunks);
-        }
-
         String fileName = buildFileName(assetType, sortOrder, cleanLabel, cleanType);
         InspectionAssetStorageService.ChunkStoreResult result = storageService.storeChunk(
                 current,
@@ -134,6 +176,19 @@ public class InspectionResumableUploadService {
         if (result.complete()) {
             if (result.asset() == null || !storageService.isAvailable(result.asset())) {
                 throw new IllegalStateException("O arquivo chegou à API, mas não foi confirmado no PostgreSQL.");
+            }
+            if (assetType == InspectionAssetType.VIDEO) {
+                // Valida ainda na conclusão do upload. Se o vídeo for inválido, a exceção
+                // reverte a transação da última parte: o slot não fica marcado como vídeo
+                // confirmado e o associado pode gravar outro arquivo imediatamente.
+                // A validação é repetida no finalize-upload como última barreira para vídeos
+                // que tenham sido enviados por versões anteriores da aplicação.
+                storageService.trimVideoToMaximumDuration(result.asset(), 90.0d);
+                storageService.validateVideoContinuity(result.asset());
+                log.info(
+                        "Retrato NH: vídeo normalizado e validado no upload inspectionId={} assetId={} declaredDuration={}",
+                        current.getId(), result.asset().getId(), videoDurationSeconds
+                );
             }
             return completedChunkResponse(current, assetType, sortOrder, totalChunks);
         }
@@ -175,7 +230,19 @@ public class InspectionResumableUploadService {
         }
 
         int videoOrder = newInspection ? requiredPhotos + 1 : 1;
-        requireStoredAsset(request, InspectionAssetType.VIDEO, videoOrder, "Ainda falta enviar o vídeo da vistoria.");
+        InspectionAsset videoAsset = requireStoredAsset(
+                request,
+                InspectionAssetType.VIDEO,
+                videoOrder,
+                "Ainda falta enviar o vídeo da vistoria."
+        );
+
+        // O input capture nativo do iOS abre a câmera do sistema fora do controle da
+        // página; HTML não oferece API para mandá-la parar exatamente em 90 segundos.
+        // Para manter o gravador nativo (que eliminou o congelamento) e ainda garantir
+        // o limite contratual, preservamos automaticamente somente os primeiros 90 s.
+        storageService.trimVideoToMaximumDuration(videoAsset, 90.0d);
+        storageService.validateVideoContinuity(videoAsset);
 
         repository.flush();
         request.getAssets().stream()
@@ -210,7 +277,7 @@ public class InspectionResumableUploadService {
         return completedUploadResponse(request);
     }
 
-    private void requireStoredAsset(
+    private InspectionAsset requireStoredAsset(
             InspectionRequest request,
             InspectionAssetType type,
             int sortOrder,
@@ -220,6 +287,7 @@ public class InspectionResumableUploadService {
         if (asset.isEmpty() || !storageService.isAvailable(asset.get())) {
             throw new IllegalArgumentException(message);
         }
+        return asset.get();
     }
 
     private InspectionUploadResponse completedUploadResponse(InspectionRequest request) {
@@ -256,8 +324,11 @@ public class InspectionResumableUploadService {
                 && request.getStatus() != InspectionRequestStatus.UNDER_REVIEW) {
             throw new IllegalArgumentException("Esta solicitação não está disponível para novos envios.");
         }
-        if (request.isExpired()) {
-            throw new IllegalArgumentException("Este link de vistoria expirou. Solicite um novo link ao consultor.");
+        boolean quotationExpired = request.getQuotation() != null
+                && request.getQuotation().getValidUntil() != null
+                && java.time.OffsetDateTime.now().isAfter(request.getQuotation().getValidUntil());
+        if (!request.hasAnyPreservedFile() && (quotationExpired || request.isExpired())) {
+            throw new IllegalArgumentException("Vistoria/cotação vencida, precisa ser refeita.");
         }
     }
 
@@ -297,11 +368,14 @@ public class InspectionResumableUploadService {
             }
             case VIDEO -> {
                 if (sortOrder != videoOrder) throw new IllegalArgumentException("A posição do vídeo é inválida para esta vistoria.");
-                if (totalSize > MAX_VIDEO_BYTES) throw new IllegalArgumentException("O vídeo deve possuir no máximo 15 MB.");
-                if (videoDurationSeconds == null || !Double.isFinite(videoDurationSeconds) || videoDurationSeconds <= 0 || videoDurationSeconds > 90.5) {
-                    throw new IllegalArgumentException("O vídeo deve possuir no máximo 1 minuto e 30 segundos.");
+                if (videoDurationSeconds != null
+                        && (!Double.isFinite(videoDurationSeconds) || videoDurationSeconds <= 0)) {
+                    throw new IllegalArgumentException("A duração informada para o vídeo é inválida.");
                 }
-                if (!VIDEO_TYPES.contains(contentType)) throw new IllegalArgumentException("Envie o vídeo em MP4, MOV, WebM ou 3GP.");
+                // Não rejeitamos aqui vídeos nativos acima de 90 s. O navegador não
+                // consegue encerrar a câmera nativa do iOS; no finalize-upload o servidor
+                // corta o arquivo para 90 s antes de validar a continuidade das imagens.
+                if (!VIDEO_TYPES.contains(contentType)) throw new IllegalArgumentException("Envie o vídeo em MP4, MOV, M4V, WebM ou 3GP.");
             }
             case SIGNATURE -> {
                 if (!newInspection || sortOrder != signatureOrder) {
@@ -331,9 +405,8 @@ public class InspectionResumableUploadService {
                     throw new IllegalArgumentException("A posição do arquivo adicional é inválida.");
                 }
                 if (VIDEO_TYPES.contains(contentType)) {
-                    if (totalSize > MAX_VIDEO_BYTES) {
-                        throw new IllegalArgumentException("Cada vídeo adicional deve possuir no máximo 15 MB.");
-                    }
+                    // Vídeos não possuem limite de tamanho em MB. A duração do vídeo
+                    // principal continua limitada a 90 segundos.
                 } else if (PHOTO_TYPES.contains(contentType)) {
                     if (totalSize > MAX_PHOTO_BYTES) {
                         throw new IllegalArgumentException("Cada foto adicional deve possuir no máximo 15 MB.");
@@ -380,6 +453,35 @@ public class InspectionResumableUploadService {
         }
         if (chunk.getSize() > MAX_CHUNK_BYTES) {
             throw new IllegalArgumentException("Cada parte do envio deve possuir no máximo 6 MB.");
+        }
+    }
+
+    private void validateRawChunk(
+            String uploadId,
+            int chunkIndex,
+            int totalChunks,
+            long totalSize,
+            int declaredChunkSize,
+            byte[] chunkBytes
+    ) {
+        validateUploadIdentity(uploadId, totalChunks);
+        if (chunkIndex < 0 || chunkIndex >= totalChunks) {
+            throw new IllegalArgumentException("Parte do arquivo inválida.");
+        }
+        if (declaredChunkSize <= 0 || declaredChunkSize > MAX_CHUNK_BYTES) {
+            throw new IllegalArgumentException("O tamanho da parte do arquivo é inválido.");
+        }
+        if (totalSize <= 0 || declaredChunkSize > totalSize) {
+            throw new IllegalArgumentException("O tamanho total do arquivo é inválido.");
+        }
+        if (chunkBytes == null || chunkBytes.length == 0) {
+            throw new IllegalArgumentException("Uma das partes do arquivo está vazia.");
+        }
+        if (chunkBytes.length != declaredChunkSize) {
+            throw new IllegalArgumentException("Uma das partes do arquivo chegou incompleta.");
+        }
+        if (totalChunks == 1 && chunkBytes.length != totalSize) {
+            throw new IllegalArgumentException("O arquivo chegou incompleto ao servidor.");
         }
     }
 

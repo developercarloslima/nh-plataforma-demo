@@ -1,6 +1,7 @@
 package br.com.nh.cotacao.service;
 
 import br.com.nh.cotacao.entity.Plan;
+import br.com.nh.cotacao.repository.PlanRepository;
 import br.com.nh.cotacao.repository.PriceRangeRepository;
 import br.com.nh.cotacao.repository.PromotionalMotorcyclePriceRepository;
 import org.springframework.stereotype.Service;
@@ -15,15 +16,22 @@ import java.util.Optional;
 @Service
 public class PricingService {
 
+    private static final String ECONOMIC_CAR_PLAN_CODE = "CAR_ECONOMICO";
+    private static final String NATIONAL_CAR_CATEGORY_CODE = "CAR_NATIONAL";
+    private static final BigDecimal ROBBERY_THEFT_FACTOR = new BigDecimal("0.90");
+
     private final PriceRangeRepository priceRangeRepository;
     private final PromotionalMotorcyclePriceRepository promotionalMotorcyclePriceRepository;
+    private final PlanRepository planRepository;
 
     public PricingService(
             PriceRangeRepository priceRangeRepository,
-            PromotionalMotorcyclePriceRepository promotionalMotorcyclePriceRepository
+            PromotionalMotorcyclePriceRepository promotionalMotorcyclePriceRepository,
+            PlanRepository planRepository
     ) {
         this.priceRangeRepository = priceRangeRepository;
         this.promotionalMotorcyclePriceRepository = promotionalMotorcyclePriceRepository;
+        this.planRepository = planRepository;
     }
 
     public record PromotionalMotorcyclePriceView(
@@ -71,6 +79,73 @@ public class PricingService {
     }
 
     public Optional<PricingResult> calculateBreakdown(Plan plan, BigDecimal fipeValue) {
+        if (isNationalCarRobberyTheftPlan(plan)) {
+            return calculateNationalCarRobberyTheft(plan, fipeValue);
+        }
+        return calculateStandardBreakdown(plan, fipeValue);
+    }
+
+    /**
+     * Regra comercial do plano "Roubo e Furto Carros Nacionais":
+     * a mensalidade final deve ser sempre exatamente 10% menor que a mensalidade
+     * final ofertada pelo Plano Econômico para a mesma FIPE.
+     *
+     * A regra independe de faixa própria cadastrada no plano de roubo/furto.
+     * Assim, sempre que o Plano Econômico possuir valor para a FIPE informada,
+     * o plano de roubo/furto também poderá ser ofertado.
+     */
+    private Optional<PricingResult> calculateNationalCarRobberyTheft(Plan robberyTheftPlan, BigDecimal fipeValue) {
+        if (fipeValue == null || fipeValue.signum() <= 0) {
+            return Optional.empty();
+        }
+
+        Optional<Plan> economicPlan = planRepository.findAvailableByCode(ECONOMIC_CAR_PLAN_CODE)
+                .filter(plan -> plan.getCategory() != null
+                        && NATIONAL_CAR_CATEGORY_CODE.equalsIgnoreCase(plan.getCategory().getCode()));
+        if (economicPlan.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Optional<PricingResult> economicPricing = calculateStandardBreakdown(economicPlan.get(), fipeValue);
+        if (economicPricing.isEmpty()) {
+            return Optional.empty();
+        }
+
+        BigDecimal targetMonthly = economicPricing.get().totalMonthlyValue()
+                .multiply(ROBBERY_THEFT_FACTOR)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        boolean trackerRequired = robberyTheftPlan.getTrackerRequiredAbove() != null
+                && fipeValue.compareTo(robberyTheftPlan.getTrackerRequiredAbove()) >= 0;
+
+        BigDecimal configuredTrackerMonthly = trackerRequired && robberyTheftPlan.getTrackerMonthlyFee() != null
+                ? robberyTheftPlan.getTrackerMonthlyFee().setScale(2, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+
+        // O rastreador, quando obrigatório, compõe o valor final promocional.
+        // Nunca é somado por fora, pois isso quebraria a regra de "10% mais barato".
+        BigDecimal mandatoryMonthlyFee = configuredTrackerMonthly.min(targetMonthly);
+        BigDecimal tableMonthlyValue = targetMonthly.subtract(mandatoryMonthlyFee)
+                .max(BigDecimal.ZERO)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal oneTimeFee = trackerRequired && robberyTheftPlan.getTrackerInstallationFee() != null
+                ? robberyTheftPlan.getTrackerInstallationFee().setScale(2, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+
+        String description = trackerRequired
+                ? "Rastreador obrigatório. A mensalidade do rastreador já está incluída no valor final, que é 10% menor que o Plano Econômico."
+                : "Valor mensal calculado automaticamente em 90% do Plano Econômico para a mesma FIPE.";
+
+        return Optional.of(new PricingResult(
+                tableMonthlyValue,
+                mandatoryMonthlyFee,
+                oneTimeFee,
+                description
+        ));
+    }
+
+    private Optional<PricingResult> calculateStandardBreakdown(Plan plan, BigDecimal fipeValue) {
         Optional<BigDecimal> tableValue = findTableValue(plan, fipeValue);
         if (tableValue.isEmpty()) {
             return Optional.empty();
@@ -95,6 +170,17 @@ public class PricingService {
                 oneTimeFee.setScale(2, RoundingMode.HALF_UP),
                 description
         ));
+    }
+
+    private boolean isNationalCarRobberyTheftPlan(Plan plan) {
+        if (plan == null || plan.getName() == null || plan.getCategory() == null
+                || !NATIONAL_CAR_CATEGORY_CODE.equalsIgnoreCase(plan.getCategory().getCode())) {
+            return false;
+        }
+        String normalizedName = java.text.Normalizer.normalize(plan.getName(), java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .toLowerCase(Locale.ROOT);
+        return normalizedName.contains("roubo") && normalizedName.contains("furto");
     }
 
     /**
