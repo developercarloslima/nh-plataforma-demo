@@ -109,6 +109,8 @@ function installInactivityTracking() {
 
 function clearSession() {
   stopDashboardPolling();
+  const checklistLink = $('checklist-link');
+  if (checklistLink) checklistLink.hidden = true;
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(ROLE_KEY);
   localStorage.removeItem(CONSULTANT_KEY);
@@ -300,6 +302,13 @@ async function boot() {
       location.replace('/supervisao/');
       return;
     }
+    if (me.role === 'TOW_DRIVER') {
+      location.replace('/guincho/');
+      return;
+    }
+    if (me.role === 'WORKSHOP_MANAGER') { location.replace('/oficina/'); return; }
+    if (me.role === 'EVENT_OPERATOR') { location.replace('/checklist/'); return; }
+    if (me.role === 'BUYER') { location.replace('/financeiro/'); return; }
     $('admin-card-wrap').hidden = true;
     if (me.consultantId && me.consultantName) {
       linkedConsultantLogin = true;
@@ -348,6 +357,8 @@ function applyConsultant(consultant, { locked = linkedConsultantLogin } = {}) {
   $('current-chip').hidden = false;
   $('tools').hidden = false;
   $('activity-dashboard').hidden = false;
+  const checklistLink = $('checklist-link');
+  if (checklistLink) checklistLink.hidden = false;
   $('change-consultant').hidden = locked;
   $('select-consultant').hidden = true;
   $('show-create').hidden = true;
@@ -373,6 +384,8 @@ function changeConsultant() {
   $('current-chip').hidden = true;
   $('tools').hidden = true;
   $('activity-dashboard').hidden = true;
+  const checklistLink = $('checklist-link');
+  if (checklistLink) checklistLink.hidden = true;
   $('change-consultant').hidden = true;
   $('select-consultant').hidden = false;
   $('show-create').hidden = false;
@@ -968,6 +981,10 @@ $('login-form').addEventListener('submit', async event => {
     if (data.role === 'ADMIN') location.href = '/admin/';
     else if (data.role === 'ANALYST') location.href = '/analise/';
     else if (data.role === 'SUPERVISION_ANALYSIS') location.href = '/supervisao/';
+    else if (data.role === 'TOW_DRIVER') location.href = '/guincho/';
+    else if (data.role === 'WORKSHOP_MANAGER') location.href = '/oficina/';
+    else if (data.role === 'EVENT_OPERATOR') location.href = '/checklist/';
+    else if (data.role === 'BUYER') location.href = '/financeiro/';
     else location.reload();
   } catch (error) {
     box.className = 'message error';

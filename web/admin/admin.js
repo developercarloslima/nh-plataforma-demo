@@ -13,6 +13,10 @@ let consultants = [];
 let users = [];
 let quotes = [];
 let inspections = [];
+let nhEvents = [];
+let workshopEvents = [];
+let procurementEvents = [];
+let towRecords = [];
 let categories = [];
 let prices = [];
 let promotionalMotorcyclePrices = [];
@@ -23,6 +27,8 @@ let settings = {};
 let regulationDocument = {};
 let publicQuoteAssignmentSettings = { enabled: true, updatedBy: "SYSTEM", updatedAt: null };
 const adminMediaObjectUrls = new Set();
+let adminFilePreviewUrl = null;
+let adminAcceptanceInfo = null;
 
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const date = value => value ? new Date(value).toLocaleString('pt-BR') : '—';
@@ -712,6 +718,10 @@ async function load() {
       api('/api/admin/users'),
       api('/api/admin/quotes'),
       api('/api/admin/inspections'),
+      api('/api/checklist/events'),
+      api('/api/workshop/events'),
+      api('/api/procurement/events'),
+      api('/api/tow/records'),
       api('/api/admin/catalog/categories'),
       api('/api/admin/catalog/prices'),
       api('/api/admin/catalog/promotional-motorcycle-prices'),
@@ -722,7 +732,7 @@ async function load() {
       api('/api/admin/settings/regulation'),
       api('/api/admin/settings/public-quote-assignment')
     ]);
-    [consultants, users, quotes, inspections, categories, prices, promotionalMotorcyclePrices, plans, coverages, auditEntries, settings, regulationDocument, publicQuoteAssignmentSettings] = result;
+    [consultants, users, quotes, inspections, nhEvents, workshopEvents, procurementEvents, towRecords, categories, prices, promotionalMotorcyclePrices, plans, coverages, auditEntries, settings, regulationDocument, publicQuoteAssignmentSettings] = result;
     renderAll();
   } catch (error) {
     if (!$('admin-view').hidden) message(error.message);
@@ -734,6 +744,10 @@ function renderAll() {
   populateCategorySelect();
   renderOverview();
   renderActivities();
+  renderAdminEvents();
+  renderAdminWorkshop();
+  renderAdminPurchases();
+  renderAdminTow();
   renderConsultants();
   renderUsers();
   renderQuotes();
@@ -874,7 +888,7 @@ function openConsultantModal(id = '') {
 }
 
 function roleLabel(role) {
-  return ({ ADMIN: 'Administrador', SUPERVISION_ANALYSIS: 'Supervisão de Análise', ANALYST: 'Analista', CONSULTANT: 'Consultor' })[role] || role || '—';
+  return ({ ADMIN: 'Administrador', SUPERVISION_ANALYSIS: 'Supervisão de Análise', ANALYST: 'Analista', CONSULTANT: 'Consultor', TOW_DRIVER: 'Guincho / Reboque', WORKSHOP_MANAGER: 'Gerente da Oficina', EVENT_OPERATOR: 'Eventos', BUYER: 'Comprador / Financeiro' })[role] || role || '—';
 }
 
 function collaboratorRoleLabel(role) {
@@ -915,7 +929,7 @@ function renderUsers() {
     <td>${['CONSULTANT', 'ANALYST', 'SUPERVISION_ANALYSIS'].includes(item.role)
       ? esc(item.consultantName || (item.createdBy === 'BOOTSTRAP' ? 'Usuário padrão — identificação manual' : '—'))
       : '—'}</td>
-    <td>${statusBadge(roleLabel(item.role), item.role === 'ADMIN' || item.role === 'SUPERVISION_ANALYSIS' ? 'ok' : item.role === 'ANALYST' ? 'warn' : '')}</td>
+    <td>${statusBadge(roleLabel(item.role), item.role === 'ADMIN' || item.role === 'SUPERVISION_ANALYSIS' ? 'ok' : item.role === 'ANALYST' || item.role === 'TOW_DRIVER' || item.role === 'WORKSHOP_MANAGER' || item.role === 'EVENT_OPERATOR' || item.role === 'BUYER' ? 'warn' : '')}</td>
     <td>${statusBadge(item.active ? 'Ativo' : 'Inativo', item.active ? 'ok' : 'off')}</td>
     <td>${date(item.lastLoginAt)}</td>
     <td>${date(item.passwordChangedAt)}</td>
@@ -983,7 +997,7 @@ function openUserModal(id = '') {
   $('user-display-name').value = item?.displayName || '';
 
   const roleSelect = $('user-role');
-  roleSelect.innerHTML = '<option value="CONSULTANT">Consultor</option><option value="ANALYST">Analista</option><option value="SUPERVISION_ANALYSIS">Supervisão de Análise</option>';
+  roleSelect.innerHTML = '<option value="CONSULTANT">Consultor</option><option value="ANALYST">Analista</option><option value="SUPERVISION_ANALYSIS">Supervisão de Análise</option><option value="TOW_DRIVER">Guincho / Reboque</option><option value="WORKSHOP_MANAGER">Gerente da Oficina</option><option value="EVENT_OPERATOR">Eventos</option><option value="BUYER">Comprador / Financeiro</option>';
   if (item?.role === 'ADMIN') roleSelect.insertAdjacentHTML('beforeend', '<option value="ADMIN">Administrador</option>');
   roleSelect.value = item?.role || 'CONSULTANT';
 
@@ -1084,14 +1098,30 @@ async function deleteAllAllowedInspections() {
   const confirmed = await confirmAction(
     'Excluir TODAS as vistorias?',
     `Serão excluídas definitivamente ${inspections.length} vistorias e seus arquivos, inclusive aprovadas, rejeitadas e com documentos pendentes.`,
-    'Excluir todas as vistorias'
+    'Continuar'
   );
   if (!confirmed) return;
+  $('inspection-bulk-delete-password').value = '';
+  message('inspection-bulk-delete-message');
+  openDialog('inspection-bulk-delete-dialog');
+  setTimeout(() => $('inspection-bulk-delete-password')?.focus(), 80);
+}
+
+async function confirmDeleteAllAllowedInspections(event) {
+  event.preventDefault();
+  const password = $('inspection-bulk-delete-password').value;
+  if (!password) return message('inspection-bulk-delete-message', 'Digite a senha de confirmação.');
+  const button = $('inspection-bulk-delete-confirm');
+  button.disabled = true;
+  message('inspection-bulk-delete-message');
   try {
-    const result = await api('/api/admin/inspections', { method: 'DELETE' });
+    const result = await api('/api/admin/inspections', { method: 'DELETE', headers: { 'X-NH-Delete-Password': password } });
+    closeDialog('inspection-bulk-delete-dialog');
     message(result.message || 'Vistorias excluídas.', 'success');
     await load();
-  } catch (error) { message(error.message); }
+  } catch (error) {
+    message('inspection-bulk-delete-message', error.message);
+  } finally { button.disabled = false; }
 }
 
 function renderQuotes() {
@@ -1146,13 +1176,15 @@ function populateQuoteConsultantSelect(item) {
 
 function renderInspections() {
   const filter = $('inspection-filter').value.trim().toLowerCase();
+  const associateFilter = ($('inspection-associate-filter')?.value || '').trim().toLowerCase();
   const dateField = $('inspection-date-field')?.value || 'createdAt';
   const dateFrom = $('inspection-date-from')?.value || '';
   const dateTo = $('inspection-date-to')?.value || '';
   const direction = $('inspection-sort-direction')?.value || 'desc';
 
   const visibleInspections = inspections
-    .filter(item => `${item.consultantName} ${item.reviewedByName || ''} ${item.associateName} ${item.plate || ""}`.toLowerCase().includes(filter))
+    .filter(item => `${item.consultantName} ${item.reviewedByName || ''} ${item.plate || ""}`.toLowerCase().includes(filter))
+    .filter(item => !associateFilter || `${item.associateName || ''} ${item.associateNumber || ''} ${item.associateCpf || item.cpf || ''}`.toLowerCase().includes(associateFilter))
     .filter(item => matchesDateRange(item?.[dateField] || item?.createdAt, dateFrom, dateTo))
     .slice()
     .sort((a, b) => compareByDateField(a, b, dateField, direction));
@@ -2170,6 +2202,7 @@ function renderAudit() {
       ${changes ? `<details class="audit-details"><summary>Ver detalhes da alteração</summary><div class="audit-change-list">${changes}</div></details>` : ''}
     </article>`;
   }).join('') || '<div class="audit-empty">Nenhum registro de auditoria encontrado.</div>';
+  ensureAdminAutoPager($('audit-list'),true);
 }
 
 function populatePlanSelects() {
@@ -2218,11 +2251,14 @@ $('admin-login-form').addEventListener('submit', async event => {
     });
     const body = await response.json().catch(() => null);
     if (!response.ok) throw new Error(body?.message || 'Usuário ou senha inválidos.');
-    if (body.role !== 'ADMIN') throw new Error('Este usuário não possui permissão administrativa.');
     token = body.token;
     localStorage.setItem(TOKEN_KEY, body.token);
     localStorage.setItem(ROLE_KEY, body.role);
     markSessionActivity(true);
+    if (body.role !== 'ADMIN') {
+      (window.NH_ROUTING?.redirectForRole ? window.NH_ROUTING.redirectForRole(body.role) : location.replace({CONSULTANT:'/colaborador/',ANALYST:'/analise/',SUPERVISION_ANALYSIS:'/supervisao/',TOW_DRIVER:'/guincho/',WORKSHOP_MANAGER:'/oficina/',EVENT_OPERATOR:'/checklist/',BUYER:'/financeiro/',ADMIN:'/admin/'}[body.role]||'/'));
+      return;
+    }
     showAdmin();
     await load();
   } catch (error) {
@@ -2305,7 +2341,7 @@ $('user-form').addEventListener('submit', async event => {
       await api('/api/admin/users', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       });
-      message('Usuário criado e colaborador vinculado com sucesso.', 'success');
+      message(role === 'TOW_DRIVER' ? 'Usuário exclusivo de Guincho/Reboque criado com sucesso.' : role === 'WORKSHOP_MANAGER' ? 'Usuário de Gerência da Oficina criado com sucesso.' : role === 'EVENT_OPERATOR' ? 'Usuário de Eventos criado com sucesso.' : role === 'BUYER' ? 'Usuário de Compras / Financeiro criado com sucesso.' : 'Usuário criado e colaborador vinculado com sucesso.', 'success');
     }
     closeDialog('user-dialog');
     await load();
@@ -2834,6 +2870,7 @@ $('new-consultant-button').addEventListener('click', () => openConsultantModal()
 $('new-user-button').addEventListener('click', () => openUserModal());
 $('delete-all-quotes').addEventListener('click', deleteAllQuotes);
 $('delete-all-inspections').addEventListener('click', deleteAllAllowedInspections);
+$('inspection-bulk-delete-form')?.addEventListener('submit', confirmDeleteAllAllowedInspections);
 $('new-plan-button').addEventListener('click', () => openPlanModal());
 $('new-price-button').addEventListener('click', () => openPriceModal());
 $('new-coverage-button').addEventListener('click', () => openCoverageModal());
@@ -2848,6 +2885,7 @@ $('quote-date-clear')?.addEventListener('click', () => {
   renderQuotes();
 });
 $('inspection-filter').addEventListener('input', renderInspections);
+$('inspection-associate-filter')?.addEventListener('input', renderInspections);
 ['inspection-date-field', 'inspection-date-from', 'inspection-date-to', 'inspection-sort-direction'].forEach(id => $(id)?.addEventListener('change', renderInspections));
 $('inspection-date-clear')?.addEventListener('click', () => {
   $('inspection-date-from').value = '';
@@ -2857,15 +2895,342 @@ $('inspection-date-clear')?.addEventListener('click', () => {
 $('price-filter').addEventListener('input', renderPrices);
 $('price-plan-filter').addEventListener('change', renderPrices);
 $('coverage-plan-filter').addEventListener('change', renderCoverages);
+
+const NH_EVENT_TYPE_LABELS = Object.freeze({COLLISION:'Colisão',GLASS:'Vidros',THEFT:'Roubo ou furto',FIRE:'Incêndio',COLLISION_FIRE:'Incêndio por colisão',SETTLEMENT_RELEASE:'Acordo/Quitação'});
+const NH_EVENT_STATUS_LABELS = Object.freeze({DRAFT:'Rascunho',WAITING_DOCUMENTS:'Aguardando documentos',WAITING_ANALYSIS:'Aguardando análise',WAITING_WORKSHOP:'Aguardando oficina',IN_WORKSHOP:'Em vistoria',WORKSHOP_COMPLETED:'Checklist concluído',PENDING:'Pendência',FINALIZED:'Finalizado'});
+const NH_VEHICLE_CATEGORY_LABELS = Object.freeze({MOTORCYCLE:'Motocicleta',LIGHT_CAR:'Carro leve / passeio',UTILITY:'Utilitário / pickup / van',TRUCK:'Caminhão / veículo pesado'});
+const NH_DAMAGE_LABELS = Object.freeze({UNASSESSED:'Não avaliado',YES:'Com avaria',NO:'Sem avaria',NOT_APPLICABLE:'Não se aplica'});
+const NH_REPAIR_LABELS = Object.freeze({REPAIR:'Recuperar / Reparar',REPLACE:'Trocar'});
+const NH_TOW_ANSWER_LABELS = Object.freeze({YES:'Sim',NO:'Não',NOT_APPLICABLE:'Não se aplica',UNANSWERED:'Não informado'});
+
+function nhText(value, fallback='—') { const text=String(value??'').trim(); return text || fallback; }
+function nhEventType(value){return NH_EVENT_TYPE_LABELS[value]||nhText(value);}
+function nhEventStatus(value){return NH_EVENT_STATUS_LABELS[value]||nhText(value);}
+function nhVehicleCategory(value){return NH_VEHICLE_CATEGORY_LABELS[value]||nhText(value);}
+function nhSearch(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();}
+function nhInfoGrid(items){return `<div class="admin-ops-grid">${items.map(([k,v])=>`<div><span>${esc(k)}</span><strong>${esc(v==null||v===''?'—':v)}</strong></div>`).join('')}</div>`;}
+function nhStateBadge(text, kind=''){return `<span class="badge ${kind}">${esc(text)}</span>`;}
+function nhEventKind(status){return ['WORKSHOP_COMPLETED','FINALIZED'].includes(status)?'ok':['PENDING','WAITING_DOCUMENTS','WAITING_ANALYSIS','WAITING_WORKSHOP','IN_WORKSHOP'].includes(status)?'warn':'';}
+function nhWorkshopKind(status){return ['WORKSHOP_COMPLETED','FINALIZED'].includes(status)?'ok':'warn';}
+
+function renderAdminEvents(){
+  const body=$('admin-events-body'); if(!body)return;
+  const q=nhSearch($('admin-event-filter')?.value);
+  const rows=nhEvents.filter(e=>!q||nhSearch([e.protocol,e.associateName,e.associateNumber,e.vehiclePlate,e.vehicleModel,e.planName,e.createdByName].join(' ')).includes(q));
+  body.innerHTML=rows.length?rows.map(e=>`<tr><td><strong>${esc(e.protocol)}</strong><br><small>${esc(date(e.createdAt))}</small></td><td>${esc(e.associateName)}<br><small>${esc(e.associateNumber||'')}</small></td><td><strong>${esc(e.vehiclePlate)}</strong><br><small>${esc(e.vehicleModel)} · ${esc(nhVehicleCategory(e.vehicleCategory))}</small></td><td>${esc(nhEventType(e.eventType))}</td><td>${nhStateBadge(nhEventStatus(e.status),nhEventKind(e.status))}</td><td>${esc(e.createdByName||'—')}</td><td><div class="actions"><button class="outline admin-open-event" type="button" data-id="${esc(e.id)}">Ver tudo</button><button class="danger admin-delete-event" type="button" data-id="${esc(e.id)}" data-protocol="${esc(e.protocol)}">Excluir</button></div></td></tr>`).join(''):'<tr><td colspan="7" class="muted">Nenhum evento encontrado.</td></tr>';
+  document.querySelectorAll('.admin-open-event').forEach(b=>b.onclick=()=>openAdminEvent(b.dataset.id));
+  document.querySelectorAll('.admin-delete-event').forEach(b=>b.onclick=()=>deleteAdminEvent(b.dataset.id,b.dataset.protocol));
+}
+
+async function deleteAdminEvent(id, protocol){
+  const confirmed=await confirmAction('Excluir evento',`Excluir permanentemente o evento ${protocol||''}? Todos os checklists, anexos, terceiros e compras vinculados também serão excluídos. Esta ação não pode ser desfeita.`,'Excluir evento');
+  if(!confirmed)return;
+  try{
+    await api(`/api/checklist/events/${encodeURIComponent(id)}`,{method:'DELETE'});
+    message(`Evento ${protocol||''} excluído com sucesso.`,'success');
+    await load();
+  }catch(error){message(error.message);}
+}
+
+function renderAdminWorkshop(){
+  const body=$('admin-workshop-body'); if(!body)return;
+  const q=nhSearch($('admin-workshop-filter')?.value);
+  const rows=workshopEvents.filter(e=>!q||nhSearch([e.protocol,e.associateName,e.associateNumber,e.vehiclePlate,e.vehicleModel].join(' ')).includes(q));
+  body.innerHTML=rows.length?rows.map(e=>`<tr><td><strong>${esc(e.protocol)}</strong></td><td>${esc(e.associateName)}<br><small>${esc(e.associateNumber||'')}</small></td><td><strong>${esc(e.vehiclePlate)}</strong><br><small>${esc(e.vehicleModel)} · ${esc(nhVehicleCategory(e.vehicleCategory))}</small></td><td>${nhStateBadge(nhEventStatus(e.eventStatus),nhWorkshopKind(e.eventStatus))}</td><td>${Number(e.assessedItems||0)}/${Number(e.totalItems||0)} avaliados<br><small>${Number(e.damagedItems||0)} avaria(s) · ${Number(e.replaceItems||0)} troca(s)</small></td><td>${Number(e.purchaseItems||0)} item(ns)</td><td><div class="admin-acceptance-cell">${e.acceptedAt?nhStateBadge('Aceite confirmado','ok'):nhStateBadge('Pendente',e.workshopCompletedAt?'warn':'')}${adminAcceptanceButtonHtml(e)}</div></td><td><button class="outline admin-open-workshop" type="button" data-id="${esc(e.id)}">Ver tudo</button></td></tr>`).join(''):'<tr><td colspan="8" class="muted">Nenhum evento de oficina encontrado.</td></tr>';
+  document.querySelectorAll('.admin-open-workshop').forEach(b=>b.onclick=()=>openAdminWorkshop(b.dataset.id));
+  bindAdminAcceptanceButtons(body);
+}
+
+function procurementBucketLabel(value){return ({NOT_FILLED:'Não preenchido',REQUESTED:'Solicitado',FINALIZED:'Finalizado'})[value]||value||'—';}
+function procurementBucketKind(value){return value==='FINALIZED'?'ok':value==='REQUESTED'?'warn':'off';}
+function renderAdminPurchases(){
+  const body=$('admin-purchases-body'); if(!body)return;
+  const q=nhSearch($('admin-purchases-filter')?.value);
+  const rows=procurementEvents.filter(e=>!q||nhSearch([e.protocol,e.associateName,e.associateNumber,e.vehiclePlate,e.vehicleModel].join(' ')).includes(q));
+  body.innerHTML=rows.length?rows.map(e=>`<tr><td><strong>${esc(e.protocol)}</strong><br><small>${esc(date(e.workshopCompletedAt))}</small></td><td>${esc(e.associateName)}<br><small>${esc(e.associateNumber||'')}</small></td><td><strong>${esc(e.vehiclePlate)}</strong><br><small>${esc(e.vehicleBrand||'')} ${esc(e.vehicleModel||'')}</small></td><td>${Number(e.totalItems||0)}</td><td>${Number(e.unfilledItems||0)}</td><td>${Number(e.requestedItems||0)}</td><td>${Number(e.finalizedItems||0)}</td><td>${nhStateBadge(procurementBucketLabel(e.bucket),procurementBucketKind(e.bucket))}</td><td><button class="outline admin-open-purchases" type="button" data-id="${esc(e.id)}">Ver compras</button></td></tr>`).join(''):'<tr><td colspan="9" class="muted">Nenhuma compra de evento encontrada.</td></tr>';
+  document.querySelectorAll('.admin-open-purchases').forEach(b=>b.onclick=()=>openAdminPurchases(b.dataset.id));
+}
+async function openAdminPurchases(id){
+  try{
+    const e=await api(`/api/procurement/events/${encodeURIComponent(id)}`);
+    const rows=(e.purchases||[]).map(p=>`<div class="admin-purchase-view"><div><strong>${esc(p.itemLabel)}</strong><small>${p.detailsSavedAt?`Registrado em ${esc(date(p.detailsSavedAt))}${p.detailsSavedBy?` por ${esc(p.detailsSavedBy)}`:''}`:'Ainda não preenchido pelo Comprador / Financeiro'}</small></div>${nhInfoGrid([['Fornecedor',p.supplier],['Valor',p.amount==null?'—':brl.format(p.amount)],['Prazo de entrega',p.deliveryDeadline?new Date(`${p.deliveryDeadline}T12:00:00`).toLocaleDateString('pt-BR'):'—'],['Status',p.detailsSavedAt?(p.status==='FINALIZED'?'Finalizado':'Solicitado'):'Não preenchido'],['Observação',p.notes]])}</div>`);
+    openAdminOperationsDialog(`Compras do Evento · ${e.protocol}`,`${adminSection('Evento',nhInfoGrid([['Associado',e.associateName],['Número',e.associateNumber],['Veículo',`${e.vehiclePlate} · ${e.vehicleBrand||''} ${e.vehicleModel||''}`],['Plano',e.planName],['Oficina concluída',date(e.workshopCompletedAt)],['Situação',procurementBucketLabel(e.bucket)]]))}${adminSection(`Itens de compra (${e.purchases?.length||0})`,adminRows(rows,'Nenhum item de compra.',10))}`);bindAdminProgressiveLists($('admin-operations-content'));
+  }catch(error){message(error.message);}
+}
+
+function renderAdminTow(){
+  const body=$('admin-tow-body'); if(!body)return;
+  const q=nhSearch($('admin-tow-filter')?.value);
+  const rows=towRecords.filter(e=>!q||nhSearch([e.code,e.vehiclePlate,e.vehicleModel,e.providerName,e.driverName].join(' ')).includes(q));
+  body.innerHTML=rows.length?rows.map(e=>`<tr><td><strong>${esc(e.code)}</strong><br><small>${esc(date(e.createdAt))}</small></td><td><strong>${esc(e.vehiclePlate)}</strong><br><small>${esc(e.vehicleModel||'—')} · ${esc(nhVehicleCategory(e.vehicleCategory))}</small></td><td>${esc(e.providerName||'—')}</td><td>${esc(e.driverName||'—')}</td><td>${nhStateBadge(e.status==='COMPLETED'?'Concluído':'Em preenchimento',e.status==='COMPLETED'?'ok':'warn')}</td><td>${Number(e.answeredItems||0)}/${Number(e.totalItems||0)}</td><td>${Number(e.photoCount||0)}</td><td><button class="outline admin-open-tow" type="button" data-id="${esc(e.id)}">Ver tudo</button></td></tr>`).join(''):'<tr><td colspan="8" class="muted">Nenhum atendimento de reboque encontrado.</td></tr>';
+  document.querySelectorAll('.admin-open-tow').forEach(b=>b.onclick=()=>openAdminTow(b.dataset.id));
+}
+
+function openAdminOperationsDialog(title,html){$('admin-operations-title').textContent=title;$('admin-operations-content').innerHTML=html;const d=$('admin-operations-dialog');if(!d.open)d.showModal();}
+function adminSection(title,html){return `<section class="admin-ops-section"><h3>${esc(title)}</h3>${html}</section>`;}
+function adminRows(items,empty='Nenhum registro.',pageSize=15){
+  if(!items?.length)return `<div class="muted">${esc(empty)}</div>`;
+  return items.length>pageSize?adminProgressiveRows(items,empty,pageSize):`<div class="admin-ops-list">${items.join('')}</div>`;
+}
+function adminProgressiveRows(items,empty='Nenhum registro.',pageSize=10){
+  if(!items?.length)return `<div class="muted">${esc(empty)}</div>`;
+  const rows=items.map((item,index)=>`<div class="admin-progressive-item"${index>=pageSize?' hidden':''}>${item}</div>`).join('');
+  const remaining=Math.max(0,items.length-pageSize);
+  return `<div class="admin-progressive-list" data-page-size="${pageSize}"><div class="admin-ops-list">${rows}</div>${remaining?`<div class="admin-progressive-actions"><button class="outline admin-progressive-more" type="button">Ver mais ${Math.min(pageSize,remaining)} <span>(${remaining} restante${remaining===1?'':'s'})</span></button><button class="outline admin-progressive-less" type="button" hidden>Ver menos</button></div>`:''}</div>`;
+}
+function updateAdminProgressiveControls(list){
+  if(!list)return;
+  const size=Number(list.dataset.pageSize||10);
+  const items=[...list.querySelectorAll('.admin-progressive-item')];
+  const visible=items.filter(item=>!item.hidden).length;
+  const remaining=Math.max(0,items.length-visible);
+  const more=list.querySelector('.admin-progressive-more');
+  const less=list.querySelector('.admin-progressive-less');
+  if(more){
+    more.hidden=remaining<=0;
+    if(remaining>0)more.innerHTML=`Ver mais ${Math.min(size,remaining)} <span>(${remaining} restante${remaining===1?'':'s'})</span>`;
+  }
+  if(less)less.hidden=visible<=size;
+}
+function bindAdminProgressiveLists(root=document){
+  root.querySelectorAll('.admin-progressive-list').forEach(list=>{
+    const size=Number(list.dataset.pageSize||10);
+    const more=list.querySelector('.admin-progressive-more');
+    const less=list.querySelector('.admin-progressive-less');
+    if(more)more.onclick=()=>{
+      const hidden=[...list.querySelectorAll('.admin-progressive-item[hidden]')];
+      hidden.slice(0,size).forEach(row=>row.hidden=false);
+      updateAdminProgressiveControls(list);
+    };
+    if(less)less.onclick=()=>{
+      [...list.querySelectorAll('.admin-progressive-item')].forEach((row,index)=>row.hidden=index>=size);
+      updateAdminProgressiveControls(list);
+      list.scrollIntoView({behavior:'smooth',block:'nearest'});
+    };
+    updateAdminProgressiveControls(list);
+  });
+}
+
+const ADMIN_AUTO_PAGE_SIZE=15;
+let adminAutoPagerSeq=0;
+function adminAutoPagerItems(container){
+  if(!container)return [];
+  if(container.tagName==='TBODY')return [...container.children].filter(el=>el.tagName==='TR');
+  if(container.id==='audit-list')return [...container.children].filter(el=>el.classList.contains('audit-card'));
+  return [...container.children].filter(el=>!el.classList.contains('admin-auto-pagination'));
+}
+function adminAutoPagerHost(container){
+  if(container.tagName==='TBODY')return container.closest('.table-wrap')||container.closest('table')||container;
+  return container;
+}
+function ensureAdminAutoPager(container,reset=false){
+  if(!container)return;
+  const items=adminAutoPagerItems(container);
+  const pageSize=Number(container.dataset.autoPageSize||ADMIN_AUTO_PAGE_SIZE);
+  let id=container.dataset.autoPagerId;
+  if(!id){id=`admin-auto-pager-${++adminAutoPagerSeq}`;container.dataset.autoPagerId=id;}
+  const host=adminAutoPagerHost(container);
+  let controls=document.querySelector(`.admin-auto-pagination[data-for="${id}"]`);
+  if(items.length<=pageSize){
+    items.forEach(item=>item.hidden=false);
+    if(controls)controls.remove();
+    container.dataset.autoVisible=String(items.length);
+    return;
+  }
+  let visible=reset?pageSize:Number(container.dataset.autoVisible||pageSize);
+  visible=Math.max(pageSize,Math.min(visible,items.length));
+  container.dataset.autoVisible=String(visible);
+  items.forEach((item,index)=>item.hidden=index>=visible);
+  if(!controls){
+    controls=document.createElement('div');
+    controls.className='admin-auto-pagination';
+    controls.dataset.for=id;
+    controls.innerHTML='<button class="outline admin-auto-more" type="button"></button><button class="outline admin-auto-less" type="button">Ver menos</button>';
+    host.insertAdjacentElement('afterend',controls);
+  }
+  const render=()=>{
+    const current=Number(container.dataset.autoVisible||pageSize);
+    const remaining=Math.max(0,items.length-current);
+    const more=controls.querySelector('.admin-auto-more');
+    const less=controls.querySelector('.admin-auto-less');
+    more.hidden=remaining<=0;
+    if(remaining>0)more.innerHTML=`Ver mais ${Math.min(pageSize,remaining)} <span>(${remaining} restante${remaining===1?'':'s'})</span>`;
+    less.hidden=current<=pageSize;
+  };
+  controls.querySelector('.admin-auto-more').onclick=()=>{
+    visible=Math.min(items.length,Number(container.dataset.autoVisible||pageSize)+pageSize);
+    container.dataset.autoVisible=String(visible);
+    items.forEach((item,index)=>item.hidden=index>=visible);
+    render();
+  };
+  controls.querySelector('.admin-auto-less').onclick=()=>{
+    container.dataset.autoVisible=String(pageSize);
+    items.forEach((item,index)=>item.hidden=index>=pageSize);
+    render();
+    host.scrollIntoView({behavior:'smooth',block:'nearest'});
+  };
+  render();
+}
+function initAdminAutoPagination(){
+  const selector='tbody, #audit-list, #coverage-rules-list, #admin-inspection-files-grid';
+  const applyAll=(reset=false)=>document.querySelectorAll(selector).forEach(el=>ensureAdminAutoPager(el,reset));
+  applyAll(true);
+  const observer=new MutationObserver(mutations=>{
+    const touched=new Set();
+    mutations.forEach(m=>{
+      const target=m.target.closest?.(selector)||m.target;
+      if(target?.matches?.(selector))touched.add(target);
+    });
+    touched.forEach(el=>ensureAdminAutoPager(el,true));
+  });
+  document.querySelectorAll(selector).forEach(el=>observer.observe(el,{childList:true}));
+}
+function adminAcceptanceButtonHtml(e){
+  if(!e?.workshopCompletedAt||e?.acceptedAt)return '';
+  const label=e.publicAcceptanceToken?'Reenviar dossiê + aceite':'Enviar dossiê + aceite';
+  return `<button class="secondary admin-acceptance-send" type="button" data-event="${esc(e.id)}">${label}</button>`;
+}
+function adminAcceptanceBarHtml(e){
+  if(!e?.workshopCompletedAt)return '';
+  const accepted=!!e.acceptedAt;
+  return `<div class="admin-acceptance-bar"><div><span>ACEITE DO ASSOCIADO</span><strong>${accepted?`Confirmado em ${esc(date(e.acceptedAt))}`:'Pendente'}</strong></div>${adminAcceptanceButtonHtml(e)}</div>`;
+}
+function bindAdminAcceptanceButtons(root=document){root.querySelectorAll('.admin-acceptance-send').forEach(button=>button.onclick=()=>openAdminAcceptanceDialog(button.dataset.event));}
+function adminAcceptancePublicUrl(info){if(!info)return '';const path=info.publicPath||(info.publicToken?`/aceite-evento/?token=${encodeURIComponent(info.publicToken)}`:'');return path?new URL(path,window.location.origin).href:'';}
+function adminAcceptanceMessage(info,url){return `Olá, ${info?.associateName||'associado(a)'}. A Novo Horizonte Proteção Veicular disponibilizou o dossiê do veículo ${info?.vehiclePlate||''}${info?.vehicleModel?` (${info.vehicleModel})`:''}. Revise o documento e confirme o aceite digital pelo link: ${url}`;}
+function updateAdminAcceptanceLocal(info){
+  if(!info)return;
+  const patch=e=>{if(!e||String(e.id)!==String(info.eventId))return;e.acceptedAt=info.acceptedAt||null;e.publicAcceptanceToken=info.publicToken||null;};
+  workshopEvents.forEach(patch);
+}
+function renderAdminAcceptanceDialog(info){
+  adminAcceptanceInfo=info;updateAdminAcceptanceLocal(info);
+  const accepted=!!info.accepted,url=adminAcceptancePublicUrl(info);
+  const status=$('admin-acceptance-status'),input=$('admin-acceptance-link');
+  if(status){status.className=`admin-acceptance-status ${accepted?'accepted':'pending'}`;status.innerHTML=accepted?`<strong>✓ Aceite confirmado</strong><span>O associado confirmou digitalmente em ${esc(date(info.acceptedAt))}.</span>`:`<strong>Aguardando aceite do associado</strong><span>Envie o link seguro abaixo para revisão do dossiê e aceite digital.</span>`;}
+  if(input)input.value=url;
+  document.querySelectorAll('[data-admin-acceptance-pending]').forEach(el=>el.hidden=accepted);
+  $('admin-acceptance-open').hidden=!url;
+  $('admin-acceptance-download').hidden=!info.publicToken;
+  $('admin-acceptance-accepted-note').hidden=!accepted;
+  if(accepted)$('admin-acceptance-accepted-note').textContent=`Aceite registrado em ${date(info.acceptedAt)}${info.userVerified?' · usuário verificado pelo dispositivo':''}.`;
+  renderAdminWorkshop();
+}
+async function openAdminAcceptanceDialog(eventId){
+  const d=$('admin-associate-acceptance-dialog');if(!d)return;
+  adminAcceptanceInfo=null;
+  $('admin-acceptance-status').className='admin-acceptance-status loading';
+  $('admin-acceptance-status').innerHTML='<strong>Preparando dossiê...</strong><span>Aguarde um instante.</span>';
+  $('admin-acceptance-link').value='';
+  document.querySelectorAll('[data-admin-acceptance-pending]').forEach(el=>el.hidden=true);
+  $('admin-acceptance-open').hidden=true;$('admin-acceptance-download').hidden=true;$('admin-acceptance-accepted-note').hidden=true;
+  if(!d.open)d.showModal();
+  try{
+    let info=await api(`/api/checklist/events/${encodeURIComponent(eventId)}/acceptance`);
+    if(!info.accepted&&!info.publicToken)info=await api(`/api/checklist/events/${encodeURIComponent(eventId)}/acceptance/prepare`,{method:'POST'});
+    renderAdminAcceptanceDialog(info);
+  }catch(error){
+    $('admin-acceptance-status').className='admin-acceptance-status error';
+    $('admin-acceptance-status').innerHTML=`<strong>Não foi possível preparar o envio</strong><span>${esc(error.message)}</span>`;
+  }
+}
+async function adminCopyAcceptanceLink(){const url=adminAcceptancePublicUrl(adminAcceptanceInfo);if(!url)return;try{await navigator.clipboard.writeText(url);message('Link do dossiê e aceite copiado.','success');}catch(_){$('admin-acceptance-link').select();document.execCommand('copy');message('Link copiado.','success');}}
+function adminSendAcceptanceWhatsapp(){const info=adminAcceptanceInfo,url=adminAcceptancePublicUrl(info);if(url)window.open(`https://wa.me/?text=${encodeURIComponent(adminAcceptanceMessage(info,url))}`,'_blank','noopener,noreferrer');}
+function adminOpenAcceptancePage(){const url=adminAcceptancePublicUrl(adminAcceptanceInfo);if(url)window.open(url,'_blank','noopener,noreferrer');}
+async function adminDownloadAssociateDossier(){const info=adminAcceptanceInfo;if(!info?.publicToken)return;try{const blob=await apiBlob(`/api/public/events/acceptance/${encodeURIComponent(info.publicToken)}/dossier.pdf`),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`dossie-associado-${info.protocol||'evento'}.pdf`;a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);}catch(error){message(error.message);}}
+function releaseAdminFilePreview(){if(adminFilePreviewUrl){URL.revokeObjectURL(adminFilePreviewUrl);adminFilePreviewUrl=null;}$('admin-file-preview-content').innerHTML='';}
+async function openAdminFilePreview(button){
+  const d=$('admin-file-preview-dialog');if(!d)return;
+  releaseAdminFilePreview();
+  $('admin-file-preview-title').textContent=button.dataset.name||'Arquivo';
+  $('admin-file-preview-content').innerHTML='<div class="muted">Carregando prévia...</div>';
+  if(!d.open)d.showModal();
+  try{
+    const path=`/api/checklist/events/${encodeURIComponent(button.dataset.event)}/attachments/${encodeURIComponent(button.dataset.id)}`;
+    const blob=await apiBlob(path);
+    adminFilePreviewUrl=URL.createObjectURL(blob);
+    const type=(blob.type||button.dataset.type||'').toLowerCase();
+    if(type.startsWith('image/')){
+      $('admin-file-preview-content').innerHTML=`<img class="admin-file-preview-image" src="${adminFilePreviewUrl}" alt="${esc(button.dataset.name||'Arquivo')}" />`;
+    }else if(type==='application/pdf'){
+      $('admin-file-preview-content').innerHTML=`<iframe class="admin-file-preview-pdf" src="${adminFilePreviewUrl}" title="Prévia do PDF"></iframe>`;
+    }else{
+      $('admin-file-preview-content').innerHTML='<div class="muted">Este tipo de arquivo não possui prévia no navegador.</div>';
+    }
+    const open=$('admin-file-preview-open');open.hidden=false;open.onclick=()=>window.open(adminFilePreviewUrl,'_blank','noopener,noreferrer');
+    const download=$('admin-file-preview-download');download.hidden=false;download.onclick=()=>downloadAdminBinary(path,button.dataset.name||'arquivo');
+  }catch(error){$('admin-file-preview-content').innerHTML=`<div class="message error">${esc(error.message)}</div>`;}
+}
+
+async function openAdminEvent(id){
+  openAdminOperationsDialog('Carregando ocorrência…','<div class="muted">Carregando todas as informações do evento.</div>');
+  try{
+    const e=await api(`/api/checklist/events/${encodeURIComponent(id)}`);
+    const basic=nhInfoGrid([
+      ['Protocolo',e.protocol],['Status',nhEventStatus(e.status)],['Tipo de evento',nhEventType(e.eventType)],['Data da ocorrência',date(e.occurredAt)],['Local',e.location],['Associado',e.associateName],['Nº associado',e.associateNumber],['Plano',e.planName],['Código do plano',e.planCode],['Mensalidade',e.planMonthlyAmount==null?'—':brl.format(e.planMonthlyAmount)],['Participação',e.participationAmount==null?'—':brl.format(e.participationAmount)],['Placa',e.vehiclePlate],['Marca',e.vehicleBrand],['Modelo',e.vehicleModel],['Versão/motorização',e.vehicleVersion],['Categoria',nhVehicleCategory(e.vehicleCategory)],['Configuração',e.vehicleSubtype],['Ano',e.vehicleYear],['Cor',e.vehicleColor],['Combustível',e.vehicleFuel],['Câmbio',e.vehicleTransmission],['Quilometragem',e.vehicleOdometer==null?'—':String(e.vehicleOdometer)],['FIPE',e.fipeValue==null?'—':brl.format(e.fipeValue)],['Chassi',e.chassis],['Criado por',e.createdByName],['Criado em',date(e.createdAt)],['Última atualização',date(e.updatedAt)]]);
+    const attachments=(e.attachments||[]).map(a=>`<div class="admin-ops-row admin-file-row"><div><strong>${esc(a.originalName)}</strong><small>${esc(a.context||'')} · ${esc(a.attachmentKind||'')} · ${esc(date(a.createdAt))}${a.uploadedBy?` · ${esc(a.uploadedBy)}`:''}</small>${a.notes?`<p>${esc(a.notes)}</p>`:''}</div><div class="admin-file-actions"><button class="secondary admin-preview-event-file" data-event="${esc(e.id)}" data-id="${esc(a.id)}" data-name="${esc(a.originalName)}" data-type="${esc(a.contentType||'')}" type="button">Visualizar</button><button class="outline admin-download-event-file" data-event="${esc(e.id)}" data-id="${esc(a.id)}" data-name="${esc(a.originalName)}" type="button">Baixar</button></div></div>`);
+    const checklist=(e.checklist||[]).map(i=>`<div class="admin-ops-row"><div><strong>${esc(i.section)} · ${esc(i.label)}</strong><small>Relatado: ${esc(i.reportedState||'—')} · Análise: ${esc(i.analysisState||'—')}</small>${i.reportedNotes?`<p>Relato: ${esc(i.reportedNotes)}</p>`:''}${i.analysisNotes?`<p>Análise: ${esc(i.analysisNotes)}</p>`:''}</div></div>`);
+    const third=(e.thirdParties||[]).map(t=>`<div class="admin-ops-card"><strong>${esc(t.name||'Terceiro')}</strong><small>${esc(t.vehiclePlate||'—')} · ${esc(t.vehicleModel||'—')} · ${esc(nhVehicleCategory(t.vehicleCategory))}</small>${t.notes?`<p>${esc(t.notes)}</p>`:''}<div class="admin-mini-list">${(t.checklist||[]).map(i=>`<span>${esc(i.label)}: ${esc(i.analysisState||i.reportedState||'—')}</span>`).join('')}</div></div>`);
+    const audit=(e.audit||[]).map(a=>`<div class="admin-ops-row"><div><strong>${esc(a.action)}</strong><small>${esc(a.actorName||a.actorUsername||'Sistema')} · ${esc(date(a.createdAt))}</small>${a.details?`<p>${esc(a.details)}</p>`:''}</div></div>`);
+    const actions=`<div class="actions"><button class="secondary admin-download-dossier" data-event="${esc(e.id)}" data-kind="external" data-name="dossie-${esc(e.protocol)}.pdf" type="button">Baixar dossiê do associado</button><button class="outline admin-download-dossier" data-event="${esc(e.id)}" data-kind="internal" data-name="dossie-interno-${esc(e.protocol)}.pdf" type="button">Baixar dossiê interno</button></div>`;
+    openAdminOperationsDialog(`Evento ${e.protocol}`,basic+(e.description?adminSection('Descrição',`<p>${esc(e.description)}</p>`):'')+(e.coverageNotes?adminSection('Plano / coberturas',`<p>${esc(e.coverageNotes)}</p>`):'')+adminSection('Arquivos e documentos',adminRows(attachments,'Nenhum arquivo anexado.'))+adminSection(`Checklist / análise registrada (${checklist.length} itens)`,adminProgressiveRows(checklist,'Nenhum item registrado nesta ocorrência.'))+adminSection('Terceiros',adminRows(third,'Nenhum terceiro cadastrado.'))+adminSection('Auditoria',adminRows(audit,'Nenhuma movimentação registrada.'))+actions);
+    document.querySelectorAll('.admin-preview-event-file').forEach(b=>b.onclick=()=>openAdminFilePreview(b));
+    document.querySelectorAll('.admin-download-event-file').forEach(b=>b.onclick=()=>downloadAdminBinary(`/api/checklist/events/${encodeURIComponent(b.dataset.event)}/attachments/${encodeURIComponent(b.dataset.id)}`,b.dataset.name));
+    bindAdminProgressiveLists($('admin-operations-content'));
+    document.querySelectorAll('.admin-download-dossier').forEach(b=>b.onclick=()=>downloadAdminBinary(b.dataset.kind==='internal'?`/api/checklist/events/${encodeURIComponent(b.dataset.event)}/internal-dossier.pdf`:`/api/checklist/events/${encodeURIComponent(b.dataset.event)}/dossier.pdf`,b.dataset.name));
+  }catch(error){openAdminOperationsDialog('Evento','<div class="message error">'+esc(error.message)+'</div>');}
+}
+
+async function openAdminWorkshop(id){
+  openAdminOperationsDialog('Carregando oficina…','<div class="muted">Carregando checklist técnico e compras.</div>');
+  try{
+    const e=await api(`/api/workshop/events/${encodeURIComponent(id)}`);
+    const basic=nhInfoGrid([['Protocolo',e.protocol],['Status',nhEventStatus(e.eventStatus)],['Associado',e.associateName],['Nº associado',e.associateNumber],['Placa',e.vehiclePlate],['Marca / modelo',[e.vehicleBrand,e.vehicleModel].filter(Boolean).join(' / ')],['Versão',e.vehicleVersion],['Categoria',nhVehicleCategory(e.vehicleCategory)],['Configuração',e.vehicleSubtype],['Ano / cor',[e.vehicleYear,e.vehicleColor].filter(Boolean).join(' / ')],['Combustível / câmbio',[e.vehicleFuel,e.vehicleTransmission].filter(Boolean).join(' / ')],['Plano',e.planName],['Iniciado por',e.workshopStartedBy],['Início',date(e.workshopStartedAt)],['Concluído por',e.workshopCompletedBy],['Conclusão',date(e.workshopCompletedAt)]]);
+    const items=(e.checklist||[]).map(i=>`<div class="admin-ops-row"><div><strong>${esc(i.section)} · ${esc(i.label)}</strong><small>${esc(NH_DAMAGE_LABELS[i.damageState]||i.damageState||'Não avaliado')}${i.repairAction?` · ${esc(NH_REPAIR_LABELS[i.repairAction]||i.repairAction)}`:''}${i.updatedBy?` · ${esc(i.updatedBy)}`:''}</small>${i.notes?`<p>${esc(i.notes)}</p>`:''}</div></div>`);
+    const third=(e.thirdParties||[]).map(t=>`<div class="admin-ops-card"><strong>${esc(t.name||'Terceiro')}</strong><small>${esc(t.vehiclePlate||'—')} · ${esc(t.vehicleModel||'—')} · ${esc(nhVehicleCategory(t.vehicleCategory))}</small><div class="admin-mini-list">${(t.checklist||[]).map(i=>`<span>${esc(i.label)}: ${esc(NH_DAMAGE_LABELS[i.damageState]||i.damageState||'—')}${i.repairAction?` / ${esc(NH_REPAIR_LABELS[i.repairAction]||i.repairAction)}`:''}</span>`).join('')}</div></div>`);
+    const purchases=(e.purchases||[]).map(p=>`<div class="admin-ops-row"><div><strong>${esc(p.itemLabel)}</strong><small>Fornecedor: ${esc(p.supplier||'—')} · Valor: ${p.amount==null?'—':esc(brl.format(p.amount))} · Prazo: ${esc(p.deliveryDeadline||'—')} · Status: ${esc(p.status||'—')}</small>${p.notes?`<p>${esc(p.notes)}</p>`:''}<small>Registro: ${esc(p.detailsSavedBy||p.updatedBy||'—')} · ${esc(date(p.detailsSavedAt||p.updatedAt))}</small></div></div>`);
+    const actions=`<div class="actions"><button class="secondary admin-download-dossier" data-event="${esc(e.id)}" data-kind="external" data-name="dossie-${esc(e.protocol)}.pdf" type="button">Dossiê do associado</button><button class="outline admin-download-dossier" data-event="${esc(e.id)}" data-kind="internal" data-name="dossie-interno-${esc(e.protocol)}.pdf" type="button">Dossiê interno</button></div>`;
+    openAdminOperationsDialog(`Oficina · ${e.protocol}`,basic+adminAcceptanceBarHtml(e)+adminSection(`Checklist técnico (${(e.checklist||[]).length} itens)`,adminProgressiveRows(items))+adminSection('Terceiros',adminRows(third,'Nenhum terceiro cadastrado.'))+adminSection(`Compras do Evento (${(e.purchases||[]).length})`,adminRows(purchases,'Nenhuma compra registrada.'))+actions);
+    bindAdminProgressiveLists($('admin-operations-content'));
+    bindAdminAcceptanceButtons($('admin-operations-content'));
+    document.querySelectorAll('.admin-download-dossier').forEach(b=>b.onclick=()=>downloadAdminBinary(b.dataset.kind==='internal'?`/api/checklist/events/${encodeURIComponent(b.dataset.event)}/internal-dossier.pdf`:`/api/checklist/events/${encodeURIComponent(b.dataset.event)}/dossier.pdf`,b.dataset.name));
+  }catch(error){openAdminOperationsDialog('Oficina','<div class="message error">'+esc(error.message)+'</div>');}
+}
+
+async function openAdminTow(id){
+  openAdminOperationsDialog('Carregando reboque…','<div class="muted">Carregando checklist e registros do atendimento.</div>');
+  try{
+    const e=await api(`/api/tow/records/${encodeURIComponent(id)}`);
+    const basic=nhInfoGrid([['Código',e.code],['Status',e.status==='COMPLETED'?'Concluído':'Em preenchimento'],['Placa',e.vehiclePlate],['Modelo',e.vehicleModel],['Categoria',nhVehicleCategory(e.vehicleCategory)],['Prestador / empresa',e.providerName],['Motorista',e.driverName],['Telefone',e.driverPhone],['Criado por',e.createdByName],['Criado em',date(e.createdAt)],['Concluído por',e.completedByName],['Concluído em',date(e.completedAt)],['Fotos',String(e.photoCount||0)]]);
+    const items=(e.checklist||[]).map(i=>`<div class="admin-ops-row"><div><strong>${esc(i.section)} · ${esc(i.label)}</strong><small>${esc(NH_TOW_ANSWER_LABELS[i.answer]||i.answer||'Não informado')}${i.updatedBy?` · ${esc(i.updatedBy)}`:''}</small>${i.notes?`<p>${esc(i.notes)}</p>`:''}</div></div>`);
+    const photos=(e.photos||[]).map(p=>`<div class="admin-ops-row"><div><strong>${esc(p.originalName)}</strong><small>${esc(p.photoKind||'Foto')} · ${esc(date(p.createdAt))}${p.uploadedBy?` · ${esc(p.uploadedBy)}`:''}</small>${p.notes?`<p>${esc(p.notes)}</p>`:''}</div><button class="outline admin-download-tow-photo" data-record="${esc(e.id)}" data-id="${esc(p.id)}" data-name="${esc(p.originalName)}" type="button">Baixar</button></div>`);
+    openAdminOperationsDialog(`Reboque · ${e.code}`,basic+(e.generalNotes?adminSection('Observações gerais',`<p>${esc(e.generalNotes)}</p>`):'')+adminSection('Checklist de acessórios e pertences',adminRows(items))+adminSection('Fotos do atendimento',adminRows(photos,'Nenhuma foto registrada.')));
+    document.querySelectorAll('.admin-download-tow-photo').forEach(b=>b.onclick=()=>downloadAdminBinary(`/api/tow/records/${encodeURIComponent(b.dataset.record)}/photos/${encodeURIComponent(b.dataset.id)}`,b.dataset.name));
+  }catch(error){openAdminOperationsDialog('Guincho / Reboque','<div class="message error">'+esc(error.message)+'</div>');}
+}
+
+async function downloadAdminBinary(path,fileName){
+  try{const blob=await apiBlob(path);const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=fileName||'arquivo';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);}catch(error){message(error.message);}
+}
+
+$('admin-event-filter')?.addEventListener('input', renderAdminEvents);
+$('admin-workshop-filter')?.addEventListener('input', renderAdminWorkshop);
+$('admin-purchases-filter')?.addEventListener('input', renderAdminPurchases);
+$('admin-tow-filter')?.addEventListener('input', renderAdminTow);
 $('coverage-status-filter').addEventListener('change', renderCoverages);
 $('coverage-text-filter').addEventListener('input', renderCoverages);
 $('audit-filter').addEventListener('input', renderAudit);
 $('admin-download-all-files').addEventListener('click', downloadAllAdminFiles);
+initAdminAutoPagination();
 document.querySelectorAll('[data-open-settings]').forEach(button => button.addEventListener('click', openSettingsModal));
 document.querySelectorAll('[data-close-dialog]').forEach(button => button.addEventListener('click', () => closeDialog(button.dataset.closeDialog)));
+$('admin-acceptance-copy')?.addEventListener('click',adminCopyAcceptanceLink);
+$('admin-acceptance-whatsapp')?.addEventListener('click',adminSendAcceptanceWhatsapp);
+$('admin-acceptance-open')?.addEventListener('click',adminOpenAcceptancePage);
+$('admin-acceptance-download')?.addEventListener('click',adminDownloadAssociateDossier);
 
 document.querySelectorAll('.admin-dialog').forEach(dialog => {
-  dialog.addEventListener('close', () => { if (dialog.id === 'inspection-dialog') releaseAdminMediaUrls(); });
+  dialog.addEventListener('close', () => { if (dialog.id === 'inspection-dialog') releaseAdminMediaUrls(); if(dialog.id==='admin-file-preview-dialog')releaseAdminFilePreview(); });
   dialog.addEventListener('click', event => {
     const rect = dialog.getBoundingClientRect();
     const outside = event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom;
@@ -2881,8 +3246,13 @@ document.querySelectorAll('.admin-tabs button').forEach(button => {
 });
 
 async function boot() {
-  if (!token || localStorage.getItem(ROLE_KEY) !== 'ADMIN') {
+  if (!token) {
     showLogin();
+    return;
+  }
+  const cachedRole = localStorage.getItem(ROLE_KEY);
+  if (cachedRole && cachedRole !== 'ADMIN') {
+    (window.NH_ROUTING?.redirectForRole ? window.NH_ROUTING.redirectForRole(cachedRole) : location.replace({CONSULTANT:'/colaborador/',ANALYST:'/analise/',SUPERVISION_ANALYSIS:'/supervisao/',TOW_DRIVER:'/guincho/',WORKSHOP_MANAGER:'/oficina/',EVENT_OPERATOR:'/checklist/',BUYER:'/financeiro/',ADMIN:'/admin/'}[cachedRole]||'/'));
     return;
   }
   if (sessionExpired()) {
@@ -2892,7 +3262,8 @@ async function boot() {
   try {
     const me = await api('/api/auth/me');
     if (me.role !== 'ADMIN') {
-      showLogin('Este usuário não possui permissão administrativa.');
+      localStorage.setItem(ROLE_KEY, me.role);
+      (window.NH_ROUTING?.redirectForRole ? window.NH_ROUTING.redirectForRole(me.role) : location.replace({CONSULTANT:'/colaborador/',ANALYST:'/analise/',SUPERVISION_ANALYSIS:'/supervisao/',TOW_DRIVER:'/guincho/',WORKSHOP_MANAGER:'/oficina/',EVENT_OPERATOR:'/checklist/',BUYER:'/financeiro/',ADMIN:'/admin/'}[me.role]||'/'));
       return;
     }
     showAdmin();

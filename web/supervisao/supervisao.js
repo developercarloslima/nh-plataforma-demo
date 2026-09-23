@@ -636,6 +636,10 @@ async function boot() {
     if (me.role === 'ADMIN') { location.replace('/admin/'); return; }
     if (me.role !== 'SUPERVISION_ANALYSIS') {
       if (me.role === 'ANALYST') location.replace('/analise/');
+      else if (me.role === 'TOW_DRIVER') location.replace('/guincho/');
+      else if (me.role === 'WORKSHOP_MANAGER') location.replace('/oficina/');
+      else if (me.role === 'EVENT_OPERATOR') location.replace('/checklist/');
+      else if (me.role === 'BUYER') location.replace('/financeiro/');
       else location.replace('/colaborador/');
       return;
     }
@@ -1584,6 +1588,14 @@ $('login-form').addEventListener('submit', async event => {
       else await load();
     } else if (data.role === 'ANALYST') {
       location.href = '/analise/';
+    } else if (data.role === 'TOW_DRIVER') {
+      location.href = '/guincho/';
+    } else if (data.role === 'WORKSHOP_MANAGER') {
+      location.href = '/oficina/';
+    } else if (data.role === 'EVENT_OPERATOR') {
+      location.href = '/checklist/';
+    } else if (data.role === 'BUYER') {
+      location.href = '/financeiro/';
     } else {
       location.href = '/colaborador/';
     }

@@ -101,6 +101,12 @@ public class PortalUser {
         this.updatedAt = OffsetDateTime.now();
     }
 
+    public void clearPasswordChangeRequirement() {
+        if (!this.mustChangePassword) return;
+        this.mustChangePassword = false;
+        this.updatedAt = OffsetDateTime.now();
+    }
+
     public void setActive(boolean active) {
         this.active = active;
         this.updatedAt = OffsetDateTime.now();

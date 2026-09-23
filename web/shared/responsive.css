@@ -2773,3 +2773,709 @@ button,
     line-height: 1.4;
   }
 }
+
+/* =========================================================
+   V74 — RESPONSIVIDADE UNIVERSAL 2026-09-23
+   Camada final: smartphones pequenos/dobráveis, tablets,
+   notebooks, desktop e telas amplas. Deve permanecer no fim.
+   ========================================================= */
+
+:root {
+  --nh-page-gutter: clamp(12px, 2.4vw, 30px);
+  --nh-card-pad: clamp(16px, 2.3vw, 28px);
+  --nh-control-h: 46px;
+}
+
+html, body {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow-x: clip !important;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+img, video, canvas, svg, iframe { max-width: 100%; }
+
+/* ---------- Portais internos: estrutura ---------- */
+.portal-header {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  background: var(--nh-blue, #070c40) !important;
+  border-bottom: 3px solid var(--nh-yellow, #f0f000) !important;
+}
+
+.portal-brand {
+  min-width: 0 !important;
+  flex: 0 0 auto !important;
+}
+
+.portal-brand img {
+  flex: 0 0 auto !important;
+  object-fit: contain !important;
+}
+
+.portal-brand span {
+  min-width: 0 !important;
+  display: block !important;
+}
+
+.portal-brand strong,
+.portal-brand small {
+  display: block !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: nowrap !important;
+}
+
+.nh-standard-header-actions,
+.portal-header .header-actions {
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+.nh-standard-header-actions a,
+.nh-standard-header-actions button,
+.portal-header .header-actions a,
+.portal-header .header-actions button {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  min-height: 42px !important;
+  line-height: 1.12 !important;
+  text-align: center !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: nowrap !important;
+}
+
+.shell,
+.container,
+.login-wrap,
+.accept-shell {
+  max-width: 100% !important;
+}
+
+.shell {
+  width: min(1180px, calc(100% - (2 * var(--nh-page-gutter)))) !important;
+}
+
+.login-wrap {
+  width: min(480px, calc(100% - (2 * var(--nh-page-gutter)))) !important;
+  margin: clamp(24px, 5vw, 52px) auto max(36px, env(safe-area-inset-bottom, 0px)) !important;
+}
+
+.card,
+.login-card,
+.tool-card,
+.dialog-card,
+.hero-panel,
+.communication-card {
+  max-width: 100% !important;
+}
+
+.login-card {
+  padding: clamp(18px, 4vw, 30px) !important;
+}
+
+.login-card h1 {
+  font-size: clamp(28px, 6.5vw, 38px) !important;
+  line-height: 1.04 !important;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+}
+
+.login-card p {
+  font-size: clamp(14px, 2.8vw, 16px) !important;
+  line-height: 1.45 !important;
+}
+
+input, select, textarea, button, .button {
+  min-width: 0;
+}
+
+input, select, textarea {
+  max-width: 100% !important;
+}
+
+button, .button {
+  min-height: var(--nh-control-h);
+}
+
+.form-grid,
+.filter-grid,
+.detail-grid,
+.kpi-grid,
+.overview-grid,
+.tool-grid,
+.upload-grid,
+.document-upload-grid {
+  max-width: 100% !important;
+}
+
+/* Evita cards/linhas estourando por nomes, URLs ou protocolos longos. */
+.card, .tool-card, .kpi, .detail-grid > *, .overview-grid > *,
+.office-card, .tow-event-card, .analysis-queue-card,
+.purchase-card, .audit-card, .inspection-media-card {
+  min-width: 0 !important;
+  overflow-wrap: anywhere;
+}
+
+.actions,
+.row-actions,
+.section-head,
+.detail-toolbar,
+.accept-actions,
+.acceptance-actions,
+.office-card-actions,
+.tow-card-actions {
+  max-width: 100%;
+}
+
+.table-wrap {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ---------- Desktop amplo: uma linha, como padrão visual pedido ---------- */
+@media (min-width: 1180px) {
+  .portal-header {
+    min-height: 80px !important;
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: clamp(16px, 2vw, 30px) !important;
+    padding: 10px max(18px, calc((100vw - 1500px) / 2)) !important;
+  }
+
+  .portal-brand {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+  }
+
+  .portal-brand img { width: 48px !important; height: 48px !important; }
+  .portal-brand strong { font-size: clamp(15px, 1.2vw, 18px) !important; }
+  .portal-brand small { font-size: clamp(11px, .9vw, 13px) !important; }
+
+  .nh-standard-header-actions,
+  .portal-header .header-actions {
+    flex: 1 1 auto !important;
+    width: auto !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: clamp(6px, .7vw, 10px) !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .nh-standard-header-actions a,
+  .nh-standard-header-actions button,
+  .portal-header .header-actions a,
+  .portal-header .header-actions button {
+    flex: 0 0 auto !important;
+    padding: 9px clamp(10px, .9vw, 15px) !important;
+    font-size: clamp(12px, .9vw, 15px) !important;
+  }
+}
+
+/* ---------- Notebook e tablet horizontal: marca + menu organizado em grade ---------- */
+@media (min-width: 700px) and (max-width: 1179px) {
+  .portal-header {
+    min-height: 0 !important;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 12px var(--nh-page-gutter) !important;
+  }
+
+  .portal-brand {
+    width: max-content !important;
+    max-width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 9px !important;
+    margin: 0 !important;
+  }
+
+  .portal-brand img { width: 44px !important; height: 44px !important; }
+  .portal-brand strong { font-size: 16px !important; }
+  .portal-brand small { font-size: 12px !important; }
+
+  .nh-standard-header-actions,
+  .portal-header .header-actions {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    overflow: visible !important;
+    justify-content: stretch !important;
+  }
+
+  .nh-standard-header-actions a,
+  .nh-standard-header-actions button,
+  .portal-header .header-actions a,
+  .portal-header .header-actions button {
+    width: 100% !important;
+    min-height: 40px !important;
+    padding: 8px 8px !important;
+    font-size: clamp(11px, 1.45vw, 13px) !important;
+    white-space: normal !important;
+  }
+}
+
+/* ---------- Mobile: nada oculto, nada cortado, grade de 2 colunas ---------- */
+@media (max-width: 699px) {
+  :root { --nh-page-gutter: clamp(10px, 3.5vw, 16px); }
+
+  .portal-header {
+    min-height: 0 !important;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+    padding: max(10px, env(safe-area-inset-top, 0px)) var(--nh-page-gutter) 10px !important;
+    overflow: visible !important;
+  }
+
+  .portal-brand {
+    width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 9px !important;
+    margin: 0 !important;
+  }
+
+  .portal-brand img { width: 42px !important; height: 42px !important; }
+  .portal-brand span { display: block !important; text-align: left !important; }
+  .portal-brand strong { font-size: 15px !important; }
+  .portal-brand small { font-size: 11px !important; }
+
+  .nh-standard-header-actions,
+  .portal-header .header-actions {
+    grid-column: 1 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+    overflow: visible !important;
+    justify-content: stretch !important;
+  }
+
+  .nh-standard-header-actions a,
+  .nh-standard-header-actions button,
+  .portal-header .header-actions a,
+  .portal-header .header-actions button {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 42px !important;
+    padding: 8px 7px !important;
+    font-size: clamp(10.5px, 3vw, 12.5px) !important;
+    white-space: normal !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+  }
+
+  .shell {
+    width: calc(100% - (2 * var(--nh-page-gutter))) !important;
+    margin-top: 18px !important;
+  }
+
+  .login-wrap {
+    width: calc(100% - (2 * var(--nh-page-gutter))) !important;
+    margin-top: 22px !important;
+  }
+
+  .login-card,
+  .card,
+  .tool-card,
+  .dialog-card,
+  .hero-panel,
+  .communication-card {
+    padding: clamp(15px, 4.2vw, 20px) !important;
+    border-radius: 16px !important;
+  }
+
+  .login-card h1 { font-size: clamp(27px, 8vw, 36px) !important; }
+
+  .form-grid,
+  .filter-grid,
+  .detail-grid,
+  .kpi-grid,
+  .overview-grid,
+  .tool-grid,
+  .upload-grid,
+  .document-upload-grid,
+  .communication-summary {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 12px !important;
+  }
+
+  .span-2 { grid-column: auto !important; }
+
+  .section-head,
+  .detail-toolbar,
+  .associate-dossier-bar,
+  .purchase-title-row {
+    align-items: stretch !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+  }
+
+  .section-head > button,
+  .detail-toolbar > button,
+  .section-head .actions,
+  .actions > button,
+  .actions > .button,
+  .actions > a.button,
+  .row-actions > button,
+  .row-actions > .button,
+  .row-actions > a.button {
+    width: 100% !important;
+  }
+
+  input, select, textarea {
+    font-size: 16px !important;
+    padding: 12px !important;
+  }
+
+  button, .button { min-height: 44px !important; }
+
+  .hero-panel h1,
+  .card h1,
+  .dialog-card h2,
+  .communication-card h2 {
+    max-width: 100% !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+  }
+
+  dialog,
+  .admin-dialog,
+  .office-dialog,
+  .tow-dialog,
+  .communication-dialog,
+  .acceptance-dialog {
+    width: calc(100vw - 20px) !important;
+    max-width: calc(100vw - 20px) !important;
+    max-height: calc(100dvh - 20px) !important;
+    margin: auto !important;
+  }
+
+  .dialog-card {
+    width: 100% !important;
+    max-height: calc(100dvh - 20px) !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+  }
+
+  .table-wrap { border-radius: 12px !important; }
+  .table-wrap table { min-width: 680px; }
+
+  .admin-tabs,
+  .analysis-status-tabs,
+  .office-queue-tabs {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+/* Mini celulares e dobráveis estreitos. */
+@media (max-width: 330px) {
+  :root { --nh-page-gutter: 8px; }
+
+  .portal-header .header-actions,
+  .nh-standard-header-actions {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .portal-brand strong { font-size: 14px !important; }
+  .portal-brand small { font-size: 10px !important; }
+  .portal-brand img { width: 38px !important; height: 38px !important; }
+
+  .login-card,
+  .card,
+  .tool-card,
+  .dialog-card,
+  .hero-panel { padding: 14px !important; }
+
+  .login-card h1 { font-size: 27px !important; }
+}
+
+/* ---------- Guincho / Oficina / Checklist ---------- */
+@media (max-width: 820px) {
+  .tow-kpis,
+  .tow-meta,
+  .tow-create-photo-grid,
+  .office-meta,
+  .office-grid,
+  .office-upload-form,
+  .office-row,
+  .purchase-grid,
+  .checklist-summary-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .tow-create-photo-choice,
+  .tow-create-photo-choice.span-2,
+  .office-row .item-title,
+  .office-row textarea,
+  .office-row .office-item-evidence {
+    grid-column: auto !important;
+  }
+
+  .tow-file-actions,
+  .office-file-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    width: 100% !important;
+    gap: 8px !important;
+  }
+
+  .tow-file-button,
+  .office-file-button { width: 100% !important; text-align: center !important; }
+
+  .workshop-checklist-head .actions,
+  .acceptance-actions,
+  .workshop-complete-card .actions {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/* ---------- Página de aceite ---------- */
+.accept-shell {
+  width: min(980px, calc(100% - (2 * var(--nh-page-gutter)))) !important;
+}
+
+@media (max-width: 700px) {
+  .accept-shell { margin: 18px auto 42px !important; }
+  .accept-hero { padding: 20px 18px !important; border-radius: 16px !important; }
+  .accept-hero h1 { font-size: clamp(25px, 8vw, 36px) !important; }
+  .accept-summary { grid-template-columns: minmax(0, 1fr) !important; }
+  .accept-actions { display: grid !important; grid-template-columns: 1fr !important; }
+  .accept-actions > * { width: 100% !important; }
+}
+
+/* ---------- Site institucional: grades, seções e cabeçalho ---------- */
+@media (max-width: 1179px) {
+  .site-header .nav-wrapper {
+    width: min(100% - (2 * var(--nh-page-gutter)), 1440px) !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .site-header .nav-wrapper {
+    min-height: 70px !important;
+    gap: 9px !important;
+  }
+
+  .site-header .brand-symbol { width: 46px !important; }
+  .site-header .brand-name strong { font-size: 15px !important; }
+  .site-header .brand-name small { font-size: 10px !important; }
+  .site-header .header-phone,
+  .site-header .header-collaborator { display: none !important; }
+
+  .site-header .menu-toggle {
+    flex: 0 0 auto !important;
+    width: 46px !important;
+    height: 46px !important;
+  }
+
+  .site-header .main-menu.open {
+    inset-inline: var(--nh-page-gutter) !important;
+    width: auto !important;
+    max-width: none !important;
+  }
+
+  .hero-actions,
+  .contact-actions,
+  .store-buttons,
+  .store-badges {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    width: 100% !important;
+  }
+
+  .hero-actions > *,
+  .contact-actions > *,
+  .store-buttons > *,
+  .store-badges > * { width: 100% !important; max-width: 100% !important; }
+
+  .benefits-grid,
+  .benefits-grid-expanded,
+  .offices-grid,
+  .steps-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/* Tablets: duas colunas onde cabe, sem cartões espremidos. */
+@media (min-width: 761px) and (max-width: 1100px) {
+  .benefits-grid,
+  .benefits-grid-expanded,
+  .offices-grid,
+  .steps-grid,
+  .tool-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+/* Paisagem baixa: modais e cabeçalhos não bloqueiam o conteúdo. */
+@media (max-height: 620px) and (orientation: landscape) {
+  dialog,
+  .admin-dialog,
+  .office-dialog,
+  .tow-dialog,
+  .communication-dialog,
+  .acceptance-dialog {
+    max-height: calc(100dvh - 12px) !important;
+  }
+
+  .dialog-card { max-height: calc(100dvh - 12px) !important; }
+  .login-wrap { margin-top: 14px !important; margin-bottom: 18px !important; }
+}
+
+
+/* =========================================================
+   V75 - Navegação interna responsiva com menu hambúrguer.
+   Em desktop amplo mantém a navegação horizontal. Em notebooks,
+   tablets, celulares e dobráveis usa o mesmo padrão do site principal.
+   ========================================================= */
+.nh-portal-menu-toggle{
+  display:none;
+  width:46px;
+  height:46px;
+  padding:0;
+  border:1.5px solid var(--nh-yellow,#f0f000);
+  border-radius:12px;
+  background:transparent;
+  color:#fff;
+  align-content:center;
+  justify-items:center;
+  gap:5px;
+  cursor:pointer;
+  flex:0 0 auto;
+}
+.nh-portal-menu-toggle span{
+  display:block;
+  width:23px;
+  height:3px;
+  border-radius:999px;
+  background:#fff;
+  transition:transform .2s ease, opacity .2s ease;
+}
+.nh-portal-menu-toggle.is-open span:nth-child(1){transform:translateY(8px) rotate(45deg)}
+.nh-portal-menu-toggle.is-open span:nth-child(2){opacity:0}
+.nh-portal-menu-toggle.is-open span:nth-child(3){transform:translateY(-8px) rotate(-45deg)}
+
+@media (max-width:1179px){
+  .portal-header{
+    position:relative !important;
+    display:grid !important;
+    grid-template-columns:minmax(0,1fr) auto !important;
+    grid-template-rows:auto auto !important;
+    align-items:center !important;
+    gap:10px 12px !important;
+    min-height:68px !important;
+    padding:max(10px,env(safe-area-inset-top,0px)) var(--nh-page-gutter) 10px !important;
+    overflow:visible !important;
+  }
+  .portal-brand{
+    grid-column:1 !important;
+    grid-row:1 !important;
+    width:auto !important;
+    max-width:100% !important;
+    display:flex !important;
+    align-items:center !important;
+    justify-content:flex-start !important;
+    gap:9px !important;
+    margin:0 !important;
+  }
+  .portal-brand img{width:44px !important;height:44px !important}
+  .portal-brand span{display:block !important;text-align:left !important;min-width:0 !important}
+  .portal-brand strong{font-size:16px !important;line-height:1.05 !important}
+  .portal-brand small{font-size:11px !important;line-height:1.1 !important;margin-top:2px}
+  .nh-portal-menu-toggle{
+    grid-column:2 !important;
+    grid-row:1 !important;
+    display:grid !important;
+    justify-self:end !important;
+    align-self:center !important;
+    min-height:46px !important;
+  }
+  .nh-standard-header-actions,
+  .portal-header .header-actions{
+    grid-column:1 / -1 !important;
+    grid-row:2 !important;
+    width:100% !important;
+    max-width:100% !important;
+    margin:0 !important;
+    padding:10px !important;
+    display:none !important;
+    grid-template-columns:minmax(0,1fr) !important;
+    gap:7px !important;
+    overflow:visible !important;
+    justify-content:stretch !important;
+    border:1px solid rgba(255,255,255,.14) !important;
+    border-radius:16px !important;
+    background:rgba(7,12,64,.99) !important;
+    box-shadow:0 16px 40px rgba(7,12,64,.22) !important;
+  }
+  .nh-standard-header-actions.is-open,
+  .portal-header .header-actions.is-open{display:grid !important}
+  .nh-standard-header-actions a,
+  .nh-standard-header-actions button,
+  .portal-header .header-actions a,
+  .portal-header .header-actions button{
+    width:100% !important;
+    min-width:0 !important;
+    max-width:100% !important;
+    min-height:44px !important;
+    padding:10px 14px !important;
+    font-size:13px !important;
+    line-height:1.2 !important;
+    text-align:left !important;
+    justify-content:flex-start !important;
+    white-space:normal !important;
+    border-radius:11px !important;
+  }
+  .nh-standard-header-actions a:hover,
+  .nh-standard-header-actions button:hover,
+  .portal-header .header-actions a:hover,
+  .portal-header .header-actions button:hover{
+    background:rgba(240,240,0,.10) !important;
+  }
+}
+
+@media (max-width:420px){
+  .portal-header{gap:8px !important}
+  .portal-brand img{width:40px !important;height:40px !important}
+  .portal-brand strong{font-size:14px !important}
+  .portal-brand small{font-size:10px !important}
+  .nh-portal-menu-toggle{width:44px !important;height:44px !important;min-height:44px !important}
+}
+
+@media (max-width:330px){
+  .portal-brand span{display:none !important}
+  .portal-header{grid-template-columns:auto 1fr auto !important}
+  .portal-brand{grid-column:1 !important}
+  .nh-portal-menu-toggle{grid-column:3 !important}
+  .nh-standard-header-actions,
+  .portal-header .header-actions{grid-column:1 / -1 !important}
+}

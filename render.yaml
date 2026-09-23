@@ -58,6 +58,22 @@ services:
         value: nh2027
       - key: ADMIN_USERNAME
         sync: false
+      - key: TOW_USERNAME
+        value: guincho
+      - key: TOW_PASSWORD
+        sync: false
+      - key: WORKSHOP_USERNAME
+        value: oficina
+      - key: WORKSHOP_PASSWORD
+        sync: false
+      - key: EVENT_USERNAME
+        value: eventos
+      - key: EVENT_PASSWORD
+        value: nh2027
+      - key: BUYER_USERNAME
+        value: comprador
+      - key: BUYER_PASSWORD
+        value: nh2027
       - key: ADMIN_PASSWORD
         sync: false
       - key: TEAM_WHATSAPP_NUMBER

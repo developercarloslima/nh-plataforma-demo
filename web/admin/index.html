@@ -16,15 +16,15 @@
   <meta name="twitter:image" content="https://nhprotecao.com.br/assets/simbolo-fundo-azul.png" />
 <link
       rel="stylesheet"
-      href="/shared/portal.css?v=20260920-dossier-live-acceptance-v25"
+      href="/shared/portal.css?v=20260923-v76"
     />
     <link
       rel="stylesheet"
-      href="/shared/responsive.css?v=20260820-responsive-v461"
+      href="/shared/responsive.css?v=20260923-v77"
     />
     <link
       rel="stylesheet"
-      href="/shared/brand-system.css?v=20260903-admin-layout-date-v1"
+      href="/shared/brand-system.css?v=20260923-v73"
     />
   
   <style id="nh-dev-credit-style">
@@ -58,6 +58,8 @@
       }
     }
   </style>
+<link rel="stylesheet" href="/shared/responsive.css?v=20260923-v77" />
+  <script defer src="/shared/portal-nav.js?v=20260923-v77"></script>
 </head>
   <body class="admin-page">
     <header class="portal-header">
@@ -68,11 +70,15 @@
           ><small>Novo Horizonte</small></span
         >
       </a>
-      <div class="header-actions">
+      <button class="nh-portal-menu-toggle" type="button" aria-label="Abrir menu" aria-expanded="false" aria-controls="nh-portal-menu"><span></span><span></span><span></span></button><div id="nh-portal-menu" class="header-actions nh-standard-header-actions">
+        <a href="/">Site principal</a>
         <a href="/colaborador/">Área do Colaborador</a>
-        <a href="/analise/">Área da Análise</a>
-        <a href="/supervisao/">Supervisão Análise</a>
-        <button id="logout" hidden>Sair</button>
+        <a href="/analise/">Analista</a>
+        <a href="/guincho/">Reboque / Guincho</a>
+        <a href="/oficina/">Área da Oficina</a>
+        <a href="/supervisao/">Supervisor</a>
+        <a href="/admin/">Administrador</a>
+        <button id="logout" type="button" hidden>Sair</button>
       </div>
     </header>
 
@@ -123,6 +129,10 @@
           Visão geral
         </button>
         <button type="button" data-tab="activities">Atividades</button>
+        <button type="button" data-tab="events">Eventos</button>
+        <button type="button" data-tab="workshop">Oficina</button>
+        <button type="button" data-tab="purchases">Compras de Eventos</button>
+        <button type="button" data-tab="tow">Guincho / Reboque</button>
         <button type="button" data-tab="consultants">Colaboradores</button>
         <button type="button" data-tab="users">Usuários</button>
         <button type="button" data-tab="quotes">Cotações</button>
@@ -214,6 +224,38 @@
         </div>
       </section>
 
+      <section id="tab-events" hidden>
+        <div class="section-head">
+          <div><h2>Eventos</h2><p>Visão administrativa de todos os eventos cadastrados, seus veículos, associados, documentos, histórico e andamento.</p></div>
+          <input id="admin-event-filter" placeholder="Protocolo, associado, placa, modelo ou plano" style="max-width:380px" />
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>Protocolo</th><th>Associado</th><th>Veículo</th><th>Evento</th><th>Status</th><th>Responsável</th><th>Ação</th></tr></thead><tbody id="admin-events-body"></tbody></table></div>
+      </section>
+
+      <section id="tab-workshop" hidden>
+        <div class="section-head">
+          <div><h2>Oficina</h2><p>Acompanhe todos os checklists técnicos, itens avaliados, trocas, compras, dossiê e aceite do associado.</p></div>
+          <input id="admin-workshop-filter" placeholder="Protocolo, associado, placa ou modelo" style="max-width:380px" />
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>Protocolo</th><th>Associado</th><th>Veículo</th><th>Situação</th><th>Avaliação</th><th>Compras</th><th>Aceite</th><th>Ação</th></tr></thead><tbody id="admin-workshop-body"></tbody></table></div>
+      </section>
+
+      <section id="tab-purchases" hidden>
+        <div class="section-head">
+          <div><h2>Compras de Eventos</h2><p>Acompanhe os itens marcados pela oficina como <strong>Trocar</strong>. O preenchimento é feito pelo Comprador / Financeiro e permanece sincronizado ao evento e ao dossiê interno.</p></div>
+          <input id="admin-purchases-filter" placeholder="Protocolo, associado, placa ou modelo" style="max-width:380px" />
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>Protocolo</th><th>Associado</th><th>Veículo</th><th>Itens</th><th>Não preenchidos</th><th>Solicitados</th><th>Finalizados</th><th>Situação</th><th>Ação</th></tr></thead><tbody id="admin-purchases-body"></tbody></table></div>
+      </section>
+
+      <section id="tab-tow" hidden>
+        <div class="section-head">
+          <div><h2>Guincho / Reboque</h2><p>Consulta administrativa de todos os atendimentos de reboque registrados na plataforma.</p></div>
+          <input id="admin-tow-filter" placeholder="Código, placa, modelo, prestador ou motorista" style="max-width:380px" />
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>Código</th><th>Placa / veículo</th><th>Prestador</th><th>Motorista</th><th>Status</th><th>Checklist</th><th>Fotos</th><th>Ação</th></tr></thead><tbody id="admin-tow-body"></tbody></table></div>
+      </section>
+
       <section id="tab-consultants" hidden>
         <div class="section-head">
           <div>
@@ -252,7 +294,7 @@
           <div>
             <h2>Usuários e senhas</h2>
             <p>
-              Crie contas para administrador, supervisão de análise, analista ou consultor e altere
+              Crie contas para administrador, eventos, comprador/financeiro, oficina, supervisão, analista, consultor ou guincho/reboque e altere
               senhas diretamente pelo painel.
             </p>
           </div>
@@ -382,8 +424,13 @@
           </div>
           <div class="section-head-actions">
             <input
+              id="inspection-associate-filter"
+              placeholder="Filtrar por associado"
+              style="max-width: 280px"
+            />
+            <input
               id="inspection-filter"
-              placeholder="Filtrar por consultor, analista, associado ou placa"
+              placeholder="Filtrar por consultor, analista ou placa"
               style="max-width: 360px"
             />
             <button id="delete-all-inspections" class="danger" type="button">
@@ -688,6 +735,70 @@
       </section>
     </main>
 
+    <dialog id="admin-operations-dialog" class="admin-dialog wide-dialog">
+      <div class="dialog-card admin-operations-card">
+        <div class="dialog-head">
+          <div><span class="eyebrow" style="color:#070c40">OPERAÇÃO NH</span><h2 id="admin-operations-title">Detalhes</h2></div>
+          <button class="dialog-close" type="button" data-close-dialog="admin-operations-dialog" aria-label="Fechar">×</button>
+        </div>
+        <div id="admin-operations-content"></div>
+        <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="admin-operations-dialog">Fechar</button></div>
+      </div>
+    </dialog>
+
+    <dialog id="admin-file-preview-dialog" class="admin-dialog wide-dialog">
+      <div class="dialog-card admin-file-preview-card">
+        <div class="dialog-head">
+          <div><span class="eyebrow" style="color:#070c40">PRÉVIA DO ARQUIVO</span><h2 id="admin-file-preview-title">Arquivo</h2></div>
+          <button class="dialog-close" type="button" data-close-dialog="admin-file-preview-dialog" aria-label="Fechar">×</button>
+        </div>
+        <div id="admin-file-preview-content" class="admin-file-preview-content"></div>
+        <div class="actions dialog-actions">
+          <button id="admin-file-preview-open" class="secondary" type="button" hidden>Abrir em nova aba</button>
+          <button id="admin-file-preview-download" class="outline" type="button" hidden>Baixar arquivo</button>
+          <button class="outline" type="button" data-close-dialog="admin-file-preview-dialog">Fechar</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="admin-associate-acceptance-dialog" class="admin-dialog">
+      <div class="dialog-card admin-acceptance-card">
+        <div class="dialog-head">
+          <div><span class="eyebrow" style="color:#070c40">NOVO HORIZONTE</span><h2>Enviar dossiê + aceite</h2></div>
+          <button class="dialog-close" type="button" data-close-dialog="admin-associate-acceptance-dialog" aria-label="Fechar">×</button>
+        </div>
+        <p class="helper">O associado recebe somente o dossiê externo. Fornecedor, valores, prazos e demais informações internas de compras não são compartilhados.</p>
+        <div id="admin-acceptance-status" class="admin-acceptance-status loading"><strong>Preparando dossiê...</strong><span>Aguarde um instante.</span></div>
+        <label class="admin-acceptance-link-label" data-admin-acceptance-pending>
+          <span>Link seguro do associado</span>
+          <div class="admin-acceptance-link-row">
+            <input id="admin-acceptance-link" readonly aria-label="Link do dossiê e aceite" />
+            <button id="admin-acceptance-copy" class="outline" type="button">Copiar link</button>
+          </div>
+        </label>
+        <div id="admin-acceptance-accepted-note" class="admin-acceptance-proof-note" hidden></div>
+        <div class="actions admin-acceptance-actions">
+          <button id="admin-acceptance-whatsapp" class="primary" type="button" data-admin-acceptance-pending>Enviar pelo WhatsApp</button>
+          <button id="admin-acceptance-open" class="secondary" type="button" hidden>Abrir página do associado</button>
+          <button id="admin-acceptance-download" class="outline" type="button" hidden>Baixar dossiê</button>
+          <button class="outline" type="button" data-close-dialog="admin-associate-acceptance-dialog">Fechar</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="inspection-bulk-delete-dialog" class="admin-dialog">
+      <form id="inspection-bulk-delete-form" class="dialog-card">
+        <div class="dialog-head">
+          <div><span class="eyebrow" style="color:#070c40">EXCLUSÃO PROTEGIDA</span><h2>Confirmar exclusão de todas as vistorias</h2></div>
+          <button class="dialog-close" type="button" data-close-dialog="inspection-bulk-delete-dialog" aria-label="Fechar">×</button>
+        </div>
+        <p class="helper">Esta ação é irreversível. Digite a senha de confirmação administrativa para continuar.</p>
+        <label>Senha de confirmação<input id="inspection-bulk-delete-password" type="password" autocomplete="off" required placeholder="Digite a senha administrativa" /></label>
+        <div id="inspection-bulk-delete-message"></div>
+        <div class="actions dialog-actions"><button class="outline" type="button" data-close-dialog="inspection-bulk-delete-dialog">Cancelar</button><button id="inspection-bulk-delete-confirm" class="danger" type="submit">Excluir todas as vistorias</button></div>
+      </form>
+    </dialog>
+
     <dialog id="confirm-dialog" class="admin-dialog">
       <form method="dialog" class="dialog-card">
         <div class="dialog-head">
@@ -794,10 +905,14 @@
           /></label>
           <input id="user-display-name" type="hidden" />
           <label
-            >Tipo de colaborador<select id="user-role" required>
+            >Perfil de acesso<select id="user-role" required>
               <option value="CONSULTANT">Consultor</option>
               <option value="ANALYST">Analista</option>
               <option value="SUPERVISION_ANALYSIS">Supervisão de Análise</option>
+              <option value="TOW_DRIVER">Guincho / Reboque</option>
+              <option value="WORKSHOP_MANAGER">Gerente da Oficina</option>
+              <option value="EVENT_OPERATOR">Eventos</option>
+              <option value="BUYER">Comprador / Financeiro</option>
             </select></label
           >
           <label id="user-password-wrap"
@@ -1545,14 +1660,15 @@
       </form>
     </dialog>
 
-    <script src="/shared/config.js?v=20260804-current-origin"></script>
+    <script src="/shared/config.js?v=20260923-v77"></script>
     <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
     <script src="/shared/money-input.js?v=20260805-brl-mask"></script>
-    <script src="/admin/admin.js?v=20260920-dossier-live-acceptance-v25"></script>
+    <script src="/admin/admin.js?v=20260923-v78"></script>
     <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
   
   <div class="nh-dev-credit" aria-label="Crédito de desenvolvimento">
     @desenvolvido por <a href="https://www.linkedin.com/in/devcarloslima/" target="_blank" rel="noopener noreferrer">Carlos Lima</a>
   </div>
+  <script defer src="/shared/developer-footer.js?v=20260923-v78"></script>
 </body>
 </html>

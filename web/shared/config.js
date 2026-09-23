@@ -16,3 +16,25 @@
     }
   };
 })();
+
+// Roteamento unificado dos portais internos NH.
+(() => {
+  const ROLE_PATHS = Object.freeze({
+    CONSULTANT: '/colaborador/',
+    ANALYST: '/analise/',
+    TOW_DRIVER: '/guincho/',
+    WORKSHOP_MANAGER: '/oficina/',
+    EVENT_OPERATOR: '/checklist/',
+    BUYER: '/financeiro/',
+    SUPERVISION_ANALYSIS: '/supervisao/',
+    ADMIN: '/admin/'
+  });
+  window.NH_ROUTING = {
+    rolePath(role) { return ROLE_PATHS[String(role || '').toUpperCase()] || '/'; },
+    redirectForRole(role, replace = true) {
+      const target = ROLE_PATHS[String(role || '').toUpperCase()] || '/';
+      if (replace) window.location.replace(target); else window.location.href = target;
+    },
+    rolePaths: ROLE_PATHS
+  };
+})();

@@ -50,6 +50,16 @@ app:
     analyst-password: ${ANALYST_PASSWORD:nh2027}
     admin-username: ${ADMIN_USERNAME:admin@nh.local}
     admin-password: ${ADMIN_PASSWORD:altere-agora}
+    tow-username: ${TOW_USERNAME:guincho}
+    tow-password: ${TOW_PASSWORD:nh2027}
+    workshop-username: ${WORKSHOP_USERNAME:oficina}
+    workshop-password: ${WORKSHOP_PASSWORD:nh2027}
+    event-username: ${EVENT_USERNAME:eventos}
+    event-password: ${EVENT_PASSWORD:nh2027}
+    buyer-username: ${BUYER_USERNAME:comprador}
+    buyer-password: ${BUYER_PASSWORD:nh2027}
+  admin:
+    bulk-delete-password: ${ADMIN_BULK_DELETE_PASSWORD:@Aguias2025}
   allowed-origins: ${ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000,https://aforma-demo.vercel.app,https://*.vercel.app}
   plan-comparison:
     valid-hours: ${PLAN_COMPARISON_VALID_HOURS:120}

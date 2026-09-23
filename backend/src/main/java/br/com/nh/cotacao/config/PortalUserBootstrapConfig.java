@@ -15,6 +15,14 @@ public class PortalUserBootstrapConfig implements ApplicationRunner {
     private final String analystPassword;
     private final String adminUsername;
     private final String adminPassword;
+    private final String towUsername;
+    private final String towPassword;
+    private final String workshopUsername;
+    private final String workshopPassword;
+    private final String eventUsername;
+    private final String eventPassword;
+    private final String buyerUsername;
+    private final String buyerPassword;
 
     public PortalUserBootstrapConfig(
             PortalUserService service,
@@ -23,7 +31,15 @@ public class PortalUserBootstrapConfig implements ApplicationRunner {
             @Value("${app.auth.analyst-username}") String analystUsername,
             @Value("${app.auth.analyst-password}") String analystPassword,
             @Value("${app.auth.admin-username}") String adminUsername,
-            @Value("${app.auth.admin-password}") String adminPassword
+            @Value("${app.auth.admin-password}") String adminPassword,
+            @Value("${app.auth.tow-username:guincho}") String towUsername,
+            @Value("${app.auth.tow-password:nh2027}") String towPassword,
+            @Value("${app.auth.workshop-username:oficina}") String workshopUsername,
+            @Value("${app.auth.workshop-password:nh2027}") String workshopPassword,
+            @Value("${app.auth.event-username:eventos}") String eventUsername,
+            @Value("${app.auth.event-password:nh2027}") String eventPassword,
+            @Value("${app.auth.buyer-username:comprador}") String buyerUsername,
+            @Value("${app.auth.buyer-password:nh2027}") String buyerPassword
     ) {
         this.service = service;
         this.consultantUsername = consultantUsername;
@@ -32,6 +48,14 @@ public class PortalUserBootstrapConfig implements ApplicationRunner {
         this.analystPassword = analystPassword;
         this.adminUsername = adminUsername;
         this.adminPassword = adminPassword;
+        this.towUsername = towUsername;
+        this.towPassword = towPassword;
+        this.workshopUsername = workshopUsername;
+        this.workshopPassword = workshopPassword;
+        this.eventUsername = eventUsername;
+        this.eventPassword = eventPassword;
+        this.buyerUsername = buyerUsername;
+        this.buyerPassword = buyerPassword;
     }
 
     @Override
@@ -44,5 +68,9 @@ public class PortalUserBootstrapConfig implements ApplicationRunner {
                 consultantUsername, consultantPassword
         );
         service.bootstrapAnalysisTeam();
+        service.bootstrapTowDriver(towUsername, towPassword);
+        service.bootstrapWorkshopManager(workshopUsername, workshopPassword);
+        service.bootstrapEventOperator(eventUsername, eventPassword);
+        service.bootstrapBuyer(buyerUsername, buyerPassword);
     }
 }

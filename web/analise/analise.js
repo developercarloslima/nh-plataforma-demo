@@ -630,6 +630,10 @@ async function boot() {
     localStorage.setItem(ROLE_KEY, me.role);
     if (me.role === 'ADMIN') { location.replace('/admin/'); return; }
     if (me.role === 'SUPERVISION_ANALYSIS') { location.replace('/supervisao/'); return; }
+    if (me.role === 'TOW_DRIVER') { location.replace('/guincho/'); return; }
+    if (me.role === 'WORKSHOP_MANAGER') { location.replace('/oficina/'); return; }
+    if (me.role === 'EVENT_OPERATOR') { location.replace('/checklist/'); return; }
+    if (me.role === 'BUYER') { location.replace('/financeiro/'); return; }
     if (me.role !== 'ANALYST') { location.replace('/colaborador/'); return; }
     showView();
     if (me.passwordChangeRequired) { openFirstPasswordDialog(); return; }
@@ -1480,6 +1484,14 @@ $('login-form').addEventListener('submit', async event => {
       showView();
       if (data.passwordChangeRequired) openFirstPasswordDialog();
       else await load();
+    } else if (data.role === 'TOW_DRIVER') {
+      location.href = '/guincho/';
+    } else if (data.role === 'WORKSHOP_MANAGER') {
+      location.href = '/oficina/';
+    } else if (data.role === 'EVENT_OPERATOR') {
+      location.href = '/checklist/';
+    } else if (data.role === 'BUYER') {
+      location.href = '/financeiro/';
     } else {
       location.href = '/colaborador/';
     }

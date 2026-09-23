@@ -11,9 +11,9 @@
   <meta property="og:image" content="https://nhprotecao.com.br/assets/simbolo-fundo-azul.png" />
   <meta property="og:image:type" content="image/png" />
   <meta name="twitter:image" content="https://nhprotecao.com.br/assets/simbolo-fundo-azul.png" />
-<link rel="stylesheet" href="/shared/portal.css?v=20260920-live-catalog-optionals-v21">
-  <link rel="stylesheet" href="/shared/responsive.css?v=20260820-responsive-v461">
-  <link rel="stylesheet" href="/shared/brand-system.css?v=20260807-modals-v5">
+<link rel="stylesheet" href="/shared/portal.css?v=20260923-v73">
+  <link rel="stylesheet" href="/shared/responsive.css?v=20260923-v77">
+  <link rel="stylesheet" href="/shared/brand-system.css?v=20260923-v73">
 
   <style id="nh-dev-credit-style">
     .nh-dev-credit {
@@ -46,11 +46,22 @@
       }
     }
   </style>
+<link rel="stylesheet" href="/shared/responsive.css?v=20260923-v77" />
+  <script defer src="/shared/portal-nav.js?v=20260923-v77"></script>
 </head>
 <body>
 <header class="portal-header">
   <a class="portal-brand" href="/"><img src="/assets/logo-nh-simbolo.png" alt="Novo Horizonte"><span><strong>Novo Horizonte</strong><small>Equipe de Análise</small></span></a>
-  <div class="header-actions"><a href="/colaborador/">Área do Colaborador</a><a href="/analise/">Área da Análise</a><a href="/admin/">Administrador</a><a href="/supervisao/">Supervisão Análise</a><button id="logout" hidden>Sair</button></div>
+  <button class="nh-portal-menu-toggle" type="button" aria-label="Abrir menu" aria-expanded="false" aria-controls="nh-portal-menu"><span></span><span></span><span></span></button><div id="nh-portal-menu" class="header-actions nh-standard-header-actions">
+        <a href="/">Site principal</a>
+        <a href="/colaborador/">Área do Colaborador</a>
+        <a href="/analise/">Analista</a>
+        <a href="/guincho/">Reboque / Guincho</a>
+        <a href="/oficina/">Área da Oficina</a>
+        <a href="/supervisao/">Supervisor</a>
+        <a href="/admin/">Administrador</a>
+        <button id="logout" type="button" hidden>Sair</button>
+      </div>
 </header>
 
 <section id="analysis-login" class="login-wrap">
@@ -268,14 +279,15 @@
   </form>
 </dialog>
 
-<script src="/shared/config.js?v=20260804-current-origin"></script>
+<script src="/shared/config.js?v=20260923-v77"></script>
 <script src="/shared/url-tools.js?v=20260804-current-origin"></script>
 <script src="/shared/money-input.js?v=20260805-brl-mask"></script>
-<script src="/analise/analise.js?v=20260920-live-catalog-optionals-v21"></script>
+<script src="/analise/analise.js?v=20260923-v70"></script>
 <script src="/shared/responsive.js?v=20260807-table-scroll-v1"></script>
 
   <div class="nh-dev-credit" aria-label="Crédito de desenvolvimento">
     @desenvolvido por <a href="https://www.linkedin.com/in/devcarloslima/" target="_blank" rel="noopener noreferrer">Carlos Lima</a>
   </div>
+  <script defer src="/shared/developer-footer.js?v=20260923-v78"></script>
 </body>
 </html>

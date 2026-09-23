@@ -66,7 +66,7 @@ public class PortalUserService {
 
         user.registerLogin();
         repository.flush();
-        return new AuthenticatedPortalUser(user.getUsername(), user.getRole(), user.getConsultantId(), consultantName, user.isMustChangePassword());
+        return new AuthenticatedPortalUser(user.getUsername(), user.getRole(), user.getConsultantId(), consultantName, passwordChangeRequired(user));
     }
 
     @Transactional(readOnly = true)
@@ -84,7 +84,7 @@ public class PortalUserService {
                 .orElseThrow(() -> new IllegalArgumentException("Conta de acesso não encontrada ou inativa."));
         return new PortalUserSession(
                 user.getUsername(), user.getDisplayName(), user.getRole(), user.getConsultantId(), consultantName(user.getConsultantId()),
-                user.isMustChangePassword()
+                passwordChangeRequired(user)
         );
     }
 
@@ -123,7 +123,7 @@ public class PortalUserService {
     public boolean requiresPasswordChange(String username) {
         return repository.findByNormalizedUsername(PortalUser.normalizeUsername(username))
                 .filter(PortalUser::isActive)
-                .map(PortalUser::isMustChangePassword)
+                .map(this::passwordChangeRequired)
                 .orElse(false);
     }
 
@@ -295,6 +295,68 @@ public class PortalUserService {
     }
 
     @Transactional
+    public void bootstrapTowDriver(String username, String password) {
+        String normalized = PortalUser.normalizeUsername(username);
+        if (normalized.isBlank()) throw new IllegalStateException("Usuário inicial de guincho/reboque não foi configurado.");
+        Optional<PortalUser> existing = repository.findByNormalizedUsername(normalized);
+        if (existing.isPresent()) {
+            PortalUser user = existing.get();
+            user.clearPasswordChangeRequirement();
+            repository.save(user);
+            return;
+        }
+        String configuredPassword = password == null || password.isBlank() ? "nh2027" : password;
+        PortalUser user = PortalUser.create(
+                username, "Equipe de Guincho / Reboque", encoder.encode(configuredPassword), PortalRole.TOW_DRIVER, "TOW_BOOTSTRAP"
+        );
+        repository.save(user);
+    }
+
+    @Transactional
+    public void bootstrapWorkshopManager(String username, String password) {
+        String normalized = PortalUser.normalizeUsername(username);
+        if (normalized.isBlank()) throw new IllegalStateException("Usuário inicial da oficina não foi configurado.");
+        Optional<PortalUser> existing = repository.findByNormalizedUsername(normalized);
+        if (existing.isPresent()) {
+            PortalUser user = existing.get();
+            user.clearPasswordChangeRequirement();
+            repository.save(user);
+            return;
+        }
+        String configuredPassword = password == null || password.isBlank() ? "nh2027" : password;
+        PortalUser user = PortalUser.create(
+                username, "Gerência da Oficina", encoder.encode(configuredPassword), PortalRole.WORKSHOP_MANAGER, "WORKSHOP_BOOTSTRAP"
+        );
+        repository.save(user);
+    }
+
+    @Transactional
+    public void bootstrapEventOperator(String username, String password) {
+        bootstrapOperationalUser(username, password, "Equipe de Eventos", PortalRole.EVENT_OPERATOR, "EVENT_BOOTSTRAP");
+    }
+
+    @Transactional
+    public void bootstrapBuyer(String username, String password) {
+        bootstrapOperationalUser(username, password, "Compras / Financeiro", PortalRole.BUYER, "BUYER_BOOTSTRAP");
+    }
+
+    private void bootstrapOperationalUser(String username, String password, String displayName, PortalRole role, String createdBy) {
+        String normalized = PortalUser.normalizeUsername(username);
+        if (normalized.isBlank()) throw new IllegalStateException("Usuário operacional não configurado: " + role);
+        Optional<PortalUser> existing = repository.findByNormalizedUsername(normalized);
+        if (existing.isPresent()) {
+            PortalUser user = existing.get();
+            user.clearPasswordChangeRequirement();
+            repository.save(user);
+            return;
+        }
+        String configuredPassword = password == null || password.isBlank() ? "nh2027" : password;
+        PortalUser user = PortalUser.create(username, displayName, encoder.encode(configuredPassword), role, createdBy);
+        user.clearPasswordChangeRequirement();
+        repository.save(user);
+    }
+
+    @Transactional
     public void bootstrapAnalysisTeam() {
         seedTeamUser("Gleyce", "Teotônio Vilela", CollaboratorRole.ANALYST, "analiseGleyce", PortalRole.ANALYST);
         seedTeamUser("Larissa", "Maceió", CollaboratorRole.ANALYST, "analiseLarissa", PortalRole.ANALYST);
@@ -445,6 +507,18 @@ public class PortalUserService {
         return consultantRepository.findById(consultantId).map(Consultant::getName).orElse(null);
     }
 
+    private boolean passwordChangeRequired(PortalUser user) {
+        if (user == null || !user.isMustChangePassword()) return false;
+        String source = user.getCreatedBy();
+        // Contas genéricas de serviço permanecem com senha fixa até que um administrador
+        // decida alterá-la. A troca obrigatória fica reservada às contas pessoais.
+        return !("BOOTSTRAP".equals(source)
+                || "TOW_BOOTSTRAP".equals(source)
+                || "WORKSHOP_BOOTSTRAP".equals(source)
+                || "EVENT_BOOTSTRAP".equals(source)
+                || "BUYER_BOOTSTRAP".equals(source));
+    }
+
     private void protectLastAdmin(PortalUser user, PortalRole nextRole, boolean nextActive) {
         if (user.getRole() != PortalRole.ADMIN || !user.isActive()) return;
         boolean losesAdmin = nextRole != PortalRole.ADMIN || !nextActive;
@@ -468,7 +542,7 @@ public class PortalUserService {
         return new PortalUserResponse(
                 user.getId(), user.getUsername(), user.getDisplayName(), user.getRole(), user.isActive(),
                 user.getCreatedAt(), user.getUpdatedAt(), user.getPasswordChangedAt(), user.getLastLoginAt(), user.getCreatedBy(),
-                user.getConsultantId(), consultantName(user.getConsultantId()), user.isMustChangePassword()
+                user.getConsultantId(), consultantName(user.getConsultantId()), passwordChangeRequired(user)
         );
     }
 

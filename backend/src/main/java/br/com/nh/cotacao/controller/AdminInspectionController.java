@@ -11,9 +11,12 @@ import br.com.nh.cotacao.security.PortalPrincipal;
 import br.com.nh.cotacao.service.AdminActivityService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.List;
 import java.util.UUID;
 
@@ -21,8 +24,15 @@ import java.util.UUID;
 @RequestMapping("/api/admin/inspections")
 public class AdminInspectionController {
     private final AdminActivityService service;
+    private final String bulkDeletePassword;
 
-    public AdminInspectionController(AdminActivityService service) { this.service = service; }
+    public AdminInspectionController(
+            AdminActivityService service,
+            @Value("${app.admin.bulk-delete-password:@Aguias2025}") String bulkDeletePassword
+    ) {
+        this.service = service;
+        this.bulkDeletePassword = bulkDeletePassword;
+    }
 
     @GetMapping
     public List<AdminInspectionResponse> list() { return service.inspections(); }
@@ -120,7 +130,15 @@ public class AdminInspectionController {
     }
 
     @DeleteMapping
-    public DeleteSummary deleteAllAllowed(Authentication auth) {
+    public DeleteSummary deleteAllAllowed(
+            @RequestHeader(value = "X-NH-Delete-Password", required = false) String confirmationPassword,
+            Authentication auth
+    ) {
+        byte[] expected = bulkDeletePassword == null ? new byte[0] : bulkDeletePassword.getBytes(StandardCharsets.UTF_8);
+        byte[] provided = confirmationPassword == null ? new byte[0] : confirmationPassword.getBytes(StandardCharsets.UTF_8);
+        if (!MessageDigest.isEqual(expected, provided)) {
+            throw new IllegalArgumentException("Senha de confirmação inválida. A exclusão total não foi executada.");
+        }
         return service.deleteAllAllowedInspections(username(auth));
     }
 
